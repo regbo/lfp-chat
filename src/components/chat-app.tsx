@@ -31,6 +31,15 @@ import {
 import type { ToolPart } from "@/components/ai-elements/tool";
 import { Button } from "@/components/ui/button";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuGroup,
@@ -43,7 +52,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
-  ProjectsPanel,
+  ArchivedPanel,
   SchedulesPanel,
   SearchPanel,
   ToolsPanel,
@@ -64,6 +73,11 @@ import {
 } from "@/lib/model-catalog";
 import { cn } from "@/lib/utils";
 import {
+  isThreadArchived,
+  isThreadPinned,
+  type ThreadSummary,
+} from "@/lib/thread-state";
+import {
   defaultEnabledToolIds,
   normalizeEnabledToolIds,
   TOOLS_CONTEXT_KEY,
@@ -75,6 +89,8 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
+  Archive,
+  ArchiveRestore,
   Check,
   ChevronDown,
   Clock3,
@@ -90,6 +106,9 @@ import {
   PanelLeftOpen,
   Plus,
   Paperclip,
+  Pencil,
+  Pin,
+  PinOff,
   Search,
   SquarePen,
   Sparkles,
@@ -99,14 +118,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-type Thread = {
-  id: string;
-  title?: string;
-  createdAt?: string;
-  updatedAt?: string;
-};
-
-type ActiveView = "chat" | "search" | "projects" | "scheduled" | "tools";
+type ActiveView = "chat" | "search" | "scheduled" | "tools" | "archived";
 
 type InstallPromptEvent = Event & {
   prompt: () => Promise<void>;
@@ -705,13 +717,70 @@ function ChatSession({
   );
 }
 
+function ThreadActionsMenu({
+  alwaysVisible = false,
+  thread,
+  onArchive,
+  onDelete,
+  onPin,
+  onRename,
+}: {
+  alwaysVisible?: boolean;
+  thread: ThreadSummary;
+  onArchive: (thread: ThreadSummary) => void;
+  onDelete: (thread: ThreadSummary) => void;
+  onPin: (thread: ThreadSummary) => void;
+  onRename: (thread: ThreadSummary) => void;
+}) {
+  const archived = isThreadArchived(thread);
+  const pinned = isThreadPinned(thread);
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        render={
+          <Button
+            aria-label={`Chat actions for ${thread.title || "New chat"}`}
+            className={cn(
+              "shrink-0 data-popup-open:opacity-100 focus-visible:opacity-100",
+              !alwaysVisible && "opacity-0 group-hover:opacity-100",
+            )}
+            size="icon-xs"
+            variant="ghost"
+          />
+        }
+      >
+        <MoreHorizontal className="size-3.5" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-40">
+        <DropdownMenuItem onClick={() => onRename(thread)}>
+          <Pencil /> Rename
+        </DropdownMenuItem>
+        {!archived && (
+          <DropdownMenuItem onClick={() => onPin(thread)}>
+            {pinned ? <PinOff /> : <Pin />} {pinned ? "Unpin" : "Pin"}
+          </DropdownMenuItem>
+        )}
+        <DropdownMenuItem onClick={() => onArchive(thread)}>
+          {archived ? <ArchiveRestore /> : <Archive />}
+          {archived ? "Unarchive" : "Archive"}
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={() => onDelete(thread)} variant="destructive">
+          <Trash2 /> Delete
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 export function ChatApp({ initialThreadId }: { initialThreadId?: string }) {
   const router = useRouter();
   const [resourceId, setResourceId] = useState("");
   const [threadId, setThreadId] = useState(() => initialThreadId || makeId());
   const [initialMessages, setInitialMessages] = useState<UIMessage[]>([]);
   const [threadLoaded, setThreadLoaded] = useState(() => !initialThreadId);
-  const [threads, setThreads] = useState<Thread[]>([]);
+  const [threads, setThreads] = useState<ThreadSummary[]>([]);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [installPrompt, setInstallPrompt] = useState<InstallPromptEvent | null>(null);
@@ -721,6 +790,8 @@ export function ChatApp({ initialThreadId }: { initialThreadId?: string }) {
   );
   const [modelCatalog, setModelCatalog] = useState<ModelCatalogResponse | null>(null);
   const [modelSelection, setModelSelection] = useState<ModelSelection | null>(null);
+  const [renamingThread, setRenamingThread] = useState<ThreadSummary | null>(null);
+  const [renameDraft, setRenameDraft] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -814,7 +885,7 @@ export function ChatApp({ initialThreadId }: { initialThreadId?: string }) {
     try {
       const response = await fetch(`/api/threads?resourceId=${encodeURIComponent(resourceId)}`);
       if (!response.ok) return;
-      const data = (await response.json()) as { threads: Thread[] };
+      const data = (await response.json()) as { threads: ThreadSummary[] };
       setThreads(data.threads);
     } catch {
       // Postgres may still be starting; the chat surface remains usable once it is ready.
@@ -870,10 +941,52 @@ export function ChatApp({ initialThreadId }: { initialThreadId?: string }) {
     return () => window.clearTimeout(timer);
   }, [initialThreadId, openThread, resourceId]);
 
-  const deleteThread = async (id: string) => {
-    await fetch(`/api/threads/${encodeURIComponent(id)}`, { method: "DELETE" });
-    if (id === threadId) newChat();
+  const updateThread = useCallback(async (
+    thread: ThreadSummary,
+    change: { title?: string; pinned?: boolean; archived?: boolean },
+  ) => {
+    const response = await fetch(`/api/threads/${encodeURIComponent(thread.id)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ resourceId, ...change }),
+    });
+    const data = (await response.json()) as { error?: string };
+    if (!response.ok) throw new Error(data.error || "Unable to update chat.");
     await refreshThreads();
+  }, [refreshThreads, resourceId]);
+
+  const deleteThread = useCallback(async (thread: ThreadSummary) => {
+    if (!window.confirm(`Delete “${thread.title || "New chat"}” permanently?`)) return;
+    const response = await fetch(
+      `/api/threads/${encodeURIComponent(thread.id)}?resourceId=${encodeURIComponent(resourceId)}`,
+      { method: "DELETE" },
+    );
+    if (!response.ok) return;
+    if (thread.id === threadId) newChat();
+    await refreshThreads();
+  }, [newChat, refreshThreads, resourceId, threadId]);
+
+  const archiveThread = useCallback(async (thread: ThreadSummary) => {
+    const archived = !isThreadArchived(thread);
+    await updateThread(thread, { archived });
+    if (archived && thread.id === threadId) newChat();
+  }, [newChat, threadId, updateThread]);
+
+  const pinThread = useCallback(async (thread: ThreadSummary) => {
+    await updateThread(thread, { pinned: !isThreadPinned(thread) });
+  }, [updateThread]);
+
+  const beginRename = useCallback((thread: ThreadSummary) => {
+    setRenamingThread(thread);
+    setRenameDraft(thread.title || "New chat");
+  }, []);
+
+  const submitRename = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const title = renameDraft.trim();
+    if (!renamingThread || !title) return;
+    await updateThread(renamingThread, { title });
+    setRenamingThread(null);
   };
 
   const installApp = async () => {
@@ -892,11 +1005,37 @@ export function ChatApp({ initialThreadId }: { initialThreadId?: string }) {
   };
 
   const activeThread = threads.find((thread) => thread.id === threadId);
+  const activeThreads = useMemo(
+    () => threads.filter((thread) => !isThreadArchived(thread)),
+    [threads],
+  );
+  const pinnedThreads = useMemo(
+    () => activeThreads.filter(isThreadPinned),
+    [activeThreads],
+  );
+  const recentThreads = useMemo(
+    () => activeThreads.filter((thread) => !isThreadPinned(thread)),
+    [activeThreads],
+  );
+  const archivedThreads = useMemo(
+    () => threads.filter(isThreadArchived),
+    [threads],
+  );
   const activeConversationTitle = activeThread?.title || "New chat";
   const handleConversationChange = useCallback(() => {
     router.replace(threadHref(threadId));
     void refreshThreads();
   }, [refreshThreads, router, threadId]);
+
+  const renderThreadActions = useCallback((thread: ThreadSummary) => (
+    <ThreadActionsMenu
+      onArchive={(target) => void archiveThread(target)}
+      onDelete={(target) => void deleteThread(target)}
+      onPin={(target) => void pinThread(target)}
+      onRename={beginRename}
+      thread={thread}
+    />
+  ), [archiveThread, beginRename, deleteThread, pinThread]);
 
   const sidebar = (
     <aside className="flex h-full w-[244px] shrink-0 flex-col bg-sidebar px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-[max(0.4rem,env(safe-area-inset-top))] text-sidebar-foreground">
@@ -921,45 +1060,40 @@ export function ChatApp({ initialThreadId }: { initialThreadId?: string }) {
         <button className={cn("sidebar-item", activeView === "search" && "bg-sidebar-accent")} onClick={() => showView("search")} type="button">
           <Search className="size-[18px]" /> Search
         </button>
-        <button className={cn("sidebar-item", activeView === "projects" && "bg-sidebar-accent")} onClick={() => showView("projects")} type="button">
-          <Folder className="size-[18px]" /> Projects
-        </button>
         <button className={cn("sidebar-item", activeView === "scheduled" && "bg-sidebar-accent")} onClick={() => showView("scheduled")} type="button">
           <Clock3 className="size-[18px]" /> Scheduled
         </button>
         <button className={cn("sidebar-item", activeView === "tools" && "bg-sidebar-accent")} onClick={() => showView("tools")} type="button">
           <Wrench className="size-[18px]" /> Tools
         </button>
+        <button className={cn("sidebar-item", activeView === "archived" && "bg-sidebar-accent")} onClick={() => showView("archived")} type="button">
+          <Archive className="size-[18px]" /> Archived
+        </button>
       </nav>
       <div className="mt-4 min-h-0 flex-1 overflow-y-auto">
-        {threads.length > 0 && (
+        {pinnedThreads.length > 0 && (
           <>
             <p className="px-2 pb-1 text-[11px] font-medium text-muted-foreground/80">Pinned</p>
             <div className="mb-3 space-y-px">
-              {threads.slice(0, 2).map((thread) => (
-                <Link className={cn("sidebar-chat-link truncate", thread.id === threadId && "sidebar-chat-link-active")} href={threadHref(thread.id)} key={`pinned-${thread.id}`} onClick={() => void openThread(thread.id, false)}>
-                  <span className="truncate">{thread.title || "New chat"}</span>
-                </Link>
+              {pinnedThreads.map((thread) => (
+                <div className={cn("group flex min-h-8 items-center rounded-lg hover:bg-sidebar-accent", thread.id === threadId && "sidebar-chat-link-active")} key={`pinned-${thread.id}`}>
+                  <Link className="min-w-0 flex-1 truncate px-2 py-1 text-xs leading-5" href={threadHref(thread.id)} onClick={() => void openThread(thread.id, false)}>
+                    {thread.title || "New chat"}
+                  </Link>
+                  <span className="mr-1">{renderThreadActions(thread)}</span>
+                </div>
               ))}
             </div>
           </>
         )}
         <p className="px-2 pb-1 text-[11px] font-medium text-muted-foreground/80">Recents</p>
         <div className="space-y-px">
-          {threads.slice(2).map((thread) => (
+          {recentThreads.map((thread) => (
             <div className={cn("group flex min-h-8 items-center rounded-lg hover:bg-sidebar-accent", thread.id === threadId && "sidebar-chat-link-active")} key={thread.id}>
               <Link className="min-w-0 flex-1 truncate px-2 py-1 text-xs leading-5" href={threadHref(thread.id)} onClick={() => void openThread(thread.id, false)}>
                 {thread.title || "New chat"}
               </Link>
-              <Button
-                aria-label={`Delete ${thread.title || "chat"}`}
-                className="mr-1 opacity-0 group-hover:opacity-100"
-                onClick={() => void deleteThread(thread.id)}
-                size="icon-xs"
-                variant="ghost"
-              >
-                <Trash2 className="size-3.5" />
-              </Button>
+              <span className="mr-1">{renderThreadActions(thread)}</span>
             </div>
           ))}
         </div>
@@ -1065,3 +1199,8 @@ export function ChatApp({ initialThreadId }: { initialThreadId?: string }) {
     </main>
   );
 }
+  Archive,
+  ArchiveRestore,
+  Pencil,
+  Pin,
+  PinOff,

@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import type { ModelSelection } from "@/lib/model-catalog";
+import type { ThreadSummary } from "@/lib/thread-state";
 import {
   toolCatalog,
   type SelectableToolId,
@@ -16,7 +17,6 @@ import {
   Code2,
   Globe2,
   ImageIcon,
-  Folder,
   LoaderCircle,
   MessageSquare,
   Pause,
@@ -28,13 +28,6 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-
-export type ThreadSummary = {
-  id: string;
-  title?: string;
-  createdAt?: string;
-  updatedAt?: string;
-};
 
 type ScheduleSummary = {
   id: string;
@@ -59,6 +52,35 @@ function PanelShell({ title, description, children }: { title: string; descripti
   );
 }
 
+export function ArchivedPanel({
+  threads,
+  onOpen,
+  renderActions,
+}: {
+  threads: ThreadSummary[];
+  onOpen: (id: string) => void;
+  renderActions: (thread: ThreadSummary) => React.ReactNode;
+}) {
+  return (
+    <PanelShell title="Archived chats" description="Restore, rename, or permanently delete archived conversations.">
+      <div className="space-y-1">
+        {threads.map((thread) => (
+          <div className="group flex items-center rounded-xl px-2 hover:bg-muted/55" key={thread.id}>
+            <button className="min-w-0 flex-1 px-1 py-2.5 text-left" onClick={() => onOpen(thread.id)} type="button">
+              <p className="truncate text-sm font-medium">{thread.title || "New chat"}</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                {thread.updatedAt ? new Date(thread.updatedAt).toLocaleString() : "Archived conversation"}
+              </p>
+            </button>
+            {renderActions(thread)}
+          </div>
+        ))}
+        {threads.length === 0 && <p className="py-10 text-center text-sm text-muted-foreground">No archived chats.</p>}
+      </div>
+    </PanelShell>
+  );
+}
+
 export function SearchPanel({ threads, onOpen }: { threads: ThreadSummary[]; onOpen: (id: string) => void }) {
   const [query, setQuery] = useState("");
   const results = useMemo(
@@ -79,23 +101,6 @@ export function SearchPanel({ threads, onOpen }: { threads: ThreadSummary[]; onO
           </button>
         ))}
         {results.length === 0 && <p className="py-10 text-center text-sm text-muted-foreground">No matching chats.</p>}
-      </div>
-    </PanelShell>
-  );
-}
-
-export function ProjectsPanel({ onNewChat }: { onNewChat: () => void }) {
-  return (
-    <PanelShell title="Projects" description="Keep project context and tools together.">
-      <div className="rounded-2xl border bg-card p-5">
-        <div className="flex items-start gap-4">
-          <span className="grid size-11 place-items-center rounded-xl bg-muted"><Folder className="size-5" /></span>
-          <div className="min-w-0 flex-1">
-            <h2 className="font-medium">LFP Chat workspace</h2>
-            <p className="mt-1 text-sm text-muted-foreground">Mastra server, Postgres memory, scheduled prompts, and isolated Monty code execution.</p>
-            <Button className="mt-4 rounded-full" onClick={onNewChat}>New project chat</Button>
-          </div>
-        </div>
       </div>
     </PanelShell>
   );
