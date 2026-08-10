@@ -50,6 +50,7 @@
 }
 
 :root {
+  --font-ui-sans: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   --background: oklch(1 0 0);
   --foreground: oklch(0.269 0 0);
   --card: oklch(1 0 0);
@@ -88,10 +89,10 @@
   --chat-turn-gap: 1rem;
   --chat-composer-shadow: 0 10px 28px -18px rgb(0 0 0 / 28%), 0 1px 2px rgb(0 0 0 / 5%);
   --code-block-header-inset: 0.5rem;
-  --text-chat: 0.8125rem;
+  --text-chat: 0.75rem;
   --leading-chat: 1.55;
-  --text-ui: 0.8125rem;
-  --text-ui-emphasis: 0.875rem;
+  --text-ui: 0.75rem;
+  --text-ui-emphasis: 0.8125rem;
 }
 
 .dark {

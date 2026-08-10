@@ -59,7 +59,7 @@ export function ToolEventSummary({ parts }: ToolEventSummaryProps) {
 
   return (
     <Collapsible className="group/tool-summary not-prose w-full text-muted-foreground">
-      <CollapsibleTrigger className="flex h-8 max-w-full items-center gap-2 rounded-lg px-1.5 text-[13px] transition-colors hover:bg-muted/55">
+      <CollapsibleTrigger className="flex h-8 max-w-full items-center gap-2 rounded-lg px-1.5 text-xs transition-colors hover:bg-muted/55">
         {running ? (
           <LoaderCircle className="size-3.5 shrink-0 animate-spin" />
         ) : (
