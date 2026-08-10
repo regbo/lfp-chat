@@ -495,7 +495,7 @@ type ChatSessionProps = {
   resourceId: string;
   initialMessages: UIMessage[];
   knownRunning: boolean;
-  onConversationChange: () => void;
+  onConversationChange: (threadId: string) => void;
   onRunStateChange: (threadId: string, running: boolean) => void;
   onThreadListChange: () => void;
   modelCatalog: ModelCatalogResponse | null;
@@ -558,7 +558,7 @@ function ChatSession({
   const isStreaming = status === "submitted" || status === "streaming";
   const startRun = useCallback(() => {
     onRunStateChange(threadId, true);
-    onConversationChange();
+    onConversationChange(threadId);
     // The thread is created server-side shortly after the request begins.
     window.setTimeout(onThreadListChange, 500);
   }, [onConversationChange, onRunStateChange, onThreadListChange, threadId]);
@@ -812,7 +812,10 @@ function ThreadActionsMenu({
 export function ChatApp({ initialThreadId }: { initialThreadId?: string }) {
   const [resourceId, setResourceId] = useState("");
   const [threadId, setThreadId] = useState(() => initialThreadId || makeId());
-  const [initialMessages, setInitialMessages] = useState<UIMessage[]>([]);
+  const [sessionSeeds, setSessionSeeds] = useState<Map<string, UIMessage[]>>(
+    () => new Map(initialThreadId ? [] : [[threadId, []]]),
+  );
+  const sessionSeedsRef = useRef(sessionSeeds);
   const [threadLoaded, setThreadLoaded] = useState(() => !initialThreadId);
   const [threads, setThreads] = useState<ThreadSummary[]>([]);
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -835,6 +838,13 @@ export function ChatApp({ initialThreadId }: { initialThreadId?: string }) {
 
   const handleRunStateChange = useCallback((id: string, running: boolean) => {
     setChatRunState(id, running);
+  }, []);
+  const rememberSession = useCallback((id: string, messages: UIMessage[]) => {
+    setSessionSeeds((current) => {
+      const next = new Map(current).set(id, messages);
+      sessionSeedsRef.current = next;
+      return next;
+    });
   }, []);
 
   useEffect(() => {
@@ -950,18 +960,30 @@ export function ChatApp({ initialThreadId }: { initialThreadId?: string }) {
 
   const newChat = useCallback(() => {
     openRequestId.current += 1;
-    setThreadId(makeId());
-    setInitialMessages([]);
+    const nextThreadId = makeId();
+    rememberSession(nextThreadId, []);
+    setThreadId(nextThreadId);
     setThreadLoaded(true);
     setMobileSidebarOpen(false);
     setActiveView("chat");
     window.history.pushState(null, "", "/");
-  }, []);
+  }, [rememberSession]);
 
   const openThread = useCallback(async (id: string, navigate = true) => {
     if (!resourceId) return;
     const requestId = ++openRequestId.current;
     if (navigate) window.history.pushState(null, "", threadHref(id));
+
+    // Running chats remain mounted off-screen. Reuse that exact session so
+    // reasoning and tool chunks continue to appear when the user returns.
+    if (getRunningThreadIds().has(id) && sessionSeedsRef.current.has(id)) {
+      setThreadId(id);
+      setThreadLoaded(true);
+      setMobileSidebarOpen(false);
+      setActiveView("chat");
+      return;
+    }
+
     const response = await fetch(
       `/api/threads/${encodeURIComponent(id)}?resourceId=${encodeURIComponent(resourceId)}`,
     );
@@ -971,12 +993,12 @@ export function ChatApp({ initialThreadId }: { initialThreadId?: string }) {
       return;
     }
     const data = (await response.json()) as { messages: UIMessage[] };
-    setInitialMessages(data.messages);
+    rememberSession(id, data.messages);
     setThreadId(id);
     setThreadLoaded(true);
     setMobileSidebarOpen(false);
     setActiveView("chat");
-  }, [resourceId]);
+  }, [rememberSession, resourceId]);
 
   useEffect(() => {
     if (!initialThreadId || !resourceId) return;
@@ -995,14 +1017,15 @@ export function ChatApp({ initialThreadId }: { initialThreadId?: string }) {
         return;
       }
       openRequestId.current += 1;
-      setThreadId(makeId());
-      setInitialMessages([]);
+      const nextThreadId = makeId();
+      rememberSession(nextThreadId, []);
+      setThreadId(nextThreadId);
       setThreadLoaded(true);
       setActiveView("chat");
     };
     window.addEventListener("popstate", handleHistoryNavigation);
     return () => window.removeEventListener("popstate", handleHistoryNavigation);
-  }, [openThread]);
+  }, [openThread, rememberSession]);
 
   const updateThread = useCallback(async (
     thread: ThreadSummary,
@@ -1096,10 +1119,16 @@ export function ChatApp({ initialThreadId }: { initialThreadId?: string }) {
     [threadsWithBackgroundRuns],
   );
   const activeConversationTitle = activeThread?.title || "New chat";
-  const handleConversationChange = useCallback(() => {
-    window.history.replaceState(null, "", threadHref(threadId));
+  const handleConversationChange = useCallback((changedThreadId: string) => {
+    if (changedThreadId === threadId) {
+      window.history.replaceState(null, "", threadHref(changedThreadId));
+    }
     void refreshThreads();
   }, [refreshThreads, threadId]);
+  const mountedSessionIds = useMemo(
+    () => Array.from(new Set([threadId, ...runningThreadIds])),
+    [runningThreadIds, threadId],
+  );
 
   const renderThreadActions = useCallback((thread: ThreadSummary) => (
     <ThreadActionsMenu
@@ -1270,22 +1299,32 @@ export function ChatApp({ initialThreadId }: { initialThreadId?: string }) {
             <Database className="size-4" />
           </Button>
         </header>
-        {resourceId && threadLoaded && activeView === "chat" && (
-          <ChatSession
-            initialMessages={initialMessages}
-            knownRunning={runningThreadIds.has(threadId)}
-            enabledToolIds={enabledToolIds}
-            key={threadId}
-            modelCatalog={modelCatalog}
-            modelSelection={modelSelection}
-            onConversationChange={handleConversationChange}
-            onModelSelectionChange={selectModel}
-            onRunStateChange={handleRunStateChange}
-            onThreadListChange={refreshThreads}
-            resourceId={resourceId}
-            threadId={threadId}
-          />
-        )}
+        {resourceId && activeView === "chat" && mountedSessionIds.map((sessionId) => {
+          const seed = sessionSeeds.get(sessionId);
+          if (!seed || (sessionId === threadId && !threadLoaded)) return null;
+          const active = sessionId === threadId;
+          return (
+            <div
+              aria-hidden={!active}
+              className={active ? "contents" : "hidden"}
+              key={sessionId}
+            >
+              <ChatSession
+                initialMessages={seed}
+                knownRunning={runningThreadIds.has(sessionId)}
+                enabledToolIds={enabledToolIds}
+                modelCatalog={modelCatalog}
+                modelSelection={modelSelection}
+                onConversationChange={handleConversationChange}
+                onModelSelectionChange={selectModel}
+                onRunStateChange={handleRunStateChange}
+                onThreadListChange={refreshThreads}
+                resourceId={resourceId}
+                threadId={sessionId}
+              />
+            </div>
+          );
+        })}
         {resourceId && activeView === "search" && <SearchPanel onOpen={(id) => void openThread(id)} threads={activeThreads} />}
         {resourceId && activeView === "scheduled" && (
           <SchedulesPanel
