@@ -377,7 +377,7 @@ function ChatComposer({ draft, editingSteerId, modelCatalog, modelSelection, onD
       <SteerQueue items={steers} onDelete={onDeleteSteer} onEdit={onEditSteer} onReorder={onReorderSteer} onSteer={onSteer} />
       <PromptInput
         accept="image/*,application/pdf,text/plain,text/csv,application/json"
-        className="relative z-10 w-full [&_[data-slot=input-group]]:h-[52px] [&_[data-slot=input-group]]:rounded-[26px] [&_[data-slot=input-group]]:border-border/70 [&_[data-slot=input-group]]:bg-background [&_[data-slot=input-group]]:px-2 [&_[data-slot=input-group]]:shadow-[0_12px_32px_-18px_rgba(0,0,0,0.32),0_1px_3px_rgba(0,0,0,0.06)] [&_[data-slot=input-group]:has([data-attachments])]:h-auto"
+        className="relative z-10 w-full [&_[data-slot=input-group]]:h-[52px] [&_[data-slot=input-group]]:rounded-[26px] [&_[data-slot=input-group]]:border-border/65 [&_[data-slot=input-group]]:bg-background [&_[data-slot=input-group]]:px-2 [&_[data-slot=input-group]]:shadow-[var(--chat-composer-shadow)] [&_[data-slot=input-group]:has([data-attachments])]:h-auto"
         globalDrop
         maxFileSize={10 * 1024 * 1024}
         maxFiles={5}
@@ -423,9 +423,9 @@ function ChatMessage({ message, streaming }: { message: UIMessage; streaming: bo
   const runningToolLabel = streaming ? getRunningToolLabel(tools) : undefined;
 
   return (
-    <Message className="mx-auto w-full max-w-[860px]" from={message.role}>
+    <Message className="chat-column" from={message.role}>
       <div className={cn("relative min-w-0 max-w-full", isUser && "ml-auto w-fit")}>
-        <MessageContent className="text-[14px] leading-[1.58] tracking-[-0.008em]">
+        <MessageContent className="text-[15px] leading-[1.55] tracking-[-0.012em]">
           {showReasoning && (
             <Reasoning isStreaming={streaming}>
               <ReasoningTrigger status={runningToolLabel} />
@@ -639,13 +639,13 @@ function ChatSession({
       <Conversation className="min-h-0 w-full min-w-0">
         <ConversationContent
           className={cn(
-            "mx-auto w-full max-w-none gap-5 px-4 pt-5 md:px-8",
-            isEmpty ? "pb-8" : "pb-36",
+            "chat-conversation-content mx-auto w-full max-w-none pt-4",
+            isEmpty ? "pb-6" : "pb-28",
           )}
         >
           {isEmpty ? (
             <ConversationEmptyState className="min-h-[calc(100dvh-7rem)] justify-center pb-8">
-              <div className="w-full max-w-[860px] space-y-6">
+              <div className="chat-column space-y-5">
                 <h1 className="text-balance text-center text-[27px] font-medium tracking-[-0.025em] md:text-[29px]">
                   What&apos;s on your mind today?
                 </h1>
@@ -678,25 +678,25 @@ function ChatSession({
             ))
           )}
           {isStreaming && !hasStreamingAssistant && (
-            <div className="mx-auto flex w-full max-w-[860px] items-center gap-2 text-[13px] text-muted-foreground">
+            <div className="chat-column flex items-center gap-2 text-[13px] text-muted-foreground">
               <Sparkles className="size-4 animate-pulse" /> Thinking
             </div>
           )}
           {error && (
-            <div className="mx-auto w-full max-w-[860px] rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+            <div className="chat-column rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
               {getErrorMessage(error)}
             </div>
           )}
           {steerError && (
-            <div className="mx-auto w-full max-w-[860px] rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">{steerError}</div>
+            <div className="chat-column rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">{steerError}</div>
           )}
         </ConversationContent>
         <ConversationScrollButton />
       </Conversation>
 
       {!isEmpty && (
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-background via-background/95 to-transparent px-4 pb-2.5 pt-12 md:px-8">
-          <div className="pointer-events-auto mx-auto max-w-[860px]">
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-background via-background/95 to-transparent px-[var(--chat-inline-gutter)] pb-2.5 pt-9">
+          <div className="chat-column pointer-events-auto">
             <ChatComposer {...composerProps} />
           </div>
         </div>
