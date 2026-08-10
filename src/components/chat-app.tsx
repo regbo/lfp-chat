@@ -294,7 +294,7 @@ function ModelSelector({
         render={
           <PromptInputButton
             aria-label="Select model and reasoning"
-            className="max-w-[13rem] gap-1 rounded-full px-2 text-muted-foreground"
+            className="max-w-[13rem] gap-1 rounded-full px-2 text-[13px] text-muted-foreground"
             tooltip="Model and reasoning"
           />
         }
@@ -646,14 +646,14 @@ function ChatSession({
           {isEmpty ? (
             <ConversationEmptyState className="min-h-[calc(100dvh-7rem)] justify-center px-0 pb-8">
               <div className="chat-column space-y-5">
-                <h1 className="text-balance text-center text-[27px] font-medium tracking-[-0.025em] md:text-[29px]">
+                <h1 className="text-balance text-center text-[24px] font-medium tracking-[-0.02em] md:text-[26px]">
                   What&apos;s on your mind today?
                 </h1>
                 <ChatComposer {...composerProps} />
                 <div className="mx-auto flex max-w-[650px] flex-col gap-1.5 px-4">
                   {suggestions.map((suggestion) => (
                     <button
-                      className="rounded-xl px-4 py-2 text-left text-[15px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                      className="rounded-xl px-4 py-2 text-left text-[13px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                       key={suggestion}
                       onClick={() => sendMessage({ text: suggestion })}
                       type="button"
@@ -678,17 +678,17 @@ function ChatSession({
             ))
           )}
           {isStreaming && !hasStreamingAssistant && (
-            <div className="chat-column flex items-center gap-2 text-[13px] text-muted-foreground">
+            <div className="chat-column flex items-center gap-2 text-xs text-muted-foreground">
               <Sparkles className="size-4 animate-pulse" /> Thinking
             </div>
           )}
           {error && (
-            <div className="chat-column rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+            <div className="chat-column rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-[13px] text-destructive">
               {getErrorMessage(error)}
             </div>
           )}
           {steerError && (
-            <div className="chat-column rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">{steerError}</div>
+            <div className="chat-column rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-[13px] text-destructive">{steerError}</div>
           )}
         </ConversationContent>
         <ConversationScrollButton />
@@ -901,7 +901,7 @@ export function ChatApp({ initialThreadId }: { initialThreadId?: string }) {
   const sidebar = (
     <aside className="flex h-full w-[244px] shrink-0 flex-col bg-sidebar px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-[max(0.4rem,env(safe-area-inset-top))] text-sidebar-foreground">
       <div className="mb-1.5 flex items-center justify-between px-1">
-        <button className="flex items-baseline gap-1 rounded-lg px-2 py-1.5 text-base font-semibold tracking-[-0.015em] hover:bg-sidebar-accent" onClick={newChat} type="button">
+        <button className="flex items-baseline gap-1 rounded-lg px-2 py-1.5 text-sm font-semibold tracking-[-0.01em] hover:bg-sidebar-accent" onClick={newChat} type="button">
           LFP Chat
         </button>
         <Button
@@ -934,7 +934,7 @@ export function ChatApp({ initialThreadId }: { initialThreadId?: string }) {
       <div className="mt-4 min-h-0 flex-1 overflow-y-auto">
         {threads.length > 0 && (
           <>
-            <p className="px-2 pb-1 text-xs font-medium text-muted-foreground/80">Pinned</p>
+            <p className="px-2 pb-1 text-[11px] font-medium text-muted-foreground/80">Pinned</p>
             <div className="mb-3 space-y-px">
               {threads.slice(0, 2).map((thread) => (
                 <Link className={cn("sidebar-chat-link truncate", thread.id === threadId && "sidebar-chat-link-active")} href={threadHref(thread.id)} key={`pinned-${thread.id}`} onClick={() => void openThread(thread.id, false)}>
@@ -944,11 +944,11 @@ export function ChatApp({ initialThreadId }: { initialThreadId?: string }) {
             </div>
           </>
         )}
-        <p className="px-2 pb-1 text-xs font-medium text-muted-foreground/80">Recents</p>
+        <p className="px-2 pb-1 text-[11px] font-medium text-muted-foreground/80">Recents</p>
         <div className="space-y-px">
           {threads.slice(2).map((thread) => (
             <div className={cn("group flex min-h-8 items-center rounded-lg hover:bg-sidebar-accent", thread.id === threadId && "sidebar-chat-link-active")} key={thread.id}>
-              <Link className="min-w-0 flex-1 truncate px-2 py-1 text-sm leading-5" href={threadHref(thread.id)} onClick={() => void openThread(thread.id, false)}>
+              <Link className="min-w-0 flex-1 truncate px-2 py-1 text-[13px] leading-5" href={threadHref(thread.id)} onClick={() => void openThread(thread.id, false)}>
                 {thread.title || "New chat"}
               </Link>
               <Button
@@ -970,8 +970,8 @@ export function ChatApp({ initialThreadId }: { initialThreadId?: string }) {
       <div className="mt-1.5 flex items-center gap-2.5 rounded-xl p-1.5 hover:bg-sidebar-accent">
         <span className="grid size-7 place-items-center rounded-full bg-foreground text-[10px] font-semibold text-background">R</span>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium">Local user</p>
-          <p className="truncate text-xs text-muted-foreground">Postgres memory</p>
+          <p className="truncate text-[13px] font-medium">Local user</p>
+          <p className="truncate text-[11px] text-muted-foreground">Postgres memory</p>
         </div>
       </div>
     </aside>
