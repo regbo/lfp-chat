@@ -87,6 +87,7 @@
   --chat-inline-gutter: clamp(1rem, 3vw, 2.5rem);
   --chat-turn-gap: 1rem;
   --chat-composer-shadow: 0 10px 28px -18px rgb(0 0 0 / 28%), 0 1px 2px rgb(0 0 0 / 5%);
+  --code-block-header-inset: 0.5rem;
   --text-chat: 0.9375rem;
   --leading-chat: 1.55;
   --text-ui: 0.875rem;
@@ -163,6 +164,14 @@
   [data-streamdown="code-block"]
     > div:has(> [data-streamdown="code-block-actions"]) {
     margin-top: -2.5rem;
+  }
+
+  [data-streamdown="code-block-header"] {
+    padding-inline: var(--code-block-header-inset);
+  }
+
+  [data-streamdown="code-block-actions"] {
+    margin-inline-end: var(--code-block-header-inset);
   }
 
   .sidebar-item {
