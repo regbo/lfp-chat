@@ -5,11 +5,11 @@ A ChatGPT-inspired Mastra chat application with rich tool events and PostgreSQL-
 ## Stack
 
 - Next.js 16, React 19, TypeScript, and Tailwind CSS 4
-- A standalone Bun/Hono Mastra server on port 4111 that owns the agent, tools, and PostgreSQL memory
-- `@mastra/client-js` for typed memory calls from the Next.js server
-- `@mastra/ai-sdk` for a native AI SDK v6 chat endpoint with rich tool events
-- AI SDK `useChat` and AI Elements for the conversation, messages, reasoning, tools, and prompt input
+- A standalone Bun/Hono Mastra server on loopback port 4111 that owns the agent, tools, and PostgreSQL memory
+- `@mastra/client-js` for run, thread, memory, and streaming operations
+- AI Elements for the conversation, messages, reasoning, tools, and prompt input
 - Mastra Model Router with provider-specific API keys
+- Caddy as the single loopback/ZeroTier entrypoint
 - Docker Compose for a local PostgreSQL service
 
 ## Run locally
@@ -26,12 +26,15 @@ bun run db:up
 bun dev
 ```
 
-`bun dev` starts two independent processes:
+`bun dev` starts three independent processes:
 
-- Next.js web client: [http://localhost:3000](http://localhost:3000)
-- Mastra Server: [http://localhost:4111](http://localhost:4111)
+- Caddy entrypoint: [http://127.0.0.1:8080](http://127.0.0.1:8080)
+- Next.js web client (loopback only): [http://127.0.0.1:3000](http://127.0.0.1:3000)
+- Mastra Server (loopback only): [http://127.0.0.1:4111](http://127.0.0.1:4111)
 
-The browser streams chat from the Mastra server's `/chat` endpoint. Next.js uses `MastraClient` for thread history operations, so the web app never imports or instantiates the agent.
+Caddy detects ZeroTier IPv4 interfaces at startup and binds those addresses in addition to loopback without exposing a wildcard listener. With the current interface, the remote URL is `http://100.100.100.126:8080`. Override the port or upstream with `CADDY_PORT` and `CADDY_UPSTREAM`; use `CADDY_EXTRA_BIND_ADDRESSES` for additional comma-separated IPv4 addresses.
+
+The browser uses `MastraClient` with explicit run and thread IDs. Next.js provides a same-origin bridge to the loopback-only Mastra server, so Caddy only needs to proxy the web application.
 
 The default selection is `openai/gpt-5.6-luna`. Swap the server default without changing code by setting `MODEL_PROVIDER`, `MODEL_NAME`, and optionally `REASONING_EFFORT` in `.env.local`. Mastra routes directly to supported providers and reads that provider's standard API-key environment variable. `OPENAI_MODEL` remains a backwards-compatible fallback when the provider is OpenAI and `MODEL_NAME` is unset.
 
@@ -65,6 +68,8 @@ Try: “Use both tools to search the stack and calculate 144 divided by 12.” T
 bun dev             # Start Next.js and Mastra Server together
 bun run dev:web     # Start only Next.js
 bun run dev:mastra  # Start only the Bun/Hono Mastra Server
+bun run dev:caddy   # Start only the Caddy loopback/ZeroTier proxy
+bun run caddy:check # Generate and validate the Caddy configuration
 bun run db:up       # Start PostgreSQL
 bun run db:down     # Stop PostgreSQL
 bun run check       # Lint, typecheck, and production build

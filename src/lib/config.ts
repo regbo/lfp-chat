@@ -29,7 +29,7 @@ export const publicConfig = {
 
 export const serverConfig = {
   databaseUrl: process.env.DATABASE_URL ?? LOCAL_DATABASE_URL,
-  mastraHost: process.env.MASTRA_HOST?.trim() || "0.0.0.0",
+  mastraHost: process.env.MASTRA_HOST?.trim() || "127.0.0.1",
   mastraApiUrl: process.env.MASTRA_API_URL ?? LOCAL_MASTRA_API_URL,
   modelProvider,
   modelName,
