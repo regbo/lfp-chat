@@ -9,7 +9,7 @@ A ChatGPT-inspired Mastra chat application with rich tool events and PostgreSQL-
 - `@mastra/client-js` for run, thread, memory, and streaming operations
 - AI Elements for the conversation, messages, reasoning, tools, and prompt input
 - Mastra Model Router with provider-specific API keys
-- Codex CLI as a separately selectable ACP coding agent with Mastra memory
+- Codex CLI as a separately selectable Mastra ACP coding agent
 - Caddy as the single loopback/ZeroTier entrypoint
 - Docker Compose for a local PostgreSQL service
 
@@ -46,9 +46,9 @@ REASONING_EFFORT=medium
 OPENAI_API_KEY=...
 ```
 
-The composer also lists **Codex CLI** as an agent rather than a model. Interactive Codex turns stream directly from `@agentclientprotocol/codex-acp`; this avoids a supervisor-model hop and preserves ACP tool, usage, text, and any available thought events. The route loads recent context from Mastra memory and persists each turn back to PostgreSQL under the browser's thread and resource IDs. Each active chat gets an isolated ACP process, so switching chats does not stop or mix concurrent runs.
+The composer also lists **Codex CLI** as an agent rather than a model. Mastra runs it through `@mastra/acp` and `@agentclientprotocol/codex-acp`, while PostgreSQL remains the durable conversation store. Codex runs in an isolated ACP session for each request and defaults to workspace-write access without network access. Configure its boundary explicitly when the server should operate on another repository:
 
-Codex defaults to workspace-write access without network access. Configure its boundary explicitly when the server should operate on another repository:
+The application intentionally uses Mastra's standard agent stream instead of maintaining its own Cursor `stream-json` or Codex App Server event adapter.
 
 ```env
 CODEX_AGENT_ENABLED=true
@@ -57,8 +57,6 @@ CODEX_WORKSPACE_PATH=C:/Users/you/Projects/target-repo
 ```
 
 Set `CODEX_AGENT_MODE=read-only` for inspection-only use. Full host access is intentionally not exposed by this application configuration.
-
-The ACP adapter intentionally disables reasoning summaries for API-key authentication. The interface still shows the running state and streams tools and response text immediately; `agent_thought_chunk` events are displayed when the ACP session supplies them, but the application does not synthesize or expose hidden chain-of-thought.
 
 The Mastra server exposes `GET http://localhost:4111/models`, with a same-origin browser proxy at `GET /api/models`. For OpenAI, the server discovers the models available to the configured API key from OpenAI's `/v1/models` endpoint and caches the filtered chat-model catalog for 10 minutes. Reasoning choices are attached per model family, and the selected model and effort are passed through Mastra request context on every chat run.
 
