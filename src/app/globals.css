@@ -163,65 +163,6 @@
     line-height: 1.4;
   }
 
-  div[data-streamdown="code-block"] {
-    gap: 0;
-    margin-block: 0.375rem;
-    padding: var(--code-block-inset);
-  }
-
-  /* Streamdown renders actions in an overlapping row; normalize it into the header. */
-  [data-streamdown="code-block"]
-    > div:has(> [data-streamdown="code-block-actions"]) {
-    top: var(--code-block-inset);
-    height: var(--code-block-header-height);
-    margin-top: calc(-1 * var(--code-block-header-height));
-  }
-
-  [data-streamdown="code-block"] [data-streamdown="code-block-header"] {
-    height: var(--code-block-header-height);
-    padding-inline: 0.25rem;
-    font-size: 0.6875rem;
-  }
-
-  [data-streamdown="code-block"] [data-streamdown="code-block-actions"] {
-    height: var(--code-block-header-height);
-    gap: 0.125rem;
-    margin: 0;
-    padding: 0;
-    border-width: 0;
-    border-radius: 0;
-    background: transparent;
-    box-shadow: none;
-    backdrop-filter: none;
-  }
-
-  [data-streamdown="code-block"] [data-streamdown="code-block-actions"] button {
-    width: var(--code-block-header-height);
-    height: var(--code-block-header-height);
-    padding: 0;
-  }
-
-  [data-streamdown="code-block"] [data-streamdown="code-block-actions"] svg {
-    width: 0.75rem;
-    height: 0.75rem;
-  }
-
-  [data-streamdown="code-block"] [data-streamdown="code-block-body"] {
-    padding: 0.625rem 0.75rem;
-    font-size: var(--code-block-font-size);
-    line-height: 1.5;
-  }
-
-  [data-streamdown="code-block"]
-    [data-streamdown="code-block-body"]
-    pre
-    > code
-    > span::before {
-    width: 1.25rem;
-    margin-right: 0.75rem;
-    font-size: 0.6875rem;
-  }
-
   .sidebar-item {
     @apply flex min-h-8 w-full items-center gap-2 rounded-lg px-2 py-1 text-left transition-colors hover:bg-sidebar-accent;
     font-size: var(--text-ui);
@@ -235,6 +176,66 @@
   .sidebar-chat-link-active {
     @apply bg-sidebar-selected text-sidebar-accent-foreground;
   }
+}
+
+/* Streamdown ships utility classes in a later cascade layer. These unlayered
+   rules intentionally own the compact code-block geometry. */
+div[data-streamdown="code-block"] {
+  gap: 0;
+  margin-block: 0.375rem;
+  padding: var(--code-block-inset);
+}
+
+[data-streamdown="code-block"]
+  > div:has(> [data-streamdown="code-block-actions"]) {
+  top: var(--code-block-inset);
+  height: var(--code-block-header-height);
+  margin-top: calc(-1 * var(--code-block-header-height));
+}
+
+[data-streamdown="code-block"] [data-streamdown="code-block-header"] {
+  height: var(--code-block-header-height);
+  padding-inline: 0.25rem;
+  font-size: 0.6875rem;
+}
+
+[data-streamdown="code-block"] [data-streamdown="code-block-actions"] {
+  height: var(--code-block-header-height);
+  gap: 0.125rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+[data-streamdown="code-block"] [data-streamdown="code-block-actions"] button {
+  width: var(--code-block-header-height);
+  height: var(--code-block-header-height);
+  padding: 0;
+}
+
+[data-streamdown="code-block"] [data-streamdown="code-block-actions"] svg {
+  width: 0.75rem;
+  height: 0.75rem;
+}
+
+[data-streamdown="code-block"] [data-streamdown="code-block-body"] {
+  padding: 0.625rem 0.75rem;
+  font-size: var(--code-block-font-size);
+  line-height: 1.5;
+}
+
+[data-streamdown="code-block"]
+  [data-streamdown="code-block-body"]
+  pre
+  > code
+  > span::before {
+  width: 1.25rem;
+  margin-right: 0.75rem;
+  font-size: 0.6875rem;
 }
 
 ::selection {
