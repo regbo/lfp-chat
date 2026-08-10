@@ -437,7 +437,12 @@ function ChatMessage({ message, streaming }: { message: UIMessage; streaming: bo
   return (
     <Message className="chat-column" from={message.role}>
       <div className={cn("relative min-w-0 max-w-full", isUser && "ml-auto w-fit")}>
-        <MessageContent className="text-[length:var(--text-chat)] leading-[var(--leading-chat)] tracking-[-0.01em]">
+        <MessageContent
+          className={cn(
+            "text-[length:var(--text-chat)] leading-[var(--leading-chat)] tracking-[-0.01em]",
+            !isUser && "w-full"
+          )}
+        >
           {showReasoning && (
             <Reasoning isStreaming={streaming}>
               <ReasoningTrigger status={runningToolLabel} />
