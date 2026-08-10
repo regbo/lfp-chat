@@ -37,12 +37,24 @@ export async function GET(
     if (details.resourceId !== resourceId) {
       return Response.json({ error: "Chat not found." }, { status: 404 });
     }
-    // The current server route only accepts numeric pagination even though the
-    // client type also exposes `false` as an unpaginated option.
-    const result = await thread.listMessages({ perPage: 1_000 });
+    const searchParams = new URL(request.url).searchParams;
+    const page = Math.max(0, Number(searchParams.get("page") || 0));
+    const perPage = Math.min(
+      40,
+      Math.max(4, Number(searchParams.get("perPage") || 12)),
+    );
+    const result = await thread.listMessages({
+      page,
+      perPage,
+      orderBy: { field: "createdAt", direction: "DESC" },
+    });
+    const messages = [...result.messages].reverse();
 
     return Response.json({
-      messages: toAISdkMessages(result.messages, { version: "v6" }),
+      messages: toAISdkMessages(messages, { version: "v6" }),
+      page,
+      perPage,
+      hasMore: result.messages.length === perPage,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to load chat.";

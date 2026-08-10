@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 import type { UIMessage } from "ai";
 import { ArrowDownIcon, DownloadIcon } from "lucide-react";
 import type { ComponentProps } from "react";
-import { useCallback } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
 
 export type ConversationProps = ComponentProps<typeof StickToBottom>;
@@ -33,6 +33,45 @@ export const ConversationContent = ({
     {...props}
   />
 );
+
+export function ConversationHistoryLoader({
+  disabled,
+  loading,
+  onLoad,
+}: {
+  disabled: boolean;
+  loading: boolean;
+  onLoad: () => Promise<void>;
+}) {
+  const { scrollRef } = useStickToBottomContext();
+  const inFlight = useRef(false);
+
+  useEffect(() => {
+    const element = scrollRef.current;
+    if (!element || disabled) return;
+
+    const handleScroll = async () => {
+      if (element.scrollTop > 80 || inFlight.current || loading) return;
+      inFlight.current = true;
+      const previousHeight = element.scrollHeight;
+      const previousTop = element.scrollTop;
+      try {
+        await onLoad();
+        await new Promise<void>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+        );
+        element.scrollTop = previousTop + element.scrollHeight - previousHeight;
+      } finally {
+        inFlight.current = false;
+      }
+    };
+
+    element.addEventListener("scroll", handleScroll, { passive: true });
+    return () => element.removeEventListener("scroll", handleScroll);
+  }, [disabled, loading, onLoad, scrollRef]);
+
+  return null;
+}
 
 export type ConversationEmptyStateProps = ComponentProps<"div"> & {
   title?: string;

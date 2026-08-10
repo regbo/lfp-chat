@@ -4,6 +4,7 @@ import {
   Conversation,
   ConversationContent,
   ConversationEmptyState,
+  ConversationHistoryLoader,
   ConversationScrollButton,
 } from "@/components/ai-elements/conversation";
 import {
@@ -63,11 +64,17 @@ import {
 } from "@/components/tool-event-summary";
 import { type PendingSteer, SteerQueue } from "@/components/steer-queue";
 import { formatCitationMarkers } from "@/lib/citations";
+import { browserMastraClient } from "@/lib/browser-mastra-client";
 import {
-  getRunningThreadIds,
-  setChatRunState,
-  subscribeToChatRuns,
-} from "@/lib/chat-run-store";
+  deleteChatSession,
+  ensureChatSession,
+  getChatSession,
+  getChatSessionRevision,
+  getRunningChatThreadIds,
+  subscribeToChatSessions,
+  updateChatSession,
+  type ChatSessionStatus,
+} from "@/lib/chat-session-store";
 import {
   formatReasoningEffort,
   MODEL_CONTEXT_KEY,
@@ -77,6 +84,7 @@ import {
   type ModelSelection,
 } from "@/lib/model-catalog";
 import { cn } from "@/lib/utils";
+import { truncateToolValue } from "@/lib/tool-output";
 import {
   isThreadArchived,
   isThreadPinned,
@@ -88,8 +96,7 @@ import {
   TOOLS_CONTEXT_KEY,
   type SelectableToolId,
 } from "@/lib/tool-catalog";
-import { useChat } from "@ai-sdk/react";
-import { DefaultChatTransport, type FileUIPart, type UIMessage } from "ai";
+import { type FileUIPart, type UIMessage } from "ai";
 import Image from "next/image";
 import Link from "next/link";
 import {
@@ -277,7 +284,7 @@ function getErrorMessage(error: Error) {
 type ChatComposerProps = {
   onSubmit: (message: PromptInputMessage) => Promise<void>;
   onStop: () => void;
-  status: ReturnType<typeof useChat>["status"];
+  status: ChatSessionStatus;
   steers: PendingSteer[];
   draft: string;
   editingSteerId: string | null;
@@ -491,9 +498,7 @@ type ChatSessionProps = {
   threadId: string;
   resourceId: string;
   initialMessages: UIMessage[];
-  knownRunning: boolean;
   onConversationChange: (threadId: string) => void;
-  onRunStateChange: (threadId: string, running: boolean) => void;
   onThreadListChange: () => void;
   modelCatalog: ModelCatalogResponse | null;
   modelSelection: ModelSelection | null;
@@ -505,64 +510,193 @@ function ChatSession({
   threadId,
   resourceId,
   initialMessages,
-  knownRunning,
   modelCatalog,
   modelSelection,
   enabledToolIds,
   onModelSelectionChange,
   onConversationChange,
-  onRunStateChange,
   onThreadListChange,
 }: ChatSessionProps) {
-  const selectedModelId = modelSelection?.modelId;
-  const selectedReasoningEffort = modelSelection?.reasoningEffort;
-  const transport = useMemo(
-    () =>
-      new DefaultChatTransport({
-        api: "/api/chat",
-        prepareSendMessagesRequest: ({ messages, trigger }) => ({
-          body: {
-            messages,
-            trigger,
-            memory: { thread: threadId, resource: resourceId },
-            requestContext: selectedModelId
-              ? {
-                  [MODEL_CONTEXT_KEY]: selectedModelId,
-                  [REASONING_CONTEXT_KEY]: selectedReasoningEffort,
-                  [TOOLS_CONTEXT_KEY]: enabledToolIds,
-                }
-              : { [TOOLS_CONTEXT_KEY]: enabledToolIds },
-          },
-        }),
-      }),
-    [enabledToolIds, resourceId, selectedModelId, selectedReasoningEffort, threadId],
+  useSyncExternalStore(
+    subscribeToChatSessions,
+    getChatSessionRevision,
+    getChatSessionRevision,
   );
-
-  const { error, messages, sendMessage, status, stop } = useChat({
-    id: threadId,
-    messages: initialMessages,
-    transport,
-    onFinish: () => {
-      onRunStateChange(threadId, false);
-      window.setTimeout(onThreadListChange, 500);
-    },
-    onError: () => onRunStateChange(threadId, false),
-  });
+  const session = getChatSession(threadId) ?? ensureChatSession(threadId, initialMessages);
+  const { error, messages, status } = session;
   const [steers, setSteers] = useState<PendingSteer[]>([]);
   const [draft, setDraft] = useState("");
   const [editingSteerId, setEditingSteerId] = useState<string | null>(null);
   const [steerError, setSteerError] = useState("");
+  const [loadingOlder, setLoadingOlder] = useState(false);
   const isStreaming = status === "submitted" || status === "streaming";
-  const startRun = useCallback(() => {
-    onRunStateChange(threadId, true);
-    onConversationChange(threadId);
-    // The thread is created server-side shortly after the request begins.
-    window.setTimeout(onThreadListChange, 500);
-  }, [onConversationChange, onRunStateChange, onThreadListChange, threadId]);
   const renderedMessages = useMemo(
     () => Array.from(new Map(messages.map((message) => [message.id, message])).values()),
     [messages],
   );
+
+  const runMessage = useCallback(async (message: PromptInputMessage) => {
+    const userMessage: UIMessage = {
+      id: makeId(),
+      role: "user",
+      parts: [
+        ...message.files.map((file) => ({
+          type: "file" as const,
+          mediaType: file.mediaType,
+          filename: file.filename,
+          url: file.url,
+        })),
+        ...(message.text.trim()
+          ? [{ type: "text" as const, text: message.text.trim() }]
+          : []),
+      ],
+    };
+    const assistantId = makeId();
+    const runId = makeId();
+    const controller = new AbortController();
+    updateChatSession(threadId, (current) => ({
+      ...current,
+      messages: [...current.messages, userMessage],
+      status: "submitted",
+      error: null,
+      runId,
+      abortController: controller,
+    }));
+    onConversationChange(threadId);
+    window.setTimeout(onThreadListChange, 500);
+
+    let reasoning = "";
+    const textSegments: string[] = [];
+    const toolParts = new Map<string, UIMessage["parts"][number]>();
+    const upsertAssistant = () => {
+      const parts: UIMessage["parts"] = [];
+      if (reasoning) parts.push({ type: "reasoning", text: reasoning });
+      parts.push(...toolParts.values());
+      for (const text of textSegments) {
+        if (text) parts.push({ type: "text", text });
+      }
+      updateChatSession(threadId, (current) => {
+        const next = [...current.messages];
+        const index = next.findIndex((candidate) => candidate.id === assistantId);
+        const assistant: UIMessage = {
+          id: assistantId,
+          role: "assistant",
+          parts: parts.length > 0 ? parts : [{ type: "text", text: "" }],
+        };
+        if (index < 0) next.push(assistant);
+        else next[index] = assistant;
+        return { ...current, messages: next, status: "streaming" };
+      });
+    };
+
+    try {
+      const requestContext = {
+        [TOOLS_CONTEXT_KEY]: enabledToolIds,
+        ...(modelSelection?.modelId
+          ? {
+              [MODEL_CONTEXT_KEY]: modelSelection.modelId,
+              [REASONING_CONTEXT_KEY]: modelSelection.reasoningEffort,
+            }
+          : {}),
+      };
+      const stream = await browserMastraClient.streamChat({
+        // Memory is keyed by thread/resource on the server, so only this turn
+        // crosses the wire instead of resending the complete transcript.
+        messages: [userMessage],
+        runId,
+        threadId,
+        resourceId,
+        requestContext,
+        signal: controller.signal,
+      });
+      await stream.processDataStream({
+        onChunk: (chunk) => {
+          const payload = chunk.payload ?? {};
+          switch (chunk.type) {
+            case "reasoning-delta":
+              reasoning += typeof payload.text === "string" ? payload.text : "";
+              upsertAssistant();
+              break;
+            case "text-start":
+              textSegments.push("");
+              break;
+            case "text-delta": {
+              if (textSegments.length === 0) textSegments.push("");
+              const index = textSegments.length - 1;
+              textSegments[index] += typeof payload.text === "string" ? payload.text : "";
+              upsertAssistant();
+              break;
+            }
+            case "tool-call": {
+              const toolCallId = String(payload.toolCallId ?? "");
+              if (!toolCallId) break;
+              toolParts.set(toolCallId, {
+                type: "dynamic-tool",
+                toolCallId,
+                toolName: String(payload.toolName ?? "tool"),
+                state: "input-available",
+                input: payload.args,
+              });
+              upsertAssistant();
+              break;
+            }
+            case "tool-result": {
+              const toolCallId = String(payload.toolCallId ?? "");
+              const previous = toolParts.get(toolCallId);
+              if (!previous || previous.type !== "dynamic-tool") break;
+              toolParts.set(toolCallId, {
+                ...previous,
+                state: "output-available",
+                output: truncateToolValue(payload.result ?? payload.output),
+              } as UIMessage["parts"][number]);
+              upsertAssistant();
+              break;
+            }
+            case "tool-error": {
+              const toolCallId = String(payload.toolCallId ?? "");
+              const previous = toolParts.get(toolCallId);
+              if (!previous || previous.type !== "dynamic-tool") break;
+              toolParts.set(toolCallId, {
+                ...previous,
+                state: "output-error",
+                errorText: String(payload.error ?? "Tool failed."),
+              } as UIMessage["parts"][number]);
+              upsertAssistant();
+              break;
+            }
+            case "error":
+              throw new Error(String(payload.error ?? payload.message ?? "Chat failed."));
+          }
+        },
+      });
+      updateChatSession(threadId, (current) => ({
+        ...current,
+        status: "ready",
+        abortController: null,
+      }));
+    } catch (caught) {
+      if (controller.signal.aborted) {
+        updateChatSession(threadId, (current) => ({
+          ...current,
+          status: "ready",
+          abortController: null,
+        }));
+      } else {
+        updateChatSession(threadId, (current) => ({
+          ...current,
+          status: "error",
+          error: caught instanceof Error ? caught : new Error("Chat failed."),
+          abortController: null,
+        }));
+      }
+    } finally {
+      window.setTimeout(onThreadListChange, 500);
+    }
+  }, [enabledToolIds, modelSelection, onConversationChange, onThreadListChange, resourceId, threadId]);
+
+  const stop = useCallback(() => {
+    getChatSession(threadId)?.abortController?.abort();
+  }, [threadId]);
 
   const submit = useCallback(
     async ({ text, files }: PromptInputMessage) => {
@@ -590,11 +724,10 @@ function ChatSession({
         setDraft("");
         return;
       }
-      startRun();
-      await sendMessage({ text, files });
       setDraft("");
+      void runMessage({ text, files });
     },
-    [editingSteerId, isStreaming, sendMessage, startRun],
+    [editingSteerId, isStreaming, runMessage],
   );
 
   useEffect(() => {
@@ -602,11 +735,10 @@ function ChatSession({
     const next = steers[0];
     const timer = window.setTimeout(() => {
       setSteers((current) => current.filter((item) => item.id !== next.id));
-      startRun();
-      void sendMessage(next.message);
+      void runMessage(next.message);
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [editingSteerId, isStreaming, sendMessage, startRun, steers]);
+  }, [editingSteerId, isStreaming, runMessage, steers]);
 
   const deleteSteer = useCallback((id: string) => {
     setSteers((current) => current.filter((item) => item.id !== id));
@@ -674,6 +806,31 @@ function ChatSession({
     modelSelection,
   } satisfies ChatComposerProps;
 
+  const loadOlder = useCallback(async () => {
+    const current = getChatSession(threadId);
+    if (!current?.hasMoreHistory || loadingOlder) return;
+    setLoadingOlder(true);
+    try {
+      const response = await fetch(
+        `/api/threads/${encodeURIComponent(threadId)}?resourceId=${encodeURIComponent(resourceId)}&page=${current.historyPage}&perPage=12`,
+      );
+      if (!response.ok) throw new Error("Unable to load earlier messages.");
+      const data = (await response.json()) as { messages: UIMessage[]; hasMore: boolean };
+      updateChatSession(threadId, (latest) => {
+        const known = new Set(latest.messages.map((item) => item.id));
+        const older = data.messages.filter((item) => !known.has(item.id));
+        return {
+          ...latest,
+          messages: [...older, ...latest.messages],
+          historyPage: latest.historyPage + 1,
+          hasMoreHistory: data.hasMore,
+        };
+      });
+    } finally {
+      setLoadingOlder(false);
+    }
+  }, [loadingOlder, resourceId, threadId]);
+
   const isEmpty = renderedMessages.length === 0;
   const hasStreamingAssistant =
     renderedMessages.at(-1)?.role === "assistant";
@@ -681,12 +838,22 @@ function ChatSession({
   return (
     <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col">
       <Conversation className="min-h-0 w-full min-w-0">
+        <ConversationHistoryLoader
+          disabled={!session.hasMoreHistory}
+          loading={loadingOlder}
+          onLoad={loadOlder}
+        />
         <ConversationContent
           className={cn(
             "chat-conversation-content mx-auto w-full max-w-none pt-4",
             isEmpty ? "pb-6" : "pb-28",
           )}
         >
+          {loadingOlder && (
+            <div className="chat-meta-text chat-column py-2 text-center text-muted-foreground">
+              Loading earlier messages…
+            </div>
+          )}
           {isEmpty ? (
             <ConversationEmptyState className="min-h-[calc(100dvh-7rem)] justify-center px-0 pb-8">
               <div className="chat-column space-y-5">
@@ -699,7 +866,7 @@ function ChatSession({
                     <button
                       className="chat-ui-text rounded-xl px-4 py-2 text-left text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                       key={suggestion}
-                      onClick={() => sendMessage({ text: suggestion })}
+                      onClick={() => void runMessage({ text: suggestion, files: [] })}
                       type="button"
                     >
                       {suggestion}
@@ -721,7 +888,7 @@ function ChatSession({
               />
             ))
           )}
-          {(isStreaming || knownRunning) && !hasStreamingAssistant && (
+          {isStreaming && !hasStreamingAssistant && (
             <div className="chat-column chat-meta-text flex items-center gap-2 text-muted-foreground">
               <Sparkles className="size-4 animate-pulse" /> Thinking
             </div>
@@ -807,7 +974,7 @@ function ThreadActionsMenu({
 }
 
 export function ChatApp({ initialThreadId }: { initialThreadId?: string }) {
-  const [resourceId, setResourceId] = useState("");
+  const [resourceId, setResourceId] = useState("local-user");
   const [threadId, setThreadId] = useState(() => initialThreadId || makeId());
   const [sessionSeeds, setSessionSeeds] = useState<Map<string, UIMessage[]>>(
     () => new Map(initialThreadId ? [] : [[threadId, []]]),
@@ -827,16 +994,26 @@ export function ChatApp({ initialThreadId }: { initialThreadId?: string }) {
   const [renamingThread, setRenamingThread] = useState<ThreadSummary | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
   const openRequestId = useRef(0);
-  const runningThreadIds = useSyncExternalStore(
-    subscribeToChatRuns,
-    getRunningThreadIds,
-    getRunningThreadIds,
+  useSyncExternalStore(
+    subscribeToChatSessions,
+    getChatSessionRevision,
+    getChatSessionRevision,
   );
+  const runningThreadIds = getRunningChatThreadIds();
 
-  const handleRunStateChange = useCallback((id: string, running: boolean) => {
-    setChatRunState(id, running);
-  }, []);
-  const rememberSession = useCallback((id: string, messages: UIMessage[]) => {
+  const rememberSession = useCallback((
+    id: string,
+    messages: UIMessage[],
+    hasMoreHistory = false,
+  ) => {
+    if (!getChatSession(id)) ensureChatSession(id, messages);
+    updateChatSession(id, (session) => ({
+      ...session,
+      messages,
+      historyLoaded: true,
+      historyPage: 1,
+      hasMoreHistory,
+    }));
     setSessionSeeds((current) => {
       const next = new Map(current).set(id, messages);
       sessionSeedsRef.current = next;
@@ -971,9 +1148,9 @@ export function ChatApp({ initialThreadId }: { initialThreadId?: string }) {
     const requestId = ++openRequestId.current;
     if (navigate) window.history.pushState(null, "", threadHref(id));
 
-    // Running chats remain mounted off-screen. Reuse that exact session so
-    // reasoning and tool chunks continue to appear when the user returns.
-    if (getRunningThreadIds().has(id) && sessionSeedsRef.current.has(id)) {
+    // Live and previously opened chats are owned by the shared session store;
+    // switching views never tears down their stream or transcript.
+    if (getChatSession(id) && sessionSeedsRef.current.has(id)) {
       setThreadId(id);
       setThreadLoaded(true);
       setMobileSidebarOpen(false);
@@ -982,15 +1159,15 @@ export function ChatApp({ initialThreadId }: { initialThreadId?: string }) {
     }
 
     const response = await fetch(
-      `/api/threads/${encodeURIComponent(id)}?resourceId=${encodeURIComponent(resourceId)}`,
+      `/api/threads/${encodeURIComponent(id)}?resourceId=${encodeURIComponent(resourceId)}&page=0&perPage=12`,
     );
     if (requestId !== openRequestId.current) return;
     if (!response.ok) {
       setThreadLoaded(true);
       return;
     }
-    const data = (await response.json()) as { messages: UIMessage[] };
-    rememberSession(id, data.messages);
+    const data = (await response.json()) as { messages: UIMessage[]; hasMore: boolean };
+    rememberSession(id, data.messages, data.hasMore);
     setThreadId(id);
     setThreadLoaded(true);
     setMobileSidebarOpen(false);
@@ -1045,6 +1222,7 @@ export function ChatApp({ initialThreadId }: { initialThreadId?: string }) {
       { method: "DELETE" },
     );
     if (!response.ok) return;
+    deleteChatSession(thread.id);
     if (thread.id === threadId) newChat();
     await refreshThreads();
   }, [newChat, refreshThreads, resourceId, threadId]);
@@ -1122,10 +1300,7 @@ export function ChatApp({ initialThreadId }: { initialThreadId?: string }) {
     }
     void refreshThreads();
   }, [refreshThreads, threadId]);
-  const mountedSessionIds = useMemo(
-    () => Array.from(new Set([threadId, ...runningThreadIds])),
-    [runningThreadIds, threadId],
-  );
+  const mountedSessionIds = useMemo(() => [threadId], [threadId]);
 
   const renderThreadActions = useCallback((thread: ThreadSummary) => (
     <ThreadActionsMenu
@@ -1308,13 +1483,11 @@ export function ChatApp({ initialThreadId }: { initialThreadId?: string }) {
             >
               <ChatSession
                 initialMessages={seed}
-                knownRunning={runningThreadIds.has(sessionId)}
                 enabledToolIds={enabledToolIds}
                 modelCatalog={modelCatalog}
                 modelSelection={modelSelection}
                 onConversationChange={handleConversationChange}
                 onModelSelectionChange={selectModel}
-                onRunStateChange={handleRunStateChange}
                 onThreadListChange={refreshThreads}
                 resourceId={resourceId}
                 threadId={sessionId}

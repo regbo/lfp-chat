@@ -22,5 +22,12 @@ export const hostWorkspace = new Workspace({
     isolation: "none",
     timeout: 120_000,
   }),
+  tools: {
+    mastra_workspace_read_file: { maxOutputTokens: 2_000 },
+    mastra_workspace_list_files: { maxOutputTokens: 2_000 },
+    mastra_workspace_grep: { maxOutputTokens: 2_000 },
+    mastra_workspace_execute_command: { maxOutputTokens: 2_000 },
+    mastra_workspace_get_process_output: { maxOutputTokens: 2_000 },
+  },
   operationTimeout: 120_000,
 });

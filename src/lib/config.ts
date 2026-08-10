@@ -37,21 +37,3 @@ export const serverConfig = {
   reasoningEffort: process.env.REASONING_EFFORT?.trim().toLowerCase(),
   webOrigin: process.env.WEB_ORIGIN ?? "http://localhost:3000",
 } as const;
-
-const providerApiKeyVariables: Readonly<Record<string, string>> = {
-  anthropic: "ANTHROPIC_API_KEY",
-  google: "GOOGLE_GENERATIVE_AI_API_KEY",
-  openai: "OPENAI_API_KEY",
-  openrouter: "OPENROUTER_API_KEY",
-  xai: "XAI_API_KEY",
-};
-
-export function getProviderSetupMessage() {
-  const keyVariable = providerApiKeyVariables[serverConfig.modelProvider];
-
-  if (!keyVariable) {
-    return `Authentication failed for ${serverConfig.modelProvider}. Add the API key required by that provider to .env.local.`;
-  }
-
-  return `${keyVariable} is missing or invalid. Add it to .env.local and restart the Mastra server.`;
-}

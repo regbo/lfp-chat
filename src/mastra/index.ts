@@ -1,10 +1,9 @@
-import { chatRoute, smoothStream } from "@mastra/ai-sdk";
 import { Agent } from "@mastra/core/agent";
 import { Mastra } from "@mastra/core/mastra";
 import { Memory } from "@mastra/memory";
 import { PostgresStore } from "@mastra/pg";
 
-import { getProviderSetupMessage, serverConfig } from "@/lib/config";
+import { serverConfig } from "@/lib/config";
 import {
   modelProvider,
   resolveRuntimeModel,
@@ -104,29 +103,6 @@ Be direct and useful. Use short paragraphs and lists only when they improve clar
         allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         allowHeaders: ["Content-Type", "Authorization", "x-mastra-client-type"],
       },
-      apiRoutes: [
-        chatRoute({
-          path: "/chat",
-          agent: "chatAgent",
-          version: "v6",
-          experimentalTransform: smoothStream({
-            delayInMs: 12,
-            chunking: "word",
-          }),
-          sendReasoning: true,
-          sendSources: true,
-          defaultOptions: {
-            untilIdle: { maxIdleMs: 120_000 },
-          },
-          onError: (error) => {
-            const message = error instanceof Error ? error.message : "Chat failed.";
-            if (/api key|api_key|authentication|unauthorized/i.test(message)) {
-              return getProviderSetupMessage();
-            }
-            return message;
-          },
-        }),
-      ],
     },
   });
 

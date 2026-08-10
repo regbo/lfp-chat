@@ -2,6 +2,8 @@ import { createTool } from "@mastra/core/tools";
 import { CollectStreams, Monty } from "@pydantic/monty";
 import { z } from "zod";
 
+import { truncateToolText, truncateToolValue } from "@/lib/tool-output";
+
 const globalForMonty = globalThis as typeof globalThis & {
   lfpMontyPool?: Promise<Monty>;
 };
@@ -124,15 +126,15 @@ export const montyTool = createTool({
     const result = await session.feedRun(code, { printCallback: streams });
 
     return {
-      result,
-      stdout: streams.output
+      result: truncateToolValue(result),
+      stdout: truncateToolText(streams.output
         .filter((entry) => entry.stream === "stdout")
         .map((entry) => entry.text)
-        .join(""),
-      stderr: streams.output
+        .join("")),
+      stderr: truncateToolText(streams.output
         .filter((entry) => entry.stream === "stderr")
         .map((entry) => entry.text)
-        .join(""),
+        .join("")),
     };
   },
 });
