@@ -311,6 +311,7 @@ function ModelSelector({
   onSelect: (selection: ModelSelection) => void;
   selection: ModelSelection | null;
 }) {
+  const [modelQuery, setModelQuery] = useState("");
   const selectedModel = catalog?.models.find(
     (model) => model.id === selection?.modelId,
   );
@@ -324,9 +325,26 @@ function ModelSelector({
         .filter(Boolean)
         .join(" ")
     : "Model or agent";
+  const filteredModels = useMemo(() => {
+    const query = modelQuery.trim().toLocaleLowerCase();
+    if (!query) return catalog?.models ?? [];
+    return (catalog?.models ?? []).filter((model) =>
+      [
+        model.label,
+        model.shortLabel,
+        model.id,
+        model.provider,
+        model.description,
+        ...model.reasoningEfforts,
+      ]
+        .join(" ")
+        .toLocaleLowerCase()
+        .includes(query),
+    );
+  }, [catalog?.models, modelQuery]);
 
   return (
-    <DropdownMenu>
+    <DropdownMenu onOpenChange={(open) => !open && setModelQuery("")}>
       <DropdownMenuTrigger
         disabled={disabled || !catalog || !selection}
         render={
@@ -342,7 +360,7 @@ function ModelSelector({
       </DropdownMenuTrigger>
       <DropdownMenuContent
         align="end"
-        className="w-64"
+        className="w-72"
         side="top"
         sideOffset={8}
       >
@@ -372,8 +390,29 @@ function ModelSelector({
             </DropdownMenuItem>
           ))}
           <DropdownMenuSeparator />
+          <div
+            className="relative mx-1 mb-1"
+            onKeyDown={(event) => {
+              if (event.key !== "Escape") event.stopPropagation();
+            }}
+          >
+            <Search className="pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              aria-label="Search models"
+              autoFocus
+              className="chat-meta-text h-7 border-input/40 bg-muted/35 pr-2 pl-7 shadow-none focus-visible:ring-0"
+              onChange={(event) => setModelQuery(event.currentTarget.value)}
+              placeholder="Search models"
+              value={modelQuery}
+            />
+          </div>
           <DropdownMenuLabel>Models and reasoning</DropdownMenuLabel>
-          {catalog?.models.map((model) =>
+          {filteredModels.length === 0 && (
+            <div className="chat-meta-text px-2 py-4 text-center text-muted-foreground">
+              No models found
+            </div>
+          )}
+          {filteredModels.map((model) =>
             model.reasoningEfforts.length > 0 ? (
               <DropdownMenuSub key={model.id}>
                 <DropdownMenuSubTrigger>
