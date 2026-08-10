@@ -38,10 +38,12 @@ await mastra.startWorkers();
 
 const port = Number(process.env.MASTRA_PORT ?? 4111);
 
-console.info(`LFP Chat Mastra Server listening on http://localhost:${port}`);
+console.info(
+  `LFP Chat Mastra Server listening on http://${serverConfig.mastraHost}:${port}`,
+);
 
 const bunServer = {
-  hostname: "0.0.0.0",
+  hostname: serverConfig.mastraHost,
   port,
   fetch: app.fetch,
 };
