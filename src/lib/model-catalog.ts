@@ -1,0 +1,182 @@
+export const MODEL_CONTEXT_KEY = "lfp.model";
+export const REASONING_CONTEXT_KEY = "lfp.reasoning";
+
+export const reasoningEfforts = [
+  "none",
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+] as const;
+
+export type ReasoningEffort = (typeof reasoningEfforts)[number];
+
+export type ChatModelDefinition = {
+  id: string;
+  label: string;
+  shortLabel: string;
+  provider: string;
+  description: string;
+  reasoningEfforts: ReasoningEffort[];
+  defaultReasoningEffort: ReasoningEffort | null;
+};
+
+export type ModelCatalogResponse = {
+  models: ChatModelDefinition[];
+  defaultSelection: ModelSelection;
+};
+
+export type ModelSelection = {
+  modelId: string;
+  reasoningEffort: ReasoningEffort | null;
+};
+
+function titleCase(value: string) {
+  return value
+    .replaceAll(/[-_]+/g, " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+const excludedOpenAiModelFragments = [
+  "audio",
+  "codex",
+  "deep-research",
+  "image",
+  "instruct",
+  "moderation",
+  "realtime",
+  "search-api",
+  "search-preview",
+  "transcribe",
+  "tts",
+];
+
+export function isSelectableOpenAiModel(modelId: string) {
+  const id = modelId.toLowerCase();
+  const isTextModel =
+    id.startsWith("gpt-") || /^o(?:1|3|4)(?:-|$)/.test(id);
+  return (
+    isTextModel &&
+    !excludedOpenAiModelFragments.some((fragment) => id.includes(fragment))
+  );
+}
+
+function getReasoningEfforts(modelName: string): ReasoningEffort[] {
+  const name = modelName.toLowerCase();
+  if (name.startsWith("gpt-5.6")) {
+    return ["none", "low", "medium", "high", "xhigh", "max"];
+  }
+  if (name.startsWith("gpt-5")) {
+    return ["none", "minimal", "low", "medium", "high", "xhigh"];
+  }
+  if (/^o(?:1|3|4)(?:-|$)/.test(name)) {
+    return ["low", "medium", "high"];
+  }
+  return [];
+}
+
+function formatOpenAiModelName(modelName: string) {
+  const isGpt = modelName.toLowerCase().startsWith("gpt-");
+  const formatted = modelName
+    .replace(/^gpt-/i, "")
+    .split("-")
+    .map((part) => titleCase(part))
+    .join(" ");
+  return isGpt ? `GPT-${formatted}` : formatted.replace(/^O(?=\d)/, "o");
+}
+
+function createModelDefinition(provider: string, modelName: string) {
+  const efforts = provider === "openai" ? getReasoningEfforts(modelName) : [];
+  const label =
+    provider === "openai" ? formatOpenAiModelName(modelName) : titleCase(modelName);
+  const shortLabel = label.replace(/^GPT-/, "");
+
+  return {
+    id: `${provider}/${modelName}`,
+    label,
+    shortLabel,
+    provider,
+    description:
+      efforts.length > 0
+        ? "Reasoning model available to this API key."
+        : "Chat model available to this API key.",
+    reasoningEfforts: efforts,
+    defaultReasoningEffort: efforts.includes("medium") ? "medium" : null,
+  } satisfies ChatModelDefinition;
+}
+
+export function createModelCatalog(
+  provider: string,
+  defaultModelId: string,
+  configuredReasoning: string | undefined,
+  discoveredModelNames?: string[],
+): ModelCatalogResponse {
+  const configuredModelName =
+    defaultModelId.split("/").slice(1).join("/") || defaultModelId;
+  const modelNames = Array.from(
+    new Set(
+      discoveredModelNames?.filter((modelName) =>
+        provider === "openai" ? isSelectableOpenAiModel(modelName) : true,
+      ) ?? [configuredModelName],
+    ),
+  );
+  const models = modelNames
+    .map((modelName) => createModelDefinition(provider, modelName))
+    .sort((left, right) => {
+      if (left.id === defaultModelId) return -1;
+      if (right.id === defaultModelId) return 1;
+      return right.label.localeCompare(left.label, undefined, {
+        numeric: true,
+        sensitivity: "base",
+      });
+    });
+
+  if (!models.some((model) => model.id === defaultModelId)) {
+    models.unshift(createModelDefinition(provider, configuredModelName));
+  }
+
+  const defaultModel =
+    models.find((model) => model.id === defaultModelId) ?? models[0];
+  const configuredEffort = reasoningEfforts.find(
+    (effort) => effort === configuredReasoning,
+  );
+
+  return {
+    models,
+    defaultSelection: {
+      modelId: defaultModel.id,
+      reasoningEffort:
+        configuredEffort && defaultModel.reasoningEfforts.includes(configuredEffort)
+          ? configuredEffort
+          : defaultModel.defaultReasoningEffort,
+    },
+  };
+}
+
+export function normalizeModelSelection(
+  catalog: ModelCatalogResponse,
+  selection?: Partial<ModelSelection>,
+): ModelSelection {
+  const model =
+    catalog.models.find((candidate) => candidate.id === selection?.modelId) ??
+    catalog.models.find(
+      (candidate) => candidate.id === catalog.defaultSelection.modelId,
+    ) ??
+    catalog.models[0];
+  const requestedEffort = selection?.reasoningEffort;
+
+  return {
+    modelId: model.id,
+    reasoningEffort:
+      requestedEffort && model.reasoningEfforts.includes(requestedEffort)
+        ? requestedEffort
+        : model.defaultReasoningEffort,
+  };
+}
+
+export function formatReasoningEffort(effort: ReasoningEffort | null) {
+  if (!effort) return "";
+  return effort === "xhigh" ? "XHigh" : titleCase(effort);
+}
