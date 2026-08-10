@@ -149,6 +149,12 @@
     padding-inline: var(--chat-inline-gutter);
   }
 
+  /* Streamdown builds this overlap at runtime, outside Tailwind's source scan. */
+  [data-streamdown="code-block"]
+    > div:has(> [data-streamdown="code-block-actions"]) {
+    margin-top: -2.5rem;
+  }
+
   .sidebar-item {
     @apply flex min-h-8 w-full items-center gap-2 rounded-lg px-2 py-1 text-left text-[13px] transition-colors hover:bg-sidebar-accent;
   }
