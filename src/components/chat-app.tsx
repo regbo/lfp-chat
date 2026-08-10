@@ -64,6 +64,11 @@ import {
 import { type PendingSteer, SteerQueue } from "@/components/steer-queue";
 import { formatCitationMarkers } from "@/lib/citations";
 import {
+  getRunningThreadIds,
+  setChatRunState,
+  subscribeToChatRuns,
+} from "@/lib/chat-run-store";
+import {
   formatReasoningEffort,
   MODEL_CONTEXT_KEY,
   normalizeModelSelection,
@@ -87,7 +92,6 @@ import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, type FileUIPart, type UIMessage } from "ai";
 import Image from "next/image";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import {
   Archive,
   ArchiveRestore,
@@ -117,7 +121,14 @@ import {
   Wrench,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 
 type ActiveView = "chat" | "search" | "scheduled" | "tools" | "archived";
 
@@ -799,7 +810,6 @@ function ThreadActionsMenu({
 }
 
 export function ChatApp({ initialThreadId }: { initialThreadId?: string }) {
-  const router = useRouter();
   const [resourceId, setResourceId] = useState("");
   const [threadId, setThreadId] = useState(() => initialThreadId || makeId());
   const [initialMessages, setInitialMessages] = useState<UIMessage[]>([]);
@@ -816,31 +826,15 @@ export function ChatApp({ initialThreadId }: { initialThreadId?: string }) {
   const [modelSelection, setModelSelection] = useState<ModelSelection | null>(null);
   const [renamingThread, setRenamingThread] = useState<ThreadSummary | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
-  const [runningThreadIds, setRunningThreadIds] = useState<Set<string>>(
-    () => new Set(),
+  const openRequestId = useRef(0);
+  const runningThreadIds = useSyncExternalStore(
+    subscribeToChatRuns,
+    getRunningThreadIds,
+    getRunningThreadIds,
   );
 
   const handleRunStateChange = useCallback((id: string, running: boolean) => {
-    if (running) {
-      setThreads((current) =>
-        current.some((thread) => thread.id === id)
-          ? current
-          : [
-              {
-                id,
-                title: "New chat",
-                updatedAt: new Date().toISOString(),
-              },
-              ...current,
-            ],
-      );
-    }
-    setRunningThreadIds((current) => {
-      const next = new Set(current);
-      if (running) next.add(id);
-      else next.delete(id);
-      return next;
-    });
+    setChatRunState(id, running);
   }, []);
 
   useEffect(() => {
@@ -955,21 +949,23 @@ export function ChatApp({ initialThreadId }: { initialThreadId?: string }) {
   }, [refreshThreads]);
 
   const newChat = useCallback(() => {
+    openRequestId.current += 1;
     setThreadId(makeId());
     setInitialMessages([]);
     setThreadLoaded(true);
     setMobileSidebarOpen(false);
     setActiveView("chat");
-    router.push("/");
-  }, [router]);
+    window.history.pushState(null, "", "/");
+  }, []);
 
   const openThread = useCallback(async (id: string, navigate = true) => {
     if (!resourceId) return;
-    if (navigate) router.push(threadHref(id));
-    setThreadLoaded(false);
+    const requestId = ++openRequestId.current;
+    if (navigate) window.history.pushState(null, "", threadHref(id));
     const response = await fetch(
       `/api/threads/${encodeURIComponent(id)}?resourceId=${encodeURIComponent(resourceId)}`,
     );
+    if (requestId !== openRequestId.current) return;
     if (!response.ok) {
       setThreadLoaded(true);
       return;
@@ -980,7 +976,7 @@ export function ChatApp({ initialThreadId }: { initialThreadId?: string }) {
     setThreadLoaded(true);
     setMobileSidebarOpen(false);
     setActiveView("chat");
-  }, [resourceId, router]);
+  }, [resourceId]);
 
   useEffect(() => {
     if (!initialThreadId || !resourceId) return;
@@ -990,6 +986,23 @@ export function ChatApp({ initialThreadId }: { initialThreadId?: string }) {
     );
     return () => window.clearTimeout(timer);
   }, [initialThreadId, openThread, resourceId]);
+
+  useEffect(() => {
+    const handleHistoryNavigation = () => {
+      const match = window.location.pathname.match(/^\/c\/([^/]+)$/);
+      if (match) {
+        void openThread(decodeURIComponent(match[1]), false);
+        return;
+      }
+      openRequestId.current += 1;
+      setThreadId(makeId());
+      setInitialMessages([]);
+      setThreadLoaded(true);
+      setActiveView("chat");
+    };
+    window.addEventListener("popstate", handleHistoryNavigation);
+    return () => window.removeEventListener("popstate", handleHistoryNavigation);
+  }, [openThread]);
 
   const updateThread = useCallback(async (
     thread: ThreadSummary,
@@ -1054,10 +1067,21 @@ export function ChatApp({ initialThreadId }: { initialThreadId?: string }) {
     setMobileSidebarOpen(false);
   };
 
-  const activeThread = threads.find((thread) => thread.id === threadId);
+  const threadsWithBackgroundRuns = useMemo(() => {
+    const knownIds = new Set(threads.map((thread) => thread.id));
+    const optimisticRuns = Array.from(runningThreadIds)
+      .filter((id) => !knownIds.has(id))
+      .map((id) => ({
+        id,
+        title: "New chat",
+        updatedAt: new Date().toISOString(),
+      }));
+    return [...optimisticRuns, ...threads];
+  }, [runningThreadIds, threads]);
+  const activeThread = threadsWithBackgroundRuns.find((thread) => thread.id === threadId);
   const activeThreads = useMemo(
-    () => threads.filter((thread) => !isThreadArchived(thread)),
-    [threads],
+    () => threadsWithBackgroundRuns.filter((thread) => !isThreadArchived(thread)),
+    [threadsWithBackgroundRuns],
   );
   const pinnedThreads = useMemo(
     () => activeThreads.filter(isThreadPinned),
@@ -1068,14 +1092,14 @@ export function ChatApp({ initialThreadId }: { initialThreadId?: string }) {
     [activeThreads],
   );
   const archivedThreads = useMemo(
-    () => threads.filter(isThreadArchived),
-    [threads],
+    () => threadsWithBackgroundRuns.filter(isThreadArchived),
+    [threadsWithBackgroundRuns],
   );
   const activeConversationTitle = activeThread?.title || "New chat";
   const handleConversationChange = useCallback(() => {
-    router.replace(threadHref(threadId));
+    window.history.replaceState(null, "", threadHref(threadId));
     void refreshThreads();
-  }, [refreshThreads, router, threadId]);
+  }, [refreshThreads, threadId]);
 
   const renderThreadActions = useCallback((thread: ThreadSummary) => (
     <ThreadActionsMenu
@@ -1144,7 +1168,7 @@ export function ChatApp({ initialThreadId }: { initialThreadId?: string }) {
             <div className="mb-3 space-y-px">
               {pinnedThreads.map((thread) => (
                 <div className={cn("group flex min-h-8 items-center rounded-lg hover:bg-sidebar-accent", thread.id === threadId && "sidebar-chat-link-active")} key={`pinned-${thread.id}`}>
-                  <Link className="min-w-0 flex-1 truncate px-2 py-1 text-xs leading-5" href={threadHref(thread.id)} onClick={() => void openThread(thread.id, false)}>
+                  <Link className="min-w-0 flex-1 truncate px-2 py-1 text-xs leading-5" href={threadHref(thread.id)} onClick={(event) => { event.preventDefault(); void openThread(thread.id); }}>
                     {thread.title || "New chat"}
                   </Link>
                   {renderSidebarThreadControls(thread)}
@@ -1157,7 +1181,7 @@ export function ChatApp({ initialThreadId }: { initialThreadId?: string }) {
         <div className="space-y-px">
           {recentThreads.map((thread) => (
             <div className={cn("group flex min-h-8 items-center rounded-lg hover:bg-sidebar-accent", thread.id === threadId && "sidebar-chat-link-active")} key={thread.id}>
-              <Link className="min-w-0 flex-1 truncate px-2 py-1 text-xs leading-5" href={threadHref(thread.id)} onClick={() => void openThread(thread.id, false)}>
+              <Link className="min-w-0 flex-1 truncate px-2 py-1 text-xs leading-5" href={threadHref(thread.id)} onClick={(event) => { event.preventDefault(); void openThread(thread.id); }}>
                 {thread.title || "New chat"}
               </Link>
               {renderSidebarThreadControls(thread)}
