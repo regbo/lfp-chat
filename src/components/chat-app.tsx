@@ -43,7 +43,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
-  type BackgroundTaskSummary,
   ProjectsPanel,
   SchedulesPanel,
   SearchPanel,
@@ -64,6 +63,12 @@ import {
   type ModelSelection,
 } from "@/lib/model-catalog";
 import { cn } from "@/lib/utils";
+import {
+  defaultEnabledToolIds,
+  normalizeEnabledToolIds,
+  TOOLS_CONTEXT_KEY,
+  type SelectableToolId,
+} from "@/lib/tool-catalog";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, type FileUIPart, type UIMessage } from "ai";
 import Image from "next/image";
@@ -78,7 +83,6 @@ import {
   Download,
   FileText,
   Folder,
-  LoaderCircle,
   Menu,
   Mic,
   MoreHorizontal,
@@ -465,6 +469,7 @@ type ChatSessionProps = {
   modelCatalog: ModelCatalogResponse | null;
   modelSelection: ModelSelection | null;
   onModelSelectionChange: (selection: ModelSelection) => void;
+  enabledToolIds: SelectableToolId[];
 };
 
 function ChatSession({
@@ -473,6 +478,7 @@ function ChatSession({
   initialMessages,
   modelCatalog,
   modelSelection,
+  enabledToolIds,
   onModelSelectionChange,
   onConversationChange,
 }: ChatSessionProps) {
@@ -491,12 +497,13 @@ function ChatSession({
               ? {
                   [MODEL_CONTEXT_KEY]: selectedModelId,
                   [REASONING_CONTEXT_KEY]: selectedReasoningEffort,
+                  [TOOLS_CONTEXT_KEY]: enabledToolIds,
                 }
-              : undefined,
+              : { [TOOLS_CONTEXT_KEY]: enabledToolIds },
           },
         }),
       }),
-    [resourceId, selectedModelId, selectedReasoningEffort, threadId],
+    [enabledToolIds, resourceId, selectedModelId, selectedReasoningEffort, threadId],
   );
 
   const { error, messages, sendMessage, status, stop } = useChat({
@@ -709,7 +716,9 @@ export function ChatApp({ initialThreadId }: { initialThreadId?: string }) {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [installPrompt, setInstallPrompt] = useState<InstallPromptEvent | null>(null);
   const [activeView, setActiveView] = useState<ActiveView>("chat");
-  const [backgroundTasks, setBackgroundTasks] = useState<BackgroundTaskSummary[]>([]);
+  const [enabledToolIds, setEnabledToolIds] = useState<SelectableToolId[]>(
+    defaultEnabledToolIds,
+  );
   const [modelCatalog, setModelCatalog] = useState<ModelCatalogResponse | null>(null);
   const [modelSelection, setModelSelection] = useState<ModelSelection | null>(null);
 
@@ -738,6 +747,35 @@ export function ChatApp({ initialThreadId }: { initialThreadId?: string }) {
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      try {
+        const stored = window.localStorage.getItem("lfp-chat-enabled-tools");
+        if (stored) setEnabledToolIds(normalizeEnabledToolIds(JSON.parse(stored)));
+      } catch {
+        // Restricted browsers use the centralized defaults for this session.
+      }
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  const toggleTool = useCallback((toolId: SelectableToolId) => {
+    setEnabledToolIds((current) => {
+      const next = current.includes(toolId)
+        ? current.filter((id) => id !== toolId)
+        : [...current, toolId];
+      try {
+        window.localStorage.setItem(
+          "lfp-chat-enabled-tools",
+          JSON.stringify(next),
+        );
+      } catch {
+        // The selection still applies until this browser session ends.
+      }
+      return next;
+    });
   }, []);
 
   const selectModel = useCallback(
@@ -788,26 +826,12 @@ export function ChatApp({ initialThreadId }: { initialThreadId?: string }) {
     return () => window.clearTimeout(timer);
   }, [refreshThreads]);
 
-  const refreshBackgroundTasks = useCallback(async () => {
-    if (!resourceId) return;
-    try {
-      const response = await fetch(`/api/background-tasks?resourceId=${encodeURIComponent(resourceId)}`);
-      if (!response.ok) return;
-      const data = (await response.json()) as { tasks: BackgroundTaskSummary[] };
-      setBackgroundTasks(data.tasks);
-    } catch {
-      // Background task status is supplementary; chat remains available during reconnects.
-    }
-  }, [resourceId]);
-
   useEffect(() => {
-    const initial = window.setTimeout(() => void refreshBackgroundTasks(), 0);
-    const interval = window.setInterval(() => void refreshBackgroundTasks(), 2_000);
+    const interval = window.setInterval(() => void refreshThreads(), 10_000);
     return () => {
-      window.clearTimeout(initial);
       window.clearInterval(interval);
     };
-  }, [refreshBackgroundTasks]);
+  }, [refreshThreads]);
 
   const newChat = useCallback(() => {
     setThreadId(makeId());
@@ -867,9 +891,6 @@ export function ChatApp({ initialThreadId }: { initialThreadId?: string }) {
     setMobileSidebarOpen(false);
   };
 
-  const activeTasks = backgroundTasks.filter((task) =>
-    ["pending", "running", "suspended"].includes(task.status),
-  );
   const activeThread = threads.find((thread) => thread.id === threadId);
   const activeConversationTitle = activeThread?.title || "New chat";
   const handleConversationChange = useCallback(() => {
@@ -910,12 +931,6 @@ export function ChatApp({ initialThreadId }: { initialThreadId?: string }) {
           <Wrench className="size-[18px]" /> Tools
         </button>
       </nav>
-      {activeTasks.length > 0 && (
-        <button className="mx-1 mt-3 flex items-center gap-2 rounded-xl bg-sidebar-accent px-3 py-2 text-left text-xs" onClick={() => showView("tools")} type="button">
-          <LoaderCircle className="size-4 animate-spin" />
-          <span className="min-w-0 flex-1 truncate">{activeTasks.length === 1 ? `${activeTasks[0].toolName} is running` : `${activeTasks.length} tasks running`}</span>
-        </button>
-      )}
       <div className="mt-4 min-h-0 flex-1 overflow-y-auto">
         {threads.length > 0 && (
           <>
@@ -1022,6 +1037,7 @@ export function ChatApp({ initialThreadId }: { initialThreadId?: string }) {
         {resourceId && threadLoaded && activeView === "chat" && (
           <ChatSession
             initialMessages={initialMessages}
+            enabledToolIds={enabledToolIds}
             key={threadId}
             modelCatalog={modelCatalog}
             modelSelection={modelSelection}
@@ -1033,8 +1049,18 @@ export function ChatApp({ initialThreadId }: { initialThreadId?: string }) {
         )}
         {resourceId && activeView === "search" && <SearchPanel onOpen={(id) => void openThread(id)} threads={threads} />}
         {resourceId && activeView === "projects" && <ProjectsPanel onNewChat={newChat} />}
-        {resourceId && activeView === "scheduled" && <SchedulesPanel resourceId={resourceId} threadId={threadId} />}
-        {resourceId && activeView === "tools" && <ToolsPanel tasks={backgroundTasks} />}
+        {resourceId && activeView === "scheduled" && (
+          <SchedulesPanel
+            enabledToolIds={enabledToolIds}
+            modelSelection={modelSelection}
+            onConversationChange={refreshThreads}
+            onOpenConversation={(id) => void openThread(id)}
+            resourceId={resourceId}
+          />
+        )}
+        {resourceId && activeView === "tools" && (
+          <ToolsPanel enabledToolIds={enabledToolIds} onToggle={toggleTool} />
+        )}
       </section>
     </main>
   );

@@ -34,6 +34,7 @@ app.get("/models", async (context) => {
 
 const server = new MastraServer({ app, mastra });
 await server.init();
+await mastra.startWorkers();
 
 const port = Number(process.env.MASTRA_PORT ?? 4111);
 

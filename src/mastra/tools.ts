@@ -111,11 +111,6 @@ export const montyTool = createTool({
     stdout: z.string(),
     stderr: z.string(),
   }),
-  background: {
-    enabled: true,
-    timeoutMs: 30_000,
-    maxRetries: 0,
-  },
   execute: async ({ code }) => {
     const pool = await getMontyPool();
     await using session = await pool.checkout({

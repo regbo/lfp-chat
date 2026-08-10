@@ -11,6 +11,11 @@ import {
   resolveRuntimeOptions,
 } from "@/mastra/model-provider";
 import { calculatorTool, montyTool, searchTool } from "@/mastra/tools";
+import { hostWorkspace } from "@/mastra/host-workspace";
+import {
+  normalizeEnabledToolIds,
+  TOOLS_CONTEXT_KEY,
+} from "@/lib/tool-catalog";
 
 const globalForMastra = globalThis as typeof globalThis & {
   lfpMastra?: {
@@ -50,22 +55,36 @@ function createMastra() {
     description: "A concise, tool-capable assistant with persistent memory.",
     model: ({ requestContext }) => resolveRuntimeModel(requestContext),
     memory,
-    tools: {
-      search: searchTool,
-      calculator: calculatorTool,
-      monty: montyTool,
-      ...modelProvider.tools,
+    tools: ({ requestContext }) => {
+      const enabled = new Set<string>(
+        normalizeEnabledToolIds(requestContext.get(TOOLS_CONTEXT_KEY)),
+      );
+      const availableTools = {
+        search: searchTool,
+        calculator: calculatorTool,
+        monty: montyTool,
+        ...modelProvider.tools,
+      };
+      return Object.fromEntries(
+        Object.entries(availableTools).filter(([id]) => enabled.has(id)),
+      );
     },
-    backgroundTasks: {
-      tools: {
-        monty: { enabled: true, timeoutMs: 30_000 },
-      },
+    workspace: ({ requestContext }) =>
+      normalizeEnabledToolIds(requestContext.get(TOOLS_CONTEXT_KEY)).includes(
+        "code_mode",
+      )
+        ? hostWorkspace
+        : undefined,
+    instructions: ({ requestContext }) => {
+      const enabled = normalizeEnabledToolIds(
+        requestContext.get(TOOLS_CONTEXT_KEY),
+      );
+      return `You are LFP Chat, a capable and concise assistant.
+
+The user has enabled these capabilities for this run: ${enabled.join(", ") || "none"}. Only use tools that are enabled. Use project search for this app's stack, calculator for arithmetic, and Monty for isolated Python. When Code mode is enabled, the workspace tools operate directly on the host filesystem and shell; do not read secrets or modify unrelated files unless the user explicitly asks. ${modelProvider.capabilityInstructions} When multiple tools are relevant, call them in the same step so the interface can present a grouped tool summary.
+
+Be direct and useful. Use short paragraphs and lists only when they improve clarity. Remember stable user preferences in working memory, but do not store secrets or sensitive credentials.`;
     },
-    instructions: `You are LFP Chat, a capable and concise assistant.
-
-Use the local search tool when a question concerns this project's stack, Mastra, memory, or tool-event behavior. Use the calculator for simple arithmetic. Use Monty for lightweight isolated Python. ${modelProvider.capabilityInstructions} When multiple tools are relevant, call them in the same step so the interface can present a grouped tool summary.
-
-Be direct and useful. Use short paragraphs and lists only when they improve clarity. Remember stable user preferences in working memory, but do not store secrets or sensitive credentials.`,
     defaultOptions: ({ requestContext }) =>
       resolveRuntimeOptions(requestContext),
   });
@@ -74,14 +93,6 @@ Be direct and useful. Use short paragraphs and lists only when they improve clar
     agents: { chatAgent },
     tools: { search: searchTool, calculator: calculatorTool, monty: montyTool },
     storage,
-    backgroundTasks: {
-      enabled: true,
-      globalConcurrency: 4,
-      perAgentConcurrency: 2,
-      backpressure: "queue",
-      defaultTimeoutMs: 60_000,
-      progressThrottleMs: 250,
-    },
     scheduler: {
       enabled: true,
       tickIntervalMs: 10_000,
