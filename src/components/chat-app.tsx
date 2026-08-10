@@ -644,7 +644,7 @@ function ChatSession({
           )}
         >
           {isEmpty ? (
-            <ConversationEmptyState className="min-h-[calc(100dvh-7rem)] justify-center pb-8">
+            <ConversationEmptyState className="min-h-[calc(100dvh-7rem)] justify-center px-0 pb-8">
               <div className="chat-column space-y-5">
                 <h1 className="text-balance text-center text-[27px] font-medium tracking-[-0.025em] md:text-[29px]">
                   What&apos;s on your mind today?
