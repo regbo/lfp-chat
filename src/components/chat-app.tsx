@@ -99,6 +99,7 @@ import {
   Download,
   FileText,
   Folder,
+  LoaderCircle,
   Menu,
   Mic,
   MoreHorizontal,
@@ -482,7 +483,10 @@ type ChatSessionProps = {
   threadId: string;
   resourceId: string;
   initialMessages: UIMessage[];
+  knownRunning: boolean;
   onConversationChange: () => void;
+  onRunStateChange: (threadId: string, running: boolean) => void;
+  onThreadListChange: () => void;
   modelCatalog: ModelCatalogResponse | null;
   modelSelection: ModelSelection | null;
   onModelSelectionChange: (selection: ModelSelection) => void;
@@ -493,11 +497,14 @@ function ChatSession({
   threadId,
   resourceId,
   initialMessages,
+  knownRunning,
   modelCatalog,
   modelSelection,
   enabledToolIds,
   onModelSelectionChange,
   onConversationChange,
+  onRunStateChange,
+  onThreadListChange,
 }: ChatSessionProps) {
   const selectedModelId = modelSelection?.modelId;
   const selectedReasoningEffort = modelSelection?.reasoningEffort;
@@ -527,13 +534,23 @@ function ChatSession({
     id: threadId,
     messages: initialMessages,
     transport,
-    onFinish: () => window.setTimeout(onConversationChange, 500),
+    onFinish: () => {
+      onRunStateChange(threadId, false);
+      window.setTimeout(onThreadListChange, 500);
+    },
+    onError: () => onRunStateChange(threadId, false),
   });
   const [steers, setSteers] = useState<PendingSteer[]>([]);
   const [draft, setDraft] = useState("");
   const [editingSteerId, setEditingSteerId] = useState<string | null>(null);
   const [steerError, setSteerError] = useState("");
   const isStreaming = status === "submitted" || status === "streaming";
+  const startRun = useCallback(() => {
+    onRunStateChange(threadId, true);
+    onConversationChange();
+    // The thread is created server-side shortly after the request begins.
+    window.setTimeout(onThreadListChange, 500);
+  }, [onConversationChange, onRunStateChange, onThreadListChange, threadId]);
   const renderedMessages = useMemo(
     () => Array.from(new Map(messages.map((message) => [message.id, message])).values()),
     [messages],
@@ -565,10 +582,11 @@ function ChatSession({
         setDraft("");
         return;
       }
+      startRun();
       await sendMessage({ text, files });
       setDraft("");
     },
-    [editingSteerId, isStreaming, sendMessage],
+    [editingSteerId, isStreaming, sendMessage, startRun],
   );
 
   useEffect(() => {
@@ -576,10 +594,11 @@ function ChatSession({
     const next = steers[0];
     const timer = window.setTimeout(() => {
       setSteers((current) => current.filter((item) => item.id !== next.id));
+      startRun();
       void sendMessage(next.message);
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [editingSteerId, isStreaming, sendMessage, steers]);
+  }, [editingSteerId, isStreaming, sendMessage, startRun, steers]);
 
   const deleteSteer = useCallback((id: string) => {
     setSteers((current) => current.filter((item) => item.id !== id));
@@ -694,7 +713,7 @@ function ChatSession({
               />
             ))
           )}
-          {isStreaming && !hasStreamingAssistant && (
+          {(isStreaming || knownRunning) && !hasStreamingAssistant && (
             <div className="chat-column flex items-center gap-2 text-[11px] text-muted-foreground">
               <Sparkles className="size-4 animate-pulse" /> Thinking
             </div>
@@ -797,6 +816,32 @@ export function ChatApp({ initialThreadId }: { initialThreadId?: string }) {
   const [modelSelection, setModelSelection] = useState<ModelSelection | null>(null);
   const [renamingThread, setRenamingThread] = useState<ThreadSummary | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
+  const [runningThreadIds, setRunningThreadIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+
+  const handleRunStateChange = useCallback((id: string, running: boolean) => {
+    if (running) {
+      setThreads((current) =>
+        current.some((thread) => thread.id === id)
+          ? current
+          : [
+              {
+                id,
+                title: "New chat",
+                updatedAt: new Date().toISOString(),
+              },
+              ...current,
+            ],
+      );
+    }
+    setRunningThreadIds((current) => {
+      const next = new Set(current);
+      if (running) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -1042,6 +1087,23 @@ export function ChatApp({ initialThreadId }: { initialThreadId?: string }) {
     />
   ), [archiveThread, beginRename, deleteThread, pinThread]);
 
+  const renderSidebarThreadControls = useCallback((thread: ThreadSummary) => {
+    const running = runningThreadIds.has(thread.id);
+    return (
+      <span className="relative mr-1 grid size-6 shrink-0 place-items-center">
+        {running && (
+          <LoaderCircle
+            aria-label={`${thread.title || "Chat"} is running`}
+            className="size-3.5 animate-spin text-muted-foreground transition-opacity group-hover:opacity-0"
+          />
+        )}
+        <span className="absolute inset-0 grid place-items-center">
+          {renderThreadActions(thread)}
+        </span>
+      </span>
+    );
+  }, [renderThreadActions, runningThreadIds]);
+
   const sidebar = (
     <aside className="flex h-full w-[244px] shrink-0 flex-col bg-sidebar px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-[max(0.4rem,env(safe-area-inset-top))] text-sidebar-foreground">
       <div className="mb-1.5 flex items-center justify-between px-1">
@@ -1085,7 +1147,7 @@ export function ChatApp({ initialThreadId }: { initialThreadId?: string }) {
                   <Link className="min-w-0 flex-1 truncate px-2 py-1 text-xs leading-5" href={threadHref(thread.id)} onClick={() => void openThread(thread.id, false)}>
                     {thread.title || "New chat"}
                   </Link>
-                  <span className="mr-1">{renderThreadActions(thread)}</span>
+                  {renderSidebarThreadControls(thread)}
                 </div>
               ))}
             </div>
@@ -1098,7 +1160,7 @@ export function ChatApp({ initialThreadId }: { initialThreadId?: string }) {
               <Link className="min-w-0 flex-1 truncate px-2 py-1 text-xs leading-5" href={threadHref(thread.id)} onClick={() => void openThread(thread.id, false)}>
                 {thread.title || "New chat"}
               </Link>
-              <span className="mr-1">{renderThreadActions(thread)}</span>
+              {renderSidebarThreadControls(thread)}
             </div>
           ))}
         </div>
@@ -1187,12 +1249,15 @@ export function ChatApp({ initialThreadId }: { initialThreadId?: string }) {
         {resourceId && threadLoaded && activeView === "chat" && (
           <ChatSession
             initialMessages={initialMessages}
+            knownRunning={runningThreadIds.has(threadId)}
             enabledToolIds={enabledToolIds}
             key={threadId}
             modelCatalog={modelCatalog}
             modelSelection={modelSelection}
             onConversationChange={handleConversationChange}
             onModelSelectionChange={selectModel}
+            onRunStateChange={handleRunStateChange}
+            onThreadListChange={refreshThreads}
             resourceId={resourceId}
             threadId={threadId}
           />
