@@ -48,6 +48,7 @@ function createCaddyfile(port: number, upstream: string, bindAddresses: string[]
 
 http://:${port} {
   bind ${bindAddresses.join(" ")}
+  encode zstd gzip
   reverse_proxy ${upstream}
 
   header {

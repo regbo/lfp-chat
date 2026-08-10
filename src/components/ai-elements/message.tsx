@@ -12,23 +12,21 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { cjk } from "@streamdown/cjk";
-import { code } from "@streamdown/code";
-import { math } from "@streamdown/math";
-import { mermaid } from "@streamdown/mermaid";
 import type { UIMessage } from "ai";
 import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
 import type { ComponentProps, HTMLAttributes, ReactElement } from "react";
 import {
   createContext,
+  lazy,
   memo,
+  Suspense,
   useCallback,
   useContext,
   useEffect,
   useMemo,
   useState,
 } from "react";
-import { Streamdown } from "streamdown";
+import type { StreamdownProps } from "streamdown";
 
 export type MessageProps = HTMLAttributes<HTMLDivElement> & {
   from: UIMessage["role"];
@@ -319,21 +317,30 @@ export const MessageBranchPage = ({
   );
 };
 
-export type MessageResponseProps = ComponentProps<typeof Streamdown>;
+export type MessageResponseProps = StreamdownProps;
 
-const streamdownPlugins = { cjk, code, math, mermaid };
+const LazyStreamdownRenderer = lazy(() =>
+  import("./streamdown-renderer").then(({ StreamdownRenderer }) => ({
+    default: StreamdownRenderer,
+  })),
+);
 
 export const MessageResponse = memo(
-  ({ className, ...props }: MessageResponseProps) => (
-    <Streamdown
-      className={cn(
-        "chat-markdown size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_strong]:font-semibold",
-        className
-      )}
-      plugins={streamdownPlugins as never}
-      {...props}
-    />
-  ),
+  ({ className, children, ...props }: MessageResponseProps) => {
+    const resolvedClassName = cn(
+      "chat-markdown size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_strong]:font-semibold",
+      className,
+    );
+    return (
+      <Suspense
+        fallback={<div className={cn(resolvedClassName, "whitespace-pre-wrap")}>{children}</div>}
+      >
+        <LazyStreamdownRenderer className={resolvedClassName} {...props}>
+          {children}
+        </LazyStreamdownRenderer>
+      </Suspense>
+    );
+  },
   (prevProps, nextProps) =>
     prevProps.children === nextProps.children &&
     nextProps.isAnimating === prevProps.isAnimating

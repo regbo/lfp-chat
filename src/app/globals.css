@@ -110,6 +110,7 @@
   --composer-height: 3.25rem;
   --composer-radius: calc(var(--composer-height) / 2);
   --composer-submit-size: 2.25rem;
+  --composer-input-padding-block: 1rem;
   --icon-size-sm: 0.75rem;
   --icon-size-md: 0.875rem;
   --icon-size-lg: 1rem;
@@ -376,27 +377,6 @@
     padding: 0.25rem var(--menu-item-padding-inline);
   }
 
-  .chat-composer [data-slot="input-group"] {
-    height: var(--composer-height);
-    padding-inline: 0.5rem;
-    border-color: color-mix(in oklab, var(--border) 65%, transparent);
-    border-radius: var(--composer-radius);
-    background: var(--background);
-    box-shadow: var(--chat-composer-shadow);
-  }
-
-  .chat-composer [data-slot="input-group"]:has([data-attachments]) {
-    height: auto;
-  }
-
-  .chat-composer [data-slot="input-group-control"] {
-    min-height: 0;
-    min-width: 0;
-    padding: 0.625rem 0.5rem;
-    font-size: var(--text-ui-emphasis);
-    line-height: var(--leading-ui);
-  }
-
   .chat-composer-submit {
     width: var(--composer-submit-size);
     height: var(--composer-submit-size);
@@ -427,6 +407,27 @@
     padding-inline: 0.5rem;
     font-size: var(--text-meta);
   }
+}
+
+/* AI Elements ships fixed input heights in Tailwind's later utilities layer.
+   This unlayered contract keeps the shell and textarea aligned while allowing
+   multiline input and attachment rows to grow the composer naturally. */
+.chat-composer [data-slot="input-group"] {
+  height: auto;
+  min-height: var(--composer-height);
+  padding-inline: 0.5rem;
+  border-color: color-mix(in oklab, var(--border) 65%, transparent);
+  border-radius: var(--composer-radius);
+  background: var(--background);
+  box-shadow: var(--chat-composer-shadow);
+}
+
+.chat-composer [data-slot="input-group-control"] {
+  min-width: 0;
+  min-height: calc(var(--composer-height) - 2px);
+  padding: var(--composer-input-padding-block) 0.5rem;
+  font-size: var(--text-ui-emphasis);
+  line-height: var(--leading-ui);
 }
 
 /* Streamdown has its own fixed type scale. These selectors make rich output

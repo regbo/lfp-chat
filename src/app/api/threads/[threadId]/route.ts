@@ -33,21 +33,23 @@ export async function GET(
       threadId,
       agentId: "chatAgent",
     });
-    const details = await thread.get();
-    if (details.resourceId !== resourceId) {
-      return Response.json({ error: "Chat not found." }, { status: 404 });
-    }
     const searchParams = new URL(request.url).searchParams;
     const page = Math.max(0, Number(searchParams.get("page") || 0));
     const perPage = Math.min(
       40,
       Math.max(4, Number(searchParams.get("perPage") || 12)),
     );
-    const result = await thread.listMessages({
-      page,
-      perPage,
-      orderBy: { field: "createdAt", direction: "DESC" },
-    });
+    const [details, result] = await Promise.all([
+      thread.get(),
+      thread.listMessages({
+        page,
+        perPage,
+        orderBy: { field: "createdAt", direction: "DESC" },
+      }),
+    ]);
+    if (details.resourceId !== resourceId) {
+      return Response.json({ error: "Chat not found." }, { status: 404 });
+    }
     const messages = [...result.messages].reverse();
 
     return Response.json({

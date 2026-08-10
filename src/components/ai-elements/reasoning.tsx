@@ -7,15 +7,13 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
-import { cjk } from "@streamdown/cjk";
-import { code } from "@streamdown/code";
-import { math } from "@streamdown/math";
-import { mermaid } from "@streamdown/mermaid";
 import { BrainIcon, ChevronDownIcon } from "lucide-react";
 import type { ComponentProps, ReactNode } from "react";
 import {
   createContext,
+  lazy,
   memo,
+  Suspense,
   useCallback,
   useContext,
   useEffect,
@@ -23,7 +21,6 @@ import {
   useRef,
   useState,
 } from "react";
-import { Streamdown } from "streamdown";
 
 import { Shimmer } from "./shimmer";
 
@@ -210,7 +207,11 @@ export type ReasoningContentProps = Omit<
   children: ReactNode;
 };
 
-const streamdownPlugins = { cjk, code, math, mermaid };
+const LazyStreamdownRenderer = lazy(() =>
+  import("./streamdown-renderer").then(({ StreamdownRenderer }) => ({
+    default: StreamdownRenderer,
+  })),
+);
 
 export const ReasoningContent = memo(
   ({ className, children, ...props }: ReasoningContentProps) => (
@@ -223,7 +224,9 @@ export const ReasoningContent = memo(
       {...props}
     >
       {typeof children === "string" ? (
-        <Streamdown plugins={streamdownPlugins as never}>{children}</Streamdown>
+        <Suspense fallback={<p className="whitespace-pre-wrap">{children}</p>}>
+          <LazyStreamdownRenderer>{children}</LazyStreamdownRenderer>
+        </Suspense>
       ) : (
         children
       )}

@@ -155,6 +155,7 @@ const makeId = () =>
 
 const threadHref = (threadId: string) =>
   `/c/${encodeURIComponent(threadId)}`;
+const THREAD_PAGE_SIZE = 6;
 
 function ensureRemoteBrowserCompatibility() {
   if (typeof globalThis.crypto?.randomUUID === "function") return;
@@ -812,7 +813,7 @@ function ChatSession({
     setLoadingOlder(true);
     try {
       const response = await fetch(
-        `/api/threads/${encodeURIComponent(threadId)}?resourceId=${encodeURIComponent(resourceId)}&page=${current.historyPage}&perPage=12`,
+        `/api/threads/${encodeURIComponent(threadId)}?resourceId=${encodeURIComponent(resourceId)}&page=${current.historyPage}&perPage=${THREAD_PAGE_SIZE}`,
       );
       if (!response.ok) throw new Error("Unable to load earlier messages.");
       const data = (await response.json()) as { messages: UIMessage[]; hasMore: boolean };
@@ -974,7 +975,7 @@ function ThreadActionsMenu({
 }
 
 export function ChatApp({ initialThreadId }: { initialThreadId?: string }) {
-  const [resourceId, setResourceId] = useState("local-user");
+  const [resourceId, setResourceId] = useState("");
   const [threadId, setThreadId] = useState(() => initialThreadId || makeId());
   const [sessionSeeds, setSessionSeeds] = useState<Map<string, UIMessage[]>>(
     () => new Map(initialThreadId ? [] : [[threadId, []]]),
@@ -994,6 +995,9 @@ export function ChatApp({ initialThreadId }: { initialThreadId?: string }) {
   const [renamingThread, setRenamingThread] = useState<ThreadSummary | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
   const openRequestId = useRef(0);
+  const threadLoadRequests = useRef(
+    new Map<string, Promise<{ messages: UIMessage[]; hasMore: boolean } | null>>(),
+  );
   useSyncExternalStore(
     subscribeToChatSessions,
     getChatSessionRevision,
@@ -1143,6 +1147,34 @@ export function ChatApp({ initialThreadId }: { initialThreadId?: string }) {
     window.history.pushState(null, "", "/");
   }, [rememberSession]);
 
+  const loadThread = useCallback((id: string) => {
+    if (!resourceId) return Promise.resolve(null);
+    const activeRequest = threadLoadRequests.current.get(id);
+    if (activeRequest) return activeRequest;
+
+    const request = fetch(
+      `/api/threads/${encodeURIComponent(id)}?resourceId=${encodeURIComponent(resourceId)}&page=0&perPage=${THREAD_PAGE_SIZE}`,
+    )
+      .then(async (response) => {
+        if (!response.ok) return null;
+        return (await response.json()) as {
+          messages: UIMessage[];
+          hasMore: boolean;
+        };
+      })
+      .catch(() => null)
+      .finally(() => threadLoadRequests.current.delete(id));
+
+    threadLoadRequests.current.set(id, request);
+    return request;
+  }, [resourceId]);
+
+  const prefetchThread = useCallback(async (id: string) => {
+    if (sessionSeedsRef.current.has(id)) return;
+    const data = await loadThread(id);
+    if (data) rememberSession(id, data.messages, data.hasMore);
+  }, [loadThread, rememberSession]);
+
   const openThread = useCallback(async (id: string, navigate = true) => {
     if (!resourceId) return;
     const requestId = ++openRequestId.current;
@@ -1158,21 +1190,17 @@ export function ChatApp({ initialThreadId }: { initialThreadId?: string }) {
       return;
     }
 
-    const response = await fetch(
-      `/api/threads/${encodeURIComponent(id)}?resourceId=${encodeURIComponent(resourceId)}&page=0&perPage=12`,
-    );
-    if (requestId !== openRequestId.current) return;
-    if (!response.ok) {
-      setThreadLoaded(true);
-      return;
-    }
-    const data = (await response.json()) as { messages: UIMessage[]; hasMore: boolean };
-    rememberSession(id, data.messages, data.hasMore);
     setThreadId(id);
-    setThreadLoaded(true);
+    setThreadLoaded(false);
     setMobileSidebarOpen(false);
     setActiveView("chat");
-  }, [rememberSession, resourceId]);
+
+    const data = await loadThread(id);
+    if (data) rememberSession(id, data.messages, data.hasMore);
+    if (requestId !== openRequestId.current) return;
+    setThreadId(id);
+    setThreadLoaded(true);
+  }, [loadThread, rememberSession, resourceId]);
 
   useEffect(() => {
     if (!initialThreadId || !resourceId) return;
@@ -1369,7 +1397,7 @@ export function ChatApp({ initialThreadId }: { initialThreadId?: string }) {
             <div className="mb-3 space-y-px">
               {pinnedThreads.map((thread) => (
                 <div className={cn("group flex min-h-8 items-center rounded-lg hover:bg-sidebar-accent", thread.id === threadId && "sidebar-chat-link-active")} key={`pinned-${thread.id}`}>
-                  <Link className="sidebar-chat-link min-w-0 flex-1 truncate" href={threadHref(thread.id)} onClick={(event) => { event.preventDefault(); void openThread(thread.id); }}>
+                  <Link className="sidebar-chat-link min-w-0 flex-1 truncate" href={threadHref(thread.id)} onFocus={() => void prefetchThread(thread.id)} onPointerEnter={() => void prefetchThread(thread.id)} onClick={(event) => { event.preventDefault(); void openThread(thread.id); }}>
                     {thread.title || "New chat"}
                   </Link>
                   {renderSidebarThreadControls(thread)}
@@ -1382,7 +1410,7 @@ export function ChatApp({ initialThreadId }: { initialThreadId?: string }) {
         <div className="space-y-px">
           {recentThreads.map((thread) => (
             <div className={cn("group flex min-h-8 items-center rounded-lg hover:bg-sidebar-accent", thread.id === threadId && "sidebar-chat-link-active")} key={thread.id}>
-              <Link className="sidebar-chat-link min-w-0 flex-1 truncate" href={threadHref(thread.id)} onClick={(event) => { event.preventDefault(); void openThread(thread.id); }}>
+              <Link className="sidebar-chat-link min-w-0 flex-1 truncate" href={threadHref(thread.id)} onFocus={() => void prefetchThread(thread.id)} onPointerEnter={() => void prefetchThread(thread.id)} onClick={(event) => { event.preventDefault(); void openThread(thread.id); }}>
                 {thread.title || "New chat"}
               </Link>
               {renderSidebarThreadControls(thread)}
@@ -1495,6 +1523,11 @@ export function ChatApp({ initialThreadId }: { initialThreadId?: string }) {
             </div>
           );
         })}
+        {resourceId && activeView === "chat" && !threadLoaded && (
+          <div className="chat-meta-text flex min-h-0 flex-1 items-center justify-center gap-2 text-muted-foreground">
+            <LoaderCircle className="size-3.5 animate-spin" /> Loading conversation
+          </div>
+        )}
         {resourceId && activeView === "search" && <SearchPanel onOpen={(id) => void openThread(id)} threads={activeThreads} />}
         {resourceId && activeView === "scheduled" && (
           <SchedulesPanel

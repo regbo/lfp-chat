@@ -9,3 +9,4 @@
 - `src/lib/citations.ts` — citation-marker cleanup and formatting for rendered assistant text.
 - `src/lib/mastra-client.ts` — server-only Mastra client used by Next route handlers for memory and thread operations.
 - `scripts/caddy.ts` — generates and validates the local Caddy config, binding only loopback plus detected ZeroTier IPv4 interfaces before proxying to Next.js.
+- `src/components/ai-elements/streamdown-renderer.tsx` — lazy rich-text renderer that loads code, Mermaid, math, and CJK plugins only when message content requires them.
