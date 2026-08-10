@@ -53,6 +53,7 @@ async function processMastraStream(
  */
 class LfpMastraClient extends MastraClient {
   async streamChat(options: {
+    agentId: string;
     messages: unknown[];
     runId: string;
     threadId: string;
@@ -61,7 +62,7 @@ class LfpMastraClient extends MastraClient {
     signal: AbortSignal;
   }): Promise<MastraStreamResponse> {
     const response = await fetch(
-      "/api/mastra/agents/chatAgent/stream",
+      `/api/mastra/agents/${encodeURIComponent(options.agentId)}/stream`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },

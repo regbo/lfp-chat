@@ -9,6 +9,7 @@ A ChatGPT-inspired Mastra chat application with rich tool events and PostgreSQL-
 - `@mastra/client-js` for run, thread, memory, and streaming operations
 - AI Elements for the conversation, messages, reasoning, tools, and prompt input
 - Mastra Model Router with provider-specific API keys
+- Codex CLI as a separately selectable Mastra ACP coding agent
 - Caddy as the single loopback/ZeroTier entrypoint
 - Docker Compose for a local PostgreSQL service
 
@@ -44,6 +45,16 @@ MODEL_NAME=gpt-5.6-luna
 REASONING_EFFORT=medium
 OPENAI_API_KEY=...
 ```
+
+The composer also lists **Codex CLI** as an agent rather than a model. Mastra runs it through `@mastra/acp` and `@agentclientprotocol/codex-acp`, while PostgreSQL remains the durable conversation store. Codex runs in an isolated ACP session for each request and defaults to workspace-write access without network access. Configure its boundary explicitly when the server should operate on another repository:
+
+```env
+CODEX_AGENT_ENABLED=true
+CODEX_AGENT_MODE=agent
+CODEX_WORKSPACE_PATH=C:/Users/you/Projects/target-repo
+```
+
+Set `CODEX_AGENT_MODE=read-only` for inspection-only use. Full host access is intentionally not exposed by this application configuration.
 
 The Mastra server exposes `GET http://localhost:4111/models`, with a same-origin browser proxy at `GET /api/models`. For OpenAI, the server discovers the models available to the configured API key from OpenAI's `/v1/models` endpoint and caches the filtered chat-model catalog for 10 minutes. Reasoning choices are attached per model family, and the selected model and effort are passed through Mastra request context on every chat run.
 

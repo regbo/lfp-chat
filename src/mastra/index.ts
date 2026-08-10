@@ -11,6 +11,7 @@ import {
 } from "@/mastra/model-provider";
 import { calculatorTool, montyTool, searchTool } from "@/mastra/tools";
 import { hostWorkspace } from "@/mastra/host-workspace";
+import { createCodexAgent } from "@/mastra/codex-agent";
 import {
   normalizeEnabledToolIds,
   TOOLS_CONTEXT_KEY,
@@ -88,8 +89,15 @@ Be direct and useful. Use short paragraphs and lists only when they improve clar
       resolveRuntimeOptions(requestContext),
   });
 
+  const codexAgent = serverConfig.codexAgentEnabled
+    ? createCodexAgent(memory)
+    : undefined;
+
   const mastra = new Mastra({
-    agents: { chatAgent },
+    agents: {
+      chatAgent,
+      ...(codexAgent ? { codexAgent } : {}),
+    },
     tools: { search: searchTool, calculator: calculatorTool, monty: montyTool },
     storage,
     scheduler: {

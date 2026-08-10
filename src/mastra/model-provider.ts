@@ -6,6 +6,7 @@ import { webSearchTool } from "@mastra/core/tools";
 
 import { serverConfig } from "@/lib/config";
 import {
+  createAgentCatalog,
   createModelCatalog,
   MODEL_CONTEXT_KEY,
   normalizeModelSelection,
@@ -17,6 +18,8 @@ let cachedModelCatalog = createModelCatalog(
   serverConfig.modelProvider,
   serverConfig.modelId,
   serverConfig.reasoningEffort,
+  undefined,
+  createAgentCatalog(serverConfig.codexAgentEnabled),
 );
 let modelCatalogExpiresAt = 0;
 let pendingModelCatalog: Promise<typeof cachedModelCatalog> | null = null;
@@ -48,6 +51,7 @@ async function discoverOpenAiModels() {
     serverConfig.modelId,
     serverConfig.reasoningEffort,
     modelNames,
+    createAgentCatalog(serverConfig.codexAgentEnabled),
   );
   modelCatalogExpiresAt = Date.now() + MODEL_CATALOG_TTL_MS;
   return cachedModelCatalog;

@@ -1,6 +1,9 @@
 export const MODEL_CONTEXT_KEY = "lfp.model";
 export const REASONING_CONTEXT_KEY = "lfp.reasoning";
 
+export const DEFAULT_CHAT_AGENT_ID = "chatAgent";
+export const CODEX_CHAT_AGENT_ID = "codexAgent";
+
 export const reasoningEfforts = [
   "none",
   "minimal",
@@ -23,15 +26,37 @@ export type ChatModelDefinition = {
   defaultReasoningEffort: ReasoningEffort | null;
 };
 
+export type ChatAgentDefinition = {
+  id: string;
+  label: string;
+  shortLabel: string;
+  description: string;
+};
+
 export type ModelCatalogResponse = {
   models: ChatModelDefinition[];
+  agents: ChatAgentDefinition[];
   defaultSelection: ModelSelection;
 };
 
 export type ModelSelection = {
+  agentId: string;
   modelId: string;
   reasoningEffort: ReasoningEffort | null;
 };
+
+export function createAgentCatalog(codexEnabled: boolean): ChatAgentDefinition[] {
+  return codexEnabled
+    ? [
+        {
+          id: CODEX_CHAT_AGENT_ID,
+          label: "Codex CLI",
+          shortLabel: "Codex",
+          description: "Coding agent with scoped workspace and shell access.",
+        },
+      ]
+    : [];
+}
 
 function titleCase(value: string) {
   return value
@@ -112,6 +137,7 @@ export function createModelCatalog(
   defaultModelId: string,
   configuredReasoning: string | undefined,
   discoveredModelNames?: string[],
+  agents: ChatAgentDefinition[] = [],
 ): ModelCatalogResponse {
   const configuredModelName =
     defaultModelId.split("/").slice(1).join("/") || defaultModelId;
@@ -145,7 +171,9 @@ export function createModelCatalog(
 
   return {
     models,
+    agents,
     defaultSelection: {
+      agentId: DEFAULT_CHAT_AGENT_ID,
       modelId: defaultModel.id,
       reasoningEffort:
         configuredEffort && defaultModel.reasoningEfforts.includes(configuredEffort)
@@ -159,6 +187,9 @@ export function normalizeModelSelection(
   catalog: ModelCatalogResponse,
   selection?: Partial<ModelSelection>,
 ): ModelSelection {
+  const selectedAgent = catalog.agents.find(
+    (candidate) => candidate.id === selection?.agentId,
+  );
   const model =
     catalog.models.find((candidate) => candidate.id === selection?.modelId) ??
     catalog.models.find(
@@ -168,9 +199,12 @@ export function normalizeModelSelection(
   const requestedEffort = selection?.reasoningEffort;
 
   return {
+    agentId: selectedAgent?.id ?? DEFAULT_CHAT_AGENT_ID,
     modelId: model.id,
     reasoningEffort:
-      requestedEffort && model.reasoningEfforts.includes(requestedEffort)
+      selectedAgent
+        ? null
+        : requestedEffort && model.reasoningEfforts.includes(requestedEffort)
         ? requestedEffort
         : model.defaultReasoningEffort,
   };

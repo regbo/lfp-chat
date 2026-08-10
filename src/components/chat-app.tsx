@@ -76,6 +76,7 @@ import {
   type ChatSessionStatus,
 } from "@/lib/chat-session-store";
 import {
+  DEFAULT_CHAT_AGENT_ID,
   formatReasoningEffort,
   MODEL_CONTEXT_KEY,
   normalizeModelSelection,
@@ -313,11 +314,16 @@ function ModelSelector({
   const selectedModel = catalog?.models.find(
     (model) => model.id === selection?.modelId,
   );
-  const label = selectedModel
+  const selectedAgent = catalog?.agents.find(
+    (agent) => agent.id === selection?.agentId,
+  );
+  const label = selectedAgent
+    ? selectedAgent.shortLabel
+    : selectedModel
     ? [selectedModel.shortLabel, formatReasoningEffort(selection?.reasoningEffort ?? null)]
         .filter(Boolean)
         .join(" ")
-    : "Model";
+    : "Model or agent";
 
   return (
     <DropdownMenu>
@@ -325,9 +331,9 @@ function ModelSelector({
         disabled={disabled || !catalog || !selection}
         render={
           <PromptInputButton
-            aria-label="Select model and reasoning"
+            aria-label="Select model, agent, and reasoning"
             className="chat-ui-text max-w-[13rem] gap-1 rounded-full px-2 text-muted-foreground"
-            tooltip="Model and reasoning"
+            tooltip="Model or agent"
           />
         }
       >
@@ -341,7 +347,32 @@ function ModelSelector({
         sideOffset={8}
       >
         <DropdownMenuGroup>
-          <DropdownMenuLabel>Model and reasoning</DropdownMenuLabel>
+          <DropdownMenuLabel>Agents</DropdownMenuLabel>
+          {catalog?.agents.map((agent) => (
+            <DropdownMenuItem
+              key={agent.id}
+              onClick={() =>
+                onSelect({
+                  agentId: agent.id,
+                  modelId:
+                    selection?.modelId ?? catalog.defaultSelection.modelId,
+                  reasoningEffort: null,
+                })
+              }
+            >
+              <span className="min-w-0 flex-1">
+                <span className="block truncate font-medium">{agent.label}</span>
+                <span className="chat-meta-text block truncate text-muted-foreground">
+                  {agent.description}
+                </span>
+              </span>
+              {agent.id === selection?.agentId && (
+                <Check className="size-3.5 text-muted-foreground" />
+              )}
+            </DropdownMenuItem>
+          ))}
+          <DropdownMenuSeparator />
+          <DropdownMenuLabel>Models and reasoning</DropdownMenuLabel>
           {catalog?.models.map((model) =>
             model.reasoningEfforts.length > 0 ? (
               <DropdownMenuSub key={model.id}>
@@ -365,7 +396,11 @@ function ModelSelector({
                       <DropdownMenuItem
                         key={effort}
                         onClick={() =>
-                          onSelect({ modelId: model.id, reasoningEffort: effort })
+                          onSelect({
+                            agentId: DEFAULT_CHAT_AGENT_ID,
+                            modelId: model.id,
+                            reasoningEffort: effort,
+                          })
                         }
                       >
                         <span className="flex-1">{formatReasoningEffort(effort)}</span>
@@ -381,7 +416,13 @@ function ModelSelector({
             ) : (
               <DropdownMenuItem
                 key={model.id}
-                onClick={() => onSelect({ modelId: model.id, reasoningEffort: null })}
+                onClick={() =>
+                  onSelect({
+                    agentId: DEFAULT_CHAT_AGENT_ID,
+                    modelId: model.id,
+                    reasoningEffort: null,
+                  })
+                }
               >
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-medium">{model.label}</span>
@@ -593,7 +634,8 @@ function ChatSession({
     try {
       const requestContext = {
         [TOOLS_CONTEXT_KEY]: enabledToolIds,
-        ...(modelSelection?.modelId
+        ...(modelSelection?.agentId === DEFAULT_CHAT_AGENT_ID &&
+        modelSelection.modelId
           ? {
               [MODEL_CONTEXT_KEY]: modelSelection.modelId,
               [REASONING_CONTEXT_KEY]: modelSelection.reasoningEffort,
@@ -601,6 +643,7 @@ function ChatSession({
           : {}),
       };
       const stream = await browserMastraClient.streamChat({
+        agentId: modelSelection?.agentId ?? DEFAULT_CHAT_AGENT_ID,
         // Memory is keyed by thread/resource on the server, so only this turn
         // crosses the wire instead of resending the complete transcript.
         messages: [userMessage],

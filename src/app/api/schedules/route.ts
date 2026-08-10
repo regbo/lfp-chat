@@ -1,5 +1,8 @@
 import { mastraClient } from "@/lib/mastra-client";
+import { serverConfig } from "@/lib/config";
 import {
+  CODEX_CHAT_AGENT_ID,
+  DEFAULT_CHAT_AGENT_ID,
   MODEL_CONTEXT_KEY,
   REASONING_CONTEXT_KEY,
   reasoningEfforts,
@@ -18,6 +21,7 @@ const createScheduleSchema = z.object({
   resourceId: z.string().min(1),
   enabledToolIds: z.array(z.string()).optional(),
   modelSelection: z.object({
+    agentId: z.enum([DEFAULT_CHAT_AGENT_ID, CODEX_CHAT_AGENT_ID]),
     modelId: z.string().min(1),
     reasoningEffort: z.enum(reasoningEfforts).nullable(),
   }).nullable().optional(),
@@ -30,9 +34,19 @@ export async function GET(request: Request) {
   }
 
   try {
-    return Response.json(
-      await mastraClient.listSchedules({ agentId: "chatAgent", resourceId }),
+    const agentIds = serverConfig.codexAgentEnabled
+      ? [DEFAULT_CHAT_AGENT_ID, CODEX_CHAT_AGENT_ID]
+      : [DEFAULT_CHAT_AGENT_ID];
+    const results = await Promise.all(
+      agentIds.map((agentId) =>
+        mastraClient.listSchedules({ agentId, resourceId }),
+      ),
     );
+    return Response.json({
+      schedules: results
+        .flatMap((result) => result.schedules ?? [])
+        .sort((left, right) => left.nextFireAt - right.nextFireAt),
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to load schedules.";
     return Response.json({ error: message }, { status: 503 });
@@ -49,9 +63,11 @@ export async function POST(request: Request) {
   let threadCreated = false;
 
   try {
+    const agentId =
+      parsed.data.modelSelection?.agentId ?? DEFAULT_CHAT_AGENT_ID;
     const title = `Scheduled: ${parsed.data.name || parsed.data.prompt.slice(0, 60)}`;
     await mastraClient.createMemoryThread({
-      agentId: "chatAgent",
+      agentId,
       resourceId: parsed.data.resourceId,
       threadId,
       title,
@@ -62,13 +78,16 @@ export async function POST(request: Request) {
     const requestContext: Record<string, unknown> = {
       [TOOLS_CONTEXT_KEY]: enabledToolIds,
     };
-    if (parsed.data.modelSelection) {
+    if (
+      parsed.data.modelSelection &&
+      agentId === DEFAULT_CHAT_AGENT_ID
+    ) {
       requestContext[MODEL_CONTEXT_KEY] = parsed.data.modelSelection.modelId;
       requestContext[REASONING_CONTEXT_KEY] =
         parsed.data.modelSelection.reasoningEffort;
     }
     const schedule = await mastraClient.createSchedule({
-      agentId: "chatAgent",
+      agentId,
       prompt: parsed.data.prompt,
       cron: parsed.data.cron,
       timezone: parsed.data.timezone,
@@ -81,13 +100,16 @@ export async function POST(request: Request) {
         behavior: "wake",
         streamOptions: { requestContext },
       },
-      metadata: { conversationThreadId: threadId },
+      metadata: { conversationThreadId: threadId, agentId },
     });
     return Response.json({ schedule }, { status: 201 });
   } catch (error) {
     if (threadCreated) {
       await mastraClient
-        .deleteThread(threadId, { agentId: "chatAgent" })
+        .deleteThread(threadId, {
+          agentId:
+            parsed.data.modelSelection?.agentId ?? DEFAULT_CHAT_AGENT_ID,
+        })
         .catch(() => undefined);
     }
     const message = error instanceof Error ? error.message : "Unable to create schedule.";
