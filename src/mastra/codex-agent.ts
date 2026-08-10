@@ -26,24 +26,27 @@ const codexWorkspace = new Workspace({
   }),
 });
 
-const codexCli = new AcpAgent({
-  id: "codexCli",
-  name: "Codex CLI",
-  description:
-    "OpenAI Codex coding agent with file, shell, Git, reasoning, and tool capabilities.",
-  command: getCodexAcpCommand(),
-  cwd: serverConfig.codexWorkspacePath,
-  workspace: codexWorkspace,
-  authMethodId: "api-key",
-  persistSession: false,
-  env: {
-    NO_BROWSER: "1",
-    INITIAL_AGENT_MODE: serverConfig.codexAgentMode,
-    DEFAULT_AUTH_REQUEST: JSON.stringify({ methodId: "api-key" }),
-  },
-});
+export function createCodexCli() {
+  return new AcpAgent({
+    id: "codexCli",
+    name: "Codex CLI",
+    description:
+      "OpenAI Codex coding agent with file, shell, Git, reasoning, and tool capabilities.",
+    command: getCodexAcpCommand(),
+    cwd: serverConfig.codexWorkspacePath,
+    workspace: codexWorkspace,
+    authMethodId: "api-key",
+    persistSession: false,
+    env: {
+      NO_BROWSER: "1",
+      INITIAL_AGENT_MODE: serverConfig.codexAgentMode,
+      DEFAULT_AUTH_REQUEST: JSON.stringify({ methodId: "api-key" }),
+    },
+  });
+}
 
 export function createCodexAgent(memory: ConstructorParameters<typeof Agent>[0]["memory"]) {
+  const codexCli = createCodexCli();
   return new Agent({
     id: "codexAgent",
     name: "Codex CLI",

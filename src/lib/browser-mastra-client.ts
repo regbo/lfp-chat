@@ -2,6 +2,8 @@
 
 import { MastraClient } from "@mastra/client-js";
 
+import { CODEX_CHAT_AGENT_ID } from "@/lib/model-catalog";
+
 export type MastraStreamChunk = {
   type: string;
   payload?: Record<string, unknown>;
@@ -61,17 +63,30 @@ class LfpMastraClient extends MastraClient {
     requestContext: Record<string, unknown>;
     signal: AbortSignal;
   }): Promise<MastraStreamResponse> {
+    const endpoint =
+      options.agentId === CODEX_CHAT_AGENT_ID
+        ? "/api/mastra/codex/stream"
+        : `/api/mastra/agents/${encodeURIComponent(options.agentId)}/stream`;
     const response = await fetch(
-      `/api/mastra/agents/${encodeURIComponent(options.agentId)}/stream`,
+      endpoint,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          messages: options.messages,
-          runId: options.runId,
-          memory: { thread: options.threadId, resource: options.resourceId },
-          requestContext: options.requestContext,
-        }),
+        body: JSON.stringify(
+          options.agentId === CODEX_CHAT_AGENT_ID
+            ? {
+                messages: options.messages,
+                runId: options.runId,
+                threadId: options.threadId,
+                resourceId: options.resourceId,
+              }
+            : {
+                messages: options.messages,
+                runId: options.runId,
+                memory: { thread: options.threadId, resource: options.resourceId },
+                requestContext: options.requestContext,
+              },
+        ),
         signal: options.signal,
       },
     );
