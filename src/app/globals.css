@@ -87,6 +87,10 @@
   --chat-inline-gutter: clamp(1rem, 3vw, 2.5rem);
   --chat-turn-gap: 1rem;
   --chat-composer-shadow: 0 10px 28px -18px rgb(0 0 0 / 28%), 0 1px 2px rgb(0 0 0 / 5%);
+  --text-chat: 0.9375rem;
+  --leading-chat: 1.55;
+  --text-ui: 0.875rem;
+  --text-ui-emphasis: 0.9375rem;
 }
 
 .dark {
@@ -150,6 +154,11 @@
     padding-inline: var(--chat-inline-gutter);
   }
 
+  .chat-ui-emphasis {
+    font-size: var(--text-ui-emphasis);
+    line-height: 1.4;
+  }
+
   /* Streamdown builds this overlap at runtime, outside Tailwind's source scan. */
   [data-streamdown="code-block"]
     > div:has(> [data-streamdown="code-block-actions"]) {
@@ -157,11 +166,13 @@
   }
 
   .sidebar-item {
-    @apply flex min-h-8 w-full items-center gap-2 rounded-lg px-2 py-1 text-left text-[13px] transition-colors hover:bg-sidebar-accent;
+    @apply flex min-h-8 w-full items-center gap-2 rounded-lg px-2 py-1 text-left transition-colors hover:bg-sidebar-accent;
+    font-size: var(--text-ui);
   }
 
   .sidebar-chat-link {
-    @apply flex min-h-8 min-w-0 items-center rounded-lg px-2 py-1 text-[13px] leading-5 transition-colors hover:bg-sidebar-accent;
+    @apply flex min-h-8 min-w-0 items-center rounded-lg px-2 py-1 leading-5 transition-colors hover:bg-sidebar-accent;
+    font-size: var(--text-ui);
   }
 
   .sidebar-chat-link-active {

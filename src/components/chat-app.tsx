@@ -390,7 +390,7 @@ function ChatComposer({ draft, editingSteerId, modelCatalog, modelSelection, onD
         <PromptInputBody>
           <PromptInputTextarea
             aria-label="Chat with LFP Chat"
-            className="min-h-0 min-w-0 flex-1 px-2 py-2.5 text-[14px] leading-6"
+            className="min-h-0 min-w-0 flex-1 px-2 py-2.5 text-[length:var(--text-ui-emphasis)] leading-[1.4] md:text-[length:var(--text-ui-emphasis)]"
             onChange={(event) => onDraftChange(event.currentTarget.value)}
             placeholder={editingSteerId ? "Edit steer" : "Ask anything"}
             rows={1}
@@ -425,7 +425,7 @@ function ChatMessage({ message, streaming }: { message: UIMessage; streaming: bo
   return (
     <Message className="chat-column" from={message.role}>
       <div className={cn("relative min-w-0 max-w-full", isUser && "ml-auto w-fit")}>
-        <MessageContent className="text-[15px] leading-[1.55] tracking-[-0.012em]">
+        <MessageContent className="text-[length:var(--text-chat)] leading-[var(--leading-chat)] tracking-[-0.01em]">
           {showReasoning && (
             <Reasoning isStreaming={streaming}>
               <ReasoningTrigger status={runningToolLabel} />
@@ -901,7 +901,7 @@ export function ChatApp({ initialThreadId }: { initialThreadId?: string }) {
   const sidebar = (
     <aside className="flex h-full w-[244px] shrink-0 flex-col bg-sidebar px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-[max(0.4rem,env(safe-area-inset-top))] text-sidebar-foreground">
       <div className="mb-1.5 flex items-center justify-between px-1">
-        <button className="flex items-baseline gap-1 rounded-lg px-2 py-1.5 text-[15px] font-semibold tracking-[-0.02em] hover:bg-sidebar-accent" onClick={newChat} type="button">
+        <button className="flex items-baseline gap-1 rounded-lg px-2 py-1.5 text-base font-semibold tracking-[-0.015em] hover:bg-sidebar-accent" onClick={newChat} type="button">
           LFP Chat
         </button>
         <Button
@@ -934,7 +934,7 @@ export function ChatApp({ initialThreadId }: { initialThreadId?: string }) {
       <div className="mt-4 min-h-0 flex-1 overflow-y-auto">
         {threads.length > 0 && (
           <>
-            <p className="px-2 pb-1 text-[11px] font-medium text-muted-foreground/80">Pinned</p>
+            <p className="px-2 pb-1 text-xs font-medium text-muted-foreground/80">Pinned</p>
             <div className="mb-3 space-y-px">
               {threads.slice(0, 2).map((thread) => (
                 <Link className={cn("sidebar-chat-link truncate", thread.id === threadId && "sidebar-chat-link-active")} href={threadHref(thread.id)} key={`pinned-${thread.id}`} onClick={() => void openThread(thread.id, false)}>
@@ -944,11 +944,11 @@ export function ChatApp({ initialThreadId }: { initialThreadId?: string }) {
             </div>
           </>
         )}
-        <p className="px-2 pb-1 text-[11px] font-medium text-muted-foreground/80">Recents</p>
+        <p className="px-2 pb-1 text-xs font-medium text-muted-foreground/80">Recents</p>
         <div className="space-y-px">
           {threads.slice(2).map((thread) => (
             <div className={cn("group flex min-h-8 items-center rounded-lg hover:bg-sidebar-accent", thread.id === threadId && "sidebar-chat-link-active")} key={thread.id}>
-              <Link className="min-w-0 flex-1 truncate px-2 py-1 text-[13px] leading-5" href={threadHref(thread.id)} onClick={() => void openThread(thread.id, false)}>
+              <Link className="min-w-0 flex-1 truncate px-2 py-1 text-sm leading-5" href={threadHref(thread.id)} onClick={() => void openThread(thread.id, false)}>
                 {thread.title || "New chat"}
               </Link>
               <Button
@@ -1008,7 +1008,7 @@ export function ChatApp({ initialThreadId }: { initialThreadId?: string }) {
                 }
               >
                 <Folder className="size-4 shrink-0 text-muted-foreground" />
-                <span className="truncate text-[14px] font-medium tracking-[-0.015em]">{activeConversationTitle}</span>
+                <span className="chat-ui-emphasis truncate font-medium tracking-[-0.01em]">{activeConversationTitle}</span>
                 <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
               </DropdownMenuTrigger>
               <DropdownMenuContent className="w-72" sideOffset={6}>
@@ -1028,7 +1028,7 @@ export function ChatApp({ initialThreadId }: { initialThreadId?: string }) {
               </DropdownMenuContent>
             </DropdownMenu>
           ) : (
-            <span className="text-[14px] font-medium">{activeView[0].toUpperCase() + activeView.slice(1)}</span>
+            <span className="chat-ui-emphasis font-medium">{activeView[0].toUpperCase() + activeView.slice(1)}</span>
           )}
           <Button aria-label="Memory enabled" className="ml-auto" size="icon-sm" variant="ghost">
             <Database className="size-4" />
