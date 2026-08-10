@@ -88,13 +88,43 @@
   --chat-inline-gutter: clamp(1rem, 3vw, 2.5rem);
   --chat-turn-gap: 0.625rem;
   --chat-composer-shadow: 0 10px 28px -18px rgb(0 0 0 / 28%), 0 1px 2px rgb(0 0 0 / 5%);
-  --code-block-font-size: var(--text-chat);
-  --code-block-header-height: 1.5rem;
-  --code-block-inset: 0.25rem;
+  /* One compact sizing scale owns app text, controls, menus, and rich output. */
   --text-chat: 0.75rem;
-  --leading-chat: 1.55;
   --text-ui: 0.75rem;
   --text-ui-emphasis: 0.8125rem;
+  --text-meta: 0.6875rem;
+  --text-display: clamp(1.25rem, 1.1rem + 0.55vw, 1.5rem);
+  --leading-chat: 1.5;
+  --leading-ui: 1.35;
+  --leading-meta: 1.3;
+  --weight-ui: 400;
+  --weight-emphasis: 500;
+  --weight-strong: 600;
+  --control-height-xs: 1.5rem;
+  --control-height-sm: 1.75rem;
+  --control-height-md: 2rem;
+  --control-height-lg: 2.25rem;
+  --control-radius: 0.625rem;
+  --control-gap: 0.375rem;
+  --control-padding-inline: 0.625rem;
+  --composer-height: 3.25rem;
+  --composer-radius: calc(var(--composer-height) / 2);
+  --composer-submit-size: 2.25rem;
+  --icon-size-sm: 0.75rem;
+  --icon-size-md: 0.875rem;
+  --icon-size-lg: 1rem;
+  --menu-padding: 0.25rem;
+  --menu-item-height: 1.75rem;
+  --menu-item-padding-inline: 0.5rem;
+  --menu-item-gap: 0.5rem;
+  --badge-height: 1.25rem;
+  --markdown-block-gap: 0.75rem;
+  --inline-code-size: 0.92em;
+  --inline-code-padding-block: 0.0625rem;
+  --inline-code-padding-inline: 0.25rem;
+  --code-block-font-size: 0.71875rem;
+  --code-block-header-height: 1.5rem;
+  --code-block-inset: 0.25rem;
 }
 
 .dark {
@@ -160,7 +190,45 @@
 
   .chat-ui-emphasis {
     font-size: var(--text-ui-emphasis);
-    line-height: 1.4;
+    line-height: var(--leading-ui);
+    font-weight: var(--weight-emphasis);
+  }
+
+  .chat-ui-text {
+    font-size: var(--text-ui);
+    line-height: var(--leading-ui);
+  }
+
+  .chat-meta-text {
+    font-size: var(--text-meta);
+    line-height: var(--leading-meta);
+  }
+
+  .chat-display-text {
+    font-size: var(--text-display);
+    line-height: 1.2;
+    font-weight: var(--weight-emphasis);
+    letter-spacing: -0.015em;
+  }
+
+  .chat-message-content,
+  .chat-markdown {
+    font-size: var(--text-chat);
+    line-height: var(--leading-chat);
+    letter-spacing: -0.01em;
+  }
+
+  .chat-reasoning-trigger,
+  .chat-tool-summary-trigger,
+  .chat-steer-row {
+    font-size: var(--text-ui);
+    line-height: var(--leading-ui);
+  }
+
+  .chat-reasoning-content,
+  .chat-tool-section-title {
+    font-size: var(--text-meta);
+    line-height: var(--leading-meta);
   }
 
   .sidebar-item {
@@ -176,7 +244,235 @@
   .sidebar-chat-link-active {
     @apply bg-sidebar-selected text-sidebar-accent-foreground;
   }
+
+  [data-slot="button"] {
+    height: var(--control-height-md);
+    gap: var(--control-gap);
+    padding-inline: var(--control-padding-inline);
+    border-radius: var(--control-radius);
+    font-size: var(--text-ui);
+    line-height: var(--leading-ui);
+    font-weight: var(--weight-emphasis);
+  }
+
+  [data-slot="button"][data-size="xs"] {
+    height: var(--control-height-xs);
+    padding-inline: 0.5rem;
+    font-size: var(--text-meta);
+  }
+
+  [data-slot="button"][data-size="sm"] {
+    height: var(--control-height-sm);
+  }
+
+  [data-slot="button"][data-size="lg"] {
+    height: var(--control-height-lg);
+  }
+
+  [data-slot="button"][data-size^="icon"] {
+    width: var(--control-height-md);
+    padding-inline: 0;
+  }
+
+  [data-slot="button"][data-size="icon-xs"] {
+    width: var(--control-height-xs);
+    height: var(--control-height-xs);
+  }
+
+  [data-slot="button"][data-size="icon-sm"] {
+    width: var(--control-height-sm);
+    height: var(--control-height-sm);
+  }
+
+  [data-slot="button"][data-size="icon-lg"] {
+    width: var(--control-height-lg);
+    height: var(--control-height-lg);
+  }
+
+  [data-slot="input"],
+  [data-slot="textarea"] {
+    font-size: var(--text-ui);
+    line-height: var(--leading-ui);
+  }
+
+  [data-slot="badge"],
+  [data-slot="tooltip-content"],
+  [data-slot="command-shortcut"] {
+    font-size: var(--text-meta);
+    line-height: var(--leading-meta);
+  }
+
+  [data-slot="badge"] {
+    height: var(--badge-height);
+  }
+
+  :where(
+    [data-slot="dialog-content"],
+    [data-slot="dialog-description"],
+    [data-slot="hover-card-content"],
+    [data-slot="command-input"],
+    [data-slot="command-empty"],
+    [data-slot="command-item"],
+    [data-slot="select-trigger"],
+    [data-slot="select-item"],
+    [data-slot="input-group-addon"]
+  ) {
+    font-size: var(--text-ui);
+    line-height: var(--leading-ui);
+  }
+
+  [data-slot="dialog-title"] {
+    font-size: var(--text-ui-emphasis);
+    line-height: var(--leading-ui);
+    font-weight: var(--weight-emphasis);
+  }
+
+  :where(
+    [data-slot="command-group"] [cmdk-group-heading],
+    [data-slot="select-label"]
+  ) {
+    font-size: var(--text-meta);
+    line-height: var(--leading-meta);
+  }
+
+  [data-slot="dropdown-menu-content"],
+  [data-slot="dropdown-menu-sub-content"] {
+    padding: var(--menu-padding);
+    font-size: var(--text-ui);
+    line-height: var(--leading-ui);
+  }
+
+  :where(
+    [data-slot="dropdown-menu-item"],
+    [data-slot="dropdown-menu-sub-trigger"],
+    [data-slot="dropdown-menu-checkbox-item"],
+    [data-slot="dropdown-menu-radio-item"]
+  ) {
+    min-height: var(--menu-item-height);
+    gap: var(--menu-item-gap);
+    padding-block: 0.25rem;
+    padding-inline: var(--menu-item-padding-inline);
+    font-size: var(--text-ui);
+    line-height: var(--leading-ui);
+  }
+
+  :where(
+    [data-slot="dropdown-menu-item"],
+    [data-slot="dropdown-menu-sub-trigger"],
+    [data-slot="dropdown-menu-checkbox-item"],
+    [data-slot="dropdown-menu-radio-item"]
+  ) svg {
+    width: var(--icon-size-md);
+    height: var(--icon-size-md);
+  }
+
+  [data-slot="dropdown-menu-label"],
+  [data-slot="dropdown-menu-shortcut"] {
+    font-size: var(--text-meta);
+    line-height: var(--leading-meta);
+  }
+
+  [data-slot="dropdown-menu-label"] {
+    padding: 0.25rem var(--menu-item-padding-inline);
+  }
+
+  .chat-composer [data-slot="input-group"] {
+    height: var(--composer-height);
+    padding-inline: 0.5rem;
+    border-color: color-mix(in oklab, var(--border) 65%, transparent);
+    border-radius: var(--composer-radius);
+    background: var(--background);
+    box-shadow: var(--chat-composer-shadow);
+  }
+
+  .chat-composer [data-slot="input-group"]:has([data-attachments]) {
+    height: auto;
+  }
+
+  .chat-composer [data-slot="input-group-control"] {
+    min-height: 0;
+    min-width: 0;
+    padding: 0.625rem 0.5rem;
+    font-size: var(--text-ui-emphasis);
+    line-height: var(--leading-ui);
+  }
+
+  .chat-composer-submit {
+    width: var(--composer-submit-size);
+    height: var(--composer-submit-size);
+    border-radius: 999px;
+  }
+
+  .chat-code-header {
+    min-height: var(--code-block-header-height);
+    padding: 0.25rem 0.5rem;
+    font-size: var(--text-meta);
+    line-height: var(--leading-meta);
+  }
+
+  .chat-code-body {
+    padding: 0.625rem 0.75rem;
+    font-size: var(--code-block-font-size);
+    line-height: var(--leading-chat);
+  }
+
+  .chat-code-body > code > span::before {
+    width: 1.25rem;
+    margin-right: 0.75rem;
+    font-size: var(--text-meta);
+  }
+
+  .chat-code-selector {
+    height: var(--control-height-sm);
+    padding-inline: 0.5rem;
+    font-size: var(--text-meta);
+  }
 }
+
+/* Streamdown has its own fixed type scale. These selectors make rich output
+   inherit the same compact scale as the rest of the conversation. */
+.chat-markdown > * {
+  margin-block: 0;
+}
+
+.chat-markdown > * + * {
+  margin-top: var(--markdown-block-gap);
+}
+
+:where(
+  [data-slot="dropdown-menu-item"],
+  [data-slot="dropdown-menu-sub-trigger"],
+  [data-slot="dropdown-menu-checkbox-item"],
+  [data-slot="dropdown-menu-radio-item"]
+) svg {
+  width: var(--icon-size-md);
+  height: var(--icon-size-md);
+}
+
+[data-streamdown="inline-code"] {
+  padding: var(--inline-code-padding-block) var(--inline-code-padding-inline);
+  font-size: var(--inline-code-size);
+  line-height: inherit;
+}
+
+:where(
+  [data-streamdown="table-header-cell"],
+  [data-streamdown="table-cell"],
+  [data-streamdown="superscript"],
+  [data-streamdown="subscript"]
+) {
+  font-size: var(--text-chat);
+  line-height: var(--leading-chat);
+}
+
+[data-streamdown="heading-1"] { font-size: 1.25em; }
+[data-streamdown="heading-2"] { font-size: 1.16em; }
+[data-streamdown="heading-3"] { font-size: 1.1em; }
+:where(
+  [data-streamdown="heading-4"],
+  [data-streamdown="heading-5"],
+  [data-streamdown="heading-6"]
+) { font-size: 1em; }
 
 /* Streamdown ships utility classes in a later cascade layer. These unlayered
    rules intentionally own the compact code-block geometry. */

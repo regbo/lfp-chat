@@ -44,8 +44,8 @@ function PanelShell({ title, description, children }: { title: string; descripti
   return (
     <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-12 pt-8 md:px-10">
       <div className="mx-auto w-full max-w-3xl">
-        <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
-        <p className="mt-1 text-sm text-muted-foreground">{description}</p>
+        <h1 className="chat-display-text">{title}</h1>
+        <p className="chat-ui-text mt-1 text-muted-foreground">{description}</p>
         <div className="mt-7">{children}</div>
       </div>
     </div>
@@ -67,15 +67,15 @@ export function ArchivedPanel({
         {threads.map((thread) => (
           <div className="group flex items-center rounded-xl px-2 hover:bg-muted/55" key={thread.id}>
             <button className="min-w-0 flex-1 px-1 py-2.5 text-left" onClick={() => onOpen(thread.id)} type="button">
-              <p className="truncate text-sm font-medium">{thread.title || "New chat"}</p>
-              <p className="mt-0.5 text-xs text-muted-foreground">
+              <p className="chat-ui-text truncate font-medium">{thread.title || "New chat"}</p>
+              <p className="chat-meta-text mt-0.5 text-muted-foreground">
                 {thread.updatedAt ? new Date(thread.updatedAt).toLocaleString() : "Archived conversation"}
               </p>
             </button>
             {renderActions(thread)}
           </div>
         ))}
-        {threads.length === 0 && <p className="py-10 text-center text-sm text-muted-foreground">No archived chats.</p>}
+        {threads.length === 0 && <p className="chat-ui-text py-10 text-center text-muted-foreground">No archived chats.</p>}
       </div>
     </PanelShell>
   );
@@ -96,11 +96,11 @@ export function SearchPanel({ threads, onOpen }: { threads: ThreadSummary[]; onO
       <div className="mt-4 space-y-1">
         {results.map((thread) => (
           <button className="w-full rounded-xl px-3 py-3 text-left hover:bg-muted" key={thread.id} onClick={() => onOpen(thread.id)} type="button">
-            <p className="truncate text-sm font-medium">{thread.title || "New chat"}</p>
-            <p className="mt-0.5 text-xs text-muted-foreground">{thread.updatedAt ? new Date(thread.updatedAt).toLocaleString() : "Saved conversation"}</p>
+            <p className="chat-ui-text truncate font-medium">{thread.title || "New chat"}</p>
+            <p className="chat-meta-text mt-0.5 text-muted-foreground">{thread.updatedAt ? new Date(thread.updatedAt).toLocaleString() : "Saved conversation"}</p>
           </button>
         ))}
-        {results.length === 0 && <p className="py-10 text-center text-sm text-muted-foreground">No matching chats.</p>}
+        {results.length === 0 && <p className="chat-ui-text py-10 text-center text-muted-foreground">No matching chats.</p>}
       </div>
     </PanelShell>
   );
@@ -186,11 +186,11 @@ export function SchedulesPanel({
           <Input aria-label="Timezone" onChange={(event) => setTimezone(event.target.value)} required value={timezone} />
         </div>
         <div className="flex items-center justify-between gap-3">
-          <p className="text-xs text-muted-foreground">Cron: minute hour day month weekday</p>
+          <p className="chat-meta-text text-muted-foreground">Cron: minute hour day month weekday</p>
           <Button className="rounded-full" disabled={busy} type="submit">{busy && <LoaderCircle className="animate-spin" />} Create schedule</Button>
         </div>
       </form>
-      {error && <p className="mt-3 rounded-xl bg-destructive/10 p-3 text-sm text-destructive">{error}</p>}
+      {error && <p className="chat-ui-text mt-3 rounded-xl bg-destructive/10 p-3 text-destructive">{error}</p>}
       <div className="mt-6 space-y-3">
         {schedules.map((schedule) => (
           <div className="rounded-2xl border p-4" key={schedule.id}>
@@ -198,10 +198,10 @@ export function SchedulesPanel({
               <Clock3 className="mt-0.5 size-4 text-muted-foreground" />
               <div className="min-w-0 flex-1">
                 <p className="font-medium">{schedule.name || schedule.prompt}</p>
-                <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{schedule.prompt}</p>
-                <p className="mt-2 text-xs text-muted-foreground">{schedule.cron} · {schedule.timezone || "UTC"} · Next {formatFireAt(schedule.nextFireAt)}</p>
+                <p className="chat-ui-text mt-1 line-clamp-2 text-muted-foreground">{schedule.prompt}</p>
+                <p className="chat-meta-text mt-2 text-muted-foreground">{schedule.cron} · {schedule.timezone || "UTC"} · Next {formatFireAt(schedule.nextFireAt)}</p>
               </div>
-              <span className={cn("rounded-full px-2 py-1 text-xs", schedule.status === "active" ? "bg-emerald-500/10 text-emerald-700" : "bg-muted text-muted-foreground")}>{schedule.status}</span>
+              <span className={cn("chat-meta-text rounded-full px-2 py-1", schedule.status === "active" ? "bg-emerald-500/10 text-emerald-700" : "bg-muted text-muted-foreground")}>{schedule.status}</span>
             </div>
             <div className="mt-3 flex justify-end gap-1">
               {schedule.threadId && (
@@ -213,7 +213,7 @@ export function SchedulesPanel({
             </div>
           </div>
         ))}
-        {schedules.length === 0 && <p className="py-8 text-center text-sm text-muted-foreground">No schedules yet.</p>}
+        {schedules.length === 0 && <p className="chat-ui-text py-8 text-center text-muted-foreground">No schedules yet.</p>}
       </div>
     </PanelShell>
   );
@@ -255,11 +255,11 @@ export function ToolsPanel({
             >
               <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-background shadow-sm"><Icon className="size-4" /></span>
               <span className="min-w-0 flex-1">
-                <span className="flex items-center gap-2 text-sm font-medium">
+                <span className="chat-ui-text flex items-center gap-2 font-medium">
                   {detail.title}
                   {"dangerous" in detail && detail.dangerous && <ShieldAlert className="size-3.5 text-amber-600" />}
                 </span>
-                <span className="mt-0.5 block text-xs leading-5 text-muted-foreground">{detail.description}</span>
+                <span className="chat-meta-text mt-0.5 block text-muted-foreground">{detail.description}</span>
               </span>
               <span className={cn("grid size-5 place-items-center rounded-full border", enabled ? "border-foreground bg-foreground text-background" : "border-border bg-background")}>
                 {enabled && <Check className="size-3" />}
@@ -268,7 +268,7 @@ export function ToolsPanel({
           );
         })}
       </div>
-      <p className="mt-4 text-xs leading-5 text-muted-foreground">Code mode is disabled by default. When enabled, its Mastra workspace can read and modify the host filesystem and execute local commands.</p>
+      <p className="chat-meta-text mt-4 text-muted-foreground">Code mode is disabled by default. When enabled, its Mastra workspace can read and modify the host filesystem and execute local commands.</p>
     </PanelShell>
   );
 }

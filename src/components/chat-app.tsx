@@ -238,7 +238,7 @@ function SelectedAttachments() {
           ) : (
             <span className="grid size-9 place-items-center rounded-lg bg-background"><FileText className="size-4" /></span>
           )}
-          <span className="min-w-0 flex-1 truncate text-xs">{file.filename || "Attachment"}</span>
+          <span className="chat-ui-text min-w-0 flex-1 truncate">{file.filename || "Attachment"}</span>
           <Button aria-label={`Remove ${file.filename || "attachment"}`} onClick={() => attachments.remove(file.id)} size="icon-xs" variant="ghost"><X /></Button>
         </div>
       ))}
@@ -256,7 +256,7 @@ function MessageAttachments({ files }: { files: FileUIPart[] }) {
             <Image alt={file.filename || "Attached image"} className="max-h-64 w-auto object-cover" height={180} src={file.url} unoptimized width={240} />
           </a>
         ) : (
-          <a className="flex max-w-64 items-center gap-2 rounded-xl border bg-muted/40 px-3 py-2 text-sm hover:bg-muted" download={file.filename} href={file.url} key={`${file.url}-${index}`}>
+          <a className="chat-ui-text flex max-w-64 items-center gap-2 rounded-xl border bg-muted/40 px-3 py-2 hover:bg-muted" download={file.filename} href={file.url} key={`${file.url}-${index}`}>
             <Paperclip className="size-4" /><span className="truncate">{file.filename || file.mediaType}</span>
           </a>
         ),
@@ -318,7 +318,7 @@ function ModelSelector({
         render={
           <PromptInputButton
             aria-label="Select model and reasoning"
-            className="max-w-[13rem] gap-1 rounded-full px-2 text-xs text-muted-foreground"
+            className="chat-ui-text max-w-[13rem] gap-1 rounded-full px-2 text-muted-foreground"
             tooltip="Model and reasoning"
           />
         }
@@ -337,7 +337,7 @@ function ModelSelector({
           {catalog?.models.map((model) =>
             model.reasoningEfforts.length > 0 ? (
               <DropdownMenuSub key={model.id}>
-                <DropdownMenuSubTrigger className="py-2">
+                <DropdownMenuSubTrigger>
                   <span className="min-w-0 flex-1">
                     <span className="flex items-center gap-1.5">
                       <span className="truncate font-medium">{model.label}</span>
@@ -345,7 +345,7 @@ function ModelSelector({
                         <Check className="size-3.5 text-muted-foreground" />
                       )}
                     </span>
-                    <span className="block truncate text-xs text-muted-foreground">
+                    <span className="chat-meta-text block truncate text-muted-foreground">
                       {model.description}
                     </span>
                   </span>
@@ -355,7 +355,6 @@ function ModelSelector({
                     <DropdownMenuLabel>Reasoning effort</DropdownMenuLabel>
                     {model.reasoningEfforts.map((effort) => (
                       <DropdownMenuItem
-                        className="py-1.5"
                         key={effort}
                         onClick={() =>
                           onSelect({ modelId: model.id, reasoningEffort: effort })
@@ -373,13 +372,12 @@ function ModelSelector({
               </DropdownMenuSub>
             ) : (
               <DropdownMenuItem
-                className="py-2"
                 key={model.id}
                 onClick={() => onSelect({ modelId: model.id, reasoningEffort: null })}
               >
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-medium">{model.label}</span>
-                  <span className="block truncate text-xs text-muted-foreground">
+                  <span className="chat-meta-text block truncate text-muted-foreground">
                     {model.description}
                   </span>
                 </span>
@@ -401,7 +399,7 @@ function ChatComposer({ draft, editingSteerId, modelCatalog, modelSelection, onD
       <SteerQueue items={steers} onDelete={onDeleteSteer} onEdit={onEditSteer} onReorder={onReorderSteer} onSteer={onSteer} />
       <PromptInput
         accept="image/*,application/pdf,text/plain,text/csv,application/json"
-        className="relative z-10 w-full [&_[data-slot=input-group]]:h-[52px] [&_[data-slot=input-group]]:rounded-[26px] [&_[data-slot=input-group]]:border-border/65 [&_[data-slot=input-group]]:bg-background [&_[data-slot=input-group]]:px-2 [&_[data-slot=input-group]]:shadow-[var(--chat-composer-shadow)] [&_[data-slot=input-group]:has([data-attachments])]:h-auto"
+        className="chat-composer relative z-10 w-full"
         globalDrop
         maxFileSize={10 * 1024 * 1024}
         maxFiles={5}
@@ -414,7 +412,7 @@ function ChatComposer({ draft, editingSteerId, modelCatalog, modelSelection, onD
         <PromptInputBody>
           <PromptInputTextarea
             aria-label="Chat with LFP Chat"
-            className="min-h-0 min-w-0 flex-1 px-2 py-2.5 text-[length:var(--text-ui-emphasis)] leading-[1.4] md:text-[length:var(--text-ui-emphasis)]"
+            className="flex-1"
             onChange={(event) => onDraftChange(event.currentTarget.value)}
             placeholder={editingSteerId ? "Edit steer" : "Ask anything"}
             rows={1}
@@ -428,7 +426,7 @@ function ChatComposer({ draft, editingSteerId, modelCatalog, modelSelection, onD
           selection={modelSelection}
         />
         <PromptInputButton aria-label="Start dictation" tooltip="Dictate"><Mic className="size-4" /></PromptInputButton>
-        <PromptInputSubmit className="size-9 rounded-full bg-foreground text-background hover:bg-foreground/85" onStop={onStop} status={editingSteerId ? "ready" : status} />
+        <PromptInputSubmit className="chat-composer-submit bg-foreground text-background hover:bg-foreground/85" onStop={onStop} status={editingSteerId ? "ready" : status} />
       </PromptInput>
     </div>
   );
@@ -451,7 +449,6 @@ function ChatMessage({ message, streaming }: { message: UIMessage; streaming: bo
       <div className={cn("relative min-w-0 max-w-full", isUser && "ml-auto w-fit")}>
         <MessageContent
           className={cn(
-            "text-[length:var(--text-chat)] leading-[var(--leading-chat)] tracking-[-0.01em]",
             !isUser && "w-full"
           )}
         >
@@ -693,14 +690,14 @@ function ChatSession({
           {isEmpty ? (
             <ConversationEmptyState className="min-h-[calc(100dvh-7rem)] justify-center px-0 pb-8">
               <div className="chat-column space-y-5">
-                <h1 className="text-balance text-center text-[22px] font-medium tracking-[-0.015em] md:text-[24px]">
+                <h1 className="chat-display-text text-balance text-center">
                   What&apos;s on your mind today?
                 </h1>
                 <ChatComposer {...composerProps} />
                 <div className="mx-auto flex max-w-[650px] flex-col gap-1.5 px-4">
                   {suggestions.map((suggestion) => (
                     <button
-                      className="rounded-xl px-4 py-2 text-left text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                      className="chat-ui-text rounded-xl px-4 py-2 text-left text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                       key={suggestion}
                       onClick={() => sendMessage({ text: suggestion })}
                       type="button"
@@ -725,17 +722,17 @@ function ChatSession({
             ))
           )}
           {(isStreaming || knownRunning) && !hasStreamingAssistant && (
-            <div className="chat-column flex items-center gap-2 text-[11px] text-muted-foreground">
+            <div className="chat-column chat-meta-text flex items-center gap-2 text-muted-foreground">
               <Sparkles className="size-4 animate-pulse" /> Thinking
             </div>
           )}
           {error && (
-            <div className="chat-column rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive">
+            <div className="chat-column chat-ui-text rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-destructive">
               {getErrorMessage(error)}
             </div>
           )}
           {steerError && (
-            <div className="chat-column rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive">{steerError}</div>
+            <div className="chat-column chat-ui-text rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-destructive">{steerError}</div>
           )}
         </ConversationContent>
         <ConversationScrollButton />
@@ -1160,7 +1157,7 @@ export function ChatApp({ initialThreadId }: { initialThreadId?: string }) {
   const sidebar = (
     <aside className="flex h-full w-[244px] shrink-0 flex-col bg-sidebar px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-[max(0.4rem,env(safe-area-inset-top))] text-sidebar-foreground">
       <div className="mb-1.5 flex items-center justify-between px-1">
-        <button className="flex items-baseline gap-1 rounded-lg px-2 py-1.5 text-[13px] font-semibold tracking-[-0.005em] hover:bg-sidebar-accent" onClick={newChat} type="button">
+        <button className="chat-ui-emphasis flex items-baseline gap-1 rounded-lg px-2 py-1.5 tracking-[-0.005em] hover:bg-sidebar-accent" onClick={newChat} type="button">
           LFP Chat
         </button>
         <Button
@@ -1193,11 +1190,11 @@ export function ChatApp({ initialThreadId }: { initialThreadId?: string }) {
       <div className="mt-4 min-h-0 flex-1 overflow-y-auto">
         {pinnedThreads.length > 0 && (
           <>
-            <p className="px-2 pb-1 text-[11px] font-medium text-muted-foreground/80">Pinned</p>
+            <p className="chat-meta-text px-2 pb-1 font-medium text-muted-foreground/80">Pinned</p>
             <div className="mb-3 space-y-px">
               {pinnedThreads.map((thread) => (
                 <div className={cn("group flex min-h-8 items-center rounded-lg hover:bg-sidebar-accent", thread.id === threadId && "sidebar-chat-link-active")} key={`pinned-${thread.id}`}>
-                  <Link className="min-w-0 flex-1 truncate px-2 py-1 text-xs leading-5" href={threadHref(thread.id)} onClick={(event) => { event.preventDefault(); void openThread(thread.id); }}>
+                  <Link className="sidebar-chat-link min-w-0 flex-1 truncate" href={threadHref(thread.id)} onClick={(event) => { event.preventDefault(); void openThread(thread.id); }}>
                     {thread.title || "New chat"}
                   </Link>
                   {renderSidebarThreadControls(thread)}
@@ -1206,11 +1203,11 @@ export function ChatApp({ initialThreadId }: { initialThreadId?: string }) {
             </div>
           </>
         )}
-        <p className="px-2 pb-1 text-[11px] font-medium text-muted-foreground/80">Recents</p>
+        <p className="chat-meta-text px-2 pb-1 font-medium text-muted-foreground/80">Recents</p>
         <div className="space-y-px">
           {recentThreads.map((thread) => (
             <div className={cn("group flex min-h-8 items-center rounded-lg hover:bg-sidebar-accent", thread.id === threadId && "sidebar-chat-link-active")} key={thread.id}>
-              <Link className="min-w-0 flex-1 truncate px-2 py-1 text-xs leading-5" href={threadHref(thread.id)} onClick={(event) => { event.preventDefault(); void openThread(thread.id); }}>
+              <Link className="sidebar-chat-link min-w-0 flex-1 truncate" href={threadHref(thread.id)} onClick={(event) => { event.preventDefault(); void openThread(thread.id); }}>
                 {thread.title || "New chat"}
               </Link>
               {renderSidebarThreadControls(thread)}
@@ -1222,10 +1219,10 @@ export function ChatApp({ initialThreadId }: { initialThreadId?: string }) {
         <Download className="size-[18px]" /> Install app
       </button>
       <div className="mt-1.5 flex items-center gap-2.5 rounded-xl p-1.5 hover:bg-sidebar-accent">
-        <span className="grid size-7 place-items-center rounded-full bg-foreground text-[10px] font-semibold text-background">R</span>
+        <span className="chat-meta-text grid size-7 place-items-center rounded-full bg-foreground font-semibold text-background">R</span>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-xs font-medium">Local user</p>
-          <p className="truncate text-[11px] text-muted-foreground">Postgres memory</p>
+          <p className="chat-ui-text truncate font-medium">Local user</p>
+          <p className="chat-meta-text truncate text-muted-foreground">Postgres memory</p>
         </div>
       </div>
     </aside>
@@ -1267,14 +1264,14 @@ export function ChatApp({ initialThreadId }: { initialThreadId?: string }) {
                 <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
               </DropdownMenuTrigger>
               <DropdownMenuContent className="w-72" sideOffset={6}>
-                <DropdownMenuItem className="py-1.5" onClick={newChat}>
+                <DropdownMenuItem onClick={newChat}>
                   <SquarePen className="size-4" /> New chat
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuGroup>
                   <DropdownMenuLabel>Recent conversations</DropdownMenuLabel>
                   {activeThreads.slice(0, 10).map((thread) => (
-                    <DropdownMenuItem className="py-1.5" key={`selector-${thread.id}`} onClick={() => void openThread(thread.id)}>
+                    <DropdownMenuItem key={`selector-${thread.id}`} onClick={() => void openThread(thread.id)}>
                       <span className="min-w-0 flex-1 truncate">{thread.title || "New chat"}</span>
                       {thread.id === threadId && <Check className="size-3.5 text-muted-foreground" />}
                     </DropdownMenuItem>

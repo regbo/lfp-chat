@@ -59,7 +59,7 @@ export function ToolEventSummary({ parts }: ToolEventSummaryProps) {
 
   return (
     <Collapsible className="group/tool-summary not-prose w-full text-muted-foreground">
-      <CollapsibleTrigger className="flex h-8 max-w-full items-center gap-2 rounded-lg px-1.5 text-xs transition-colors hover:bg-muted/55">
+      <CollapsibleTrigger className="chat-tool-summary-trigger flex h-8 max-w-full items-center gap-2 rounded-lg px-1.5 transition-colors hover:bg-muted/55">
         {running ? (
           <LoaderCircle className="size-3.5 shrink-0 animate-spin" />
         ) : (
@@ -78,7 +78,7 @@ export function ToolEventSummary({ parts }: ToolEventSummaryProps) {
               className={index > 0 ? "border-t border-border/65 pt-3" : undefined}
               key={`${part.toolCallId}-${index}`}
             >
-              <div className="mb-2 flex items-center gap-2 text-xs font-medium text-muted-foreground">
+              <div className="chat-tool-section-title mb-2 flex items-center gap-2 font-medium text-muted-foreground">
                 <Wrench className="size-3.5" />
                 <span>{index + 1}. {getToolName(part)}</span>
               </div>

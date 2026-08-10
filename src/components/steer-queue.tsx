@@ -42,7 +42,7 @@ export function SteerQueue({ items, onDelete, onEdit, onReorder, onSteer }: Stee
       {items.map((item, index) => (
         <div
           className={cn(
-            "group/steer flex min-h-11 items-center gap-1.5 px-3 text-[13px] leading-5",
+            "chat-steer-row group/steer flex min-h-11 items-center gap-1.5 px-3",
             index > 0 && "border-t border-border/65",
             draggingId === item.id && "opacity-50",
           )}
@@ -66,11 +66,11 @@ export function SteerQueue({ items, onDelete, onEdit, onReorder, onSteer }: Stee
           </button>
           <span className="min-w-0 flex-1 truncate text-foreground/90">{item.message.text || "Attached files"}</span>
           {item.message.files.length > 0 && (
-            <span className="flex items-center gap-1 text-xs text-muted-foreground">
+            <span className="chat-meta-text flex items-center gap-1 text-muted-foreground">
               <Paperclip className="size-3.5" /> {item.message.files.length}
             </span>
           )}
-          <Button className="h-7 gap-1 px-2 text-xs font-normal text-muted-foreground" onClick={() => onSteer(item.id)} size="sm" variant="ghost">
+          <Button className="font-normal text-muted-foreground" onClick={() => onSteer(item.id)} size="sm" variant="ghost">
             <CornerDownRight className="size-3.5" /> Steer
           </Button>
           <Button aria-label="Delete steer" className="size-7 text-muted-foreground" onClick={() => onDelete(item.id)} size="icon-sm" variant="ghost"><Trash2 className="size-3.5" /></Button>
