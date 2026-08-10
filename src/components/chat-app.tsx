@@ -1112,6 +1112,7 @@ export function ChatApp({ initialThreadId }: { initialThreadId?: string }) {
   );
 
   return (
+    <>
     <main className="relative flex h-dvh overflow-hidden bg-background">
       <div className={cn("hidden transition-[width] duration-200 md:block", sidebarOpen ? "w-[244px]" : "w-0 overflow-hidden")}>{sidebar}</div>
       {mobileSidebarOpen && (
@@ -1121,7 +1122,7 @@ export function ChatApp({ initialThreadId }: { initialThreadId?: string }) {
         </div>
       )}
       <section className="relative flex min-w-0 flex-1 flex-col">
-        <header className="relative flex h-[calc(3rem+env(safe-area-inset-top))] shrink-0 items-center gap-2 border-b border-border/50 px-3 pt-[env(safe-area-inset-top)] md:h-12 md:px-4 md:pt-0">
+        <header className="group relative flex h-[calc(3rem+env(safe-area-inset-top))] shrink-0 items-center gap-2 border-b border-border/50 px-3 pt-[env(safe-area-inset-top)] md:h-12 md:px-4 md:pt-0">
           {!sidebarOpen && (
             <Button aria-label="Open sidebar" className="hidden md:inline-flex" onClick={() => setSidebarOpen(true)} size="icon-sm" variant="ghost">
               <PanelLeftOpen className="size-4" />
@@ -1152,7 +1153,7 @@ export function ChatApp({ initialThreadId }: { initialThreadId?: string }) {
                 <DropdownMenuSeparator />
                 <DropdownMenuGroup>
                   <DropdownMenuLabel>Recent conversations</DropdownMenuLabel>
-                  {threads.slice(0, 10).map((thread) => (
+                  {activeThreads.slice(0, 10).map((thread) => (
                     <DropdownMenuItem className="py-1.5" key={`selector-${thread.id}`} onClick={() => void openThread(thread.id)}>
                       <span className="min-w-0 flex-1 truncate">{thread.title || "New chat"}</span>
                       {thread.id === threadId && <Check className="size-3.5 text-muted-foreground" />}
@@ -1163,6 +1164,16 @@ export function ChatApp({ initialThreadId }: { initialThreadId?: string }) {
             </DropdownMenu>
           ) : (
             <span className="chat-ui-emphasis font-medium">{activeView[0].toUpperCase() + activeView.slice(1)}</span>
+          )}
+          {activeView === "chat" && activeThread && (
+            <ThreadActionsMenu
+              alwaysVisible
+              onArchive={(target) => void archiveThread(target)}
+              onDelete={(target) => void deleteThread(target)}
+              onPin={(target) => void pinThread(target)}
+              onRename={beginRename}
+              thread={activeThread}
+            />
           )}
           <Button aria-label="Memory enabled" className="ml-auto" size="icon-sm" variant="ghost">
             <Database className="size-4" />
@@ -1181,8 +1192,7 @@ export function ChatApp({ initialThreadId }: { initialThreadId?: string }) {
             threadId={threadId}
           />
         )}
-        {resourceId && activeView === "search" && <SearchPanel onOpen={(id) => void openThread(id)} threads={threads} />}
-        {resourceId && activeView === "projects" && <ProjectsPanel onNewChat={newChat} />}
+        {resourceId && activeView === "search" && <SearchPanel onOpen={(id) => void openThread(id)} threads={activeThreads} />}
         {resourceId && activeView === "scheduled" && (
           <SchedulesPanel
             enabledToolIds={enabledToolIds}
@@ -1195,12 +1205,36 @@ export function ChatApp({ initialThreadId }: { initialThreadId?: string }) {
         {resourceId && activeView === "tools" && (
           <ToolsPanel enabledToolIds={enabledToolIds} onToggle={toggleTool} />
         )}
+        {resourceId && activeView === "archived" && (
+          <ArchivedPanel
+            onOpen={(id) => void openThread(id)}
+            renderActions={renderThreadActions}
+            threads={archivedThreads}
+          />
+        )}
       </section>
     </main>
+    <Dialog onOpenChange={(open) => !open && setRenamingThread(null)} open={Boolean(renamingThread)}>
+      <DialogContent>
+        <form onSubmit={(event) => void submitRename(event)}>
+          <DialogHeader>
+            <DialogTitle>Rename chat</DialogTitle>
+            <DialogDescription>Choose a short title that makes this conversation easy to find.</DialogDescription>
+          </DialogHeader>
+          <Input
+            autoFocus
+            className="mt-4"
+            maxLength={100}
+            onChange={(event) => setRenameDraft(event.target.value)}
+            value={renameDraft}
+          />
+          <DialogFooter className="mt-4">
+            <Button disabled={!renameDraft.trim()} type="submit">Save</Button>
+            <Button onClick={() => setRenamingThread(null)} type="button" variant="ghost">Cancel</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }
-  Archive,
-  ArchiveRestore,
-  Pencil,
-  Pin,
-  PinOff,

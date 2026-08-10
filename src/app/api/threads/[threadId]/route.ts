@@ -102,7 +102,7 @@ export async function PATCH(
 
     const updated = await thread.update({
       resourceId: parsed.data.resourceId,
-      title: parsed.data.title || details.title,
+      title: parsed.data.title || details.title || "New chat",
       metadata,
     });
     return Response.json({ thread: updated });
