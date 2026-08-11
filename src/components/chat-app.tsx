@@ -256,6 +256,32 @@ function SelectedAttachments() {
   );
 }
 
+function ChatSubmitButton({
+  draft,
+  editingSteerId,
+  onStop,
+  status,
+}: {
+  draft: string;
+  editingSteerId: string | null;
+  onStop: () => void;
+  status: ChatSessionStatus;
+}) {
+  const attachments = usePromptInputAttachments();
+  const hasPendingSubmission =
+    Boolean(editingSteerId) ||
+    draft.trim().length > 0 ||
+    attachments.files.length > 0;
+
+  return (
+    <PromptInputSubmit
+      className="chat-composer-submit bg-foreground text-background hover:bg-foreground/85"
+      onStop={onStop}
+      status={hasPendingSubmission ? "ready" : status}
+    />
+  );
+}
+
 function MessageAttachments({ files }: { files: FileUIPart[] }) {
   if (files.length === 0) return null;
   return (
@@ -515,7 +541,12 @@ function ChatComposer({ draft, editingSteerId, modelCatalog, modelSelection, onD
           selection={modelSelection}
         />
         <PromptInputButton aria-label="Start dictation" tooltip="Dictate"><Mic className="size-4" /></PromptInputButton>
-        <PromptInputSubmit className="chat-composer-submit bg-foreground text-background hover:bg-foreground/85" onStop={onStop} status={editingSteerId ? "ready" : status} />
+        <ChatSubmitButton
+          draft={draft}
+          editingSteerId={editingSteerId}
+          onStop={onStop}
+          status={status}
+        />
       </PromptInput>
     </div>
   );
