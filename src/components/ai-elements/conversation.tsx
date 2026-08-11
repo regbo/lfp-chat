@@ -34,6 +34,21 @@ export const ConversationContent = ({
   />
 );
 
+export function ConversationSubmitAutoScroll({ request }: { request: number }) {
+  const { scrollToBottom } = useStickToBottomContext();
+
+  useEffect(() => {
+    if (request === 0) return;
+    void scrollToBottom({
+      animation: "instant",
+      duration: 250,
+      ignoreEscapes: true,
+    });
+  }, [request, scrollToBottom]);
+
+  return null;
+}
+
 export function ConversationHistoryLoader({
   disabled,
   loading,

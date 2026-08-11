@@ -70,11 +70,11 @@ export function SteerQueue({ items, onDelete, onEdit, onReorder, onSteer }: Stee
               <Paperclip className="size-3.5" /> {item.message.files.length}
             </span>
           )}
-          <Button className="font-normal text-muted-foreground" onClick={() => onSteer(item.id)} size="sm" variant="ghost">
+          <Button className="font-normal text-muted-foreground" onClick={() => onSteer(item.id)} size="sm" type="button" variant="ghost">
             <CornerDownRight className="size-3.5" /> Steer
           </Button>
-          <Button aria-label="Delete steer" className="size-7 text-muted-foreground" onClick={() => onDelete(item.id)} size="icon-sm" variant="ghost"><Trash2 className="size-3.5" /></Button>
-          <Button aria-label="Edit steer" className="size-7 text-muted-foreground" onClick={() => onEdit(item.id)} size="icon-sm" variant="ghost"><Pencil className="size-3.5" /></Button>
+          <Button aria-label="Delete steer" className="size-7 text-muted-foreground" onClick={() => onDelete(item.id)} size="icon-sm" type="button" variant="ghost"><Trash2 className="size-3.5" /></Button>
+          <Button aria-label="Edit steer" className="size-7 text-muted-foreground" onClick={() => onEdit(item.id)} size="icon-sm" type="button" variant="ghost"><Pencil className="size-3.5" /></Button>
         </div>
       ))}
     </div>

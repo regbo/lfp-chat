@@ -6,6 +6,7 @@ import {
   ConversationEmptyState,
   ConversationHistoryLoader,
   ConversationScrollButton,
+  ConversationSubmitAutoScroll,
 } from "@/components/ai-elements/conversation";
 import {
   Message,
@@ -610,6 +611,7 @@ function ChatSession({
   const [editingSteerId, setEditingSteerId] = useState<string | null>(null);
   const [steerError, setSteerError] = useState("");
   const [loadingOlder, setLoadingOlder] = useState(false);
+  const [submitScrollRequest, setSubmitScrollRequest] = useState(0);
   const isStreaming = status === "submitted" || status === "streaming";
   const renderedMessages = useMemo(
     () => Array.from(new Map(messages.map((message) => [message.id, message])).values()),
@@ -643,6 +645,7 @@ function ChatSession({
       runId,
       abortController: controller,
     }));
+    setSubmitScrollRequest((current) => current + 1);
     onConversationChange(threadId);
     window.setTimeout(onThreadListChange, 500);
 
@@ -855,21 +858,37 @@ function ChatSession({
     });
   }, []);
 
-  const steer = useCallback(async (id: string) => {
+  const steer = useCallback((id: string) => {
     const item = steers.find((candidate) => candidate.id === id);
     if (!item) return;
-    setSteerError("");
-    const response = await fetch(`/api/threads/${encodeURIComponent(threadId)}/steer`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ resourceId, text: item.message.text, files: item.message.files }),
-    });
-    const data = (await response.json()) as { error?: string };
-    if (!response.ok) {
-      setSteerError(data.error || "Unable to steer the current response.");
+    const runId = getChatSession(threadId)?.runId;
+    if (!runId) {
+      setSteerError("The active run is no longer available to steer.");
       return;
     }
+    setSteerError("");
     deleteSteer(id);
+    void fetch(`/api/threads/${encodeURIComponent(threadId)}/steer`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ runId, resourceId, text: item.message.text, files: item.message.files }),
+    }).then(async (response) => {
+      if (response.ok) return;
+      const data = (await response.json()) as { error?: string };
+      setSteers((current) =>
+        current.some((candidate) => candidate.id === item.id)
+          ? current
+          : [item, ...current],
+      );
+      setSteerError(data.error || "Unable to steer the current response.");
+    }).catch(() => {
+      setSteers((current) =>
+        current.some((candidate) => candidate.id === item.id)
+          ? current
+          : [item, ...current],
+      );
+      setSteerError("Unable to reach the chat server to deliver this steer.");
+    });
   }, [deleteSteer, resourceId, steers, threadId]);
 
   const composerProps = {
@@ -921,6 +940,7 @@ function ChatSession({
   return (
     <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col">
       <Conversation className="min-h-0 w-full min-w-0">
+        <ConversationSubmitAutoScroll request={submitScrollRequest} />
         <ConversationHistoryLoader
           disabled={!session.hasMoreHistory}
           loading={loadingOlder}
