@@ -21,6 +21,9 @@ const externalDependencies = Object.keys(manifest.dependencies ?? {}).flatMap(
 
 const bundle = await Bun.build({
   banner: '"use client";',
+  // Bun otherwise selects the development JSX runtime for this standalone
+  // library bundle, which is not available while Next.js prerenders consumers.
+  define: { "process.env.NODE_ENV": '"production"' },
   entrypoints: [resolve(projectRoot, "src/index.ts")],
   external: externalDependencies,
   format: "esm",
@@ -59,6 +62,9 @@ await $`${process.execPath} x tailwindcss -i ${resolve(projectRoot, "src/app/glo
 );
 
 const bundledSource = await Bun.file(resolve(packageRoot, "index.js")).text();
+if (/react\/jsx-dev-runtime|\bjsxDEV\b/.test(bundledSource)) {
+  throw new Error("The package bundle contains React's development-only JSX runtime.");
+}
 const imports = new Bun.Transpiler({ loader: "js" }).scan(bundledSource).imports;
 const dependencyNames = Object.keys(manifest.dependencies ?? {});
 const usedDependencies = new Set<string>();
