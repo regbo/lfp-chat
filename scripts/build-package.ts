@@ -85,7 +85,7 @@ const peerDependencies = Object.fromEntries(
 );
 
 const packageManifest = {
-  name: "@lfp/chat",
+  name: manifest.config.npmPackageName,
   version: manifest.version,
   description: manifest.description,
   license: manifest.license,
@@ -95,8 +95,10 @@ const packageManifest = {
     ".": {
       types: "./types/index.d.ts",
       import: "./index.js",
+      default: "./index.js",
     },
     "./styles.css": "./styles.css",
+    "./package.json": "./package.json",
   },
   dependencies: packageDependencies,
   peerDependencies,
@@ -105,14 +107,9 @@ const packageManifest = {
     access: "public",
     registry: "https://registry.npmjs.org/",
   },
-  repository: {
-    type: "git",
-    url: "git+https://github.com/regbo/lfp-chat.git",
-  },
-  bugs: {
-    url: "https://github.com/regbo/lfp-chat/issues",
-  },
-  homepage: "https://github.com/regbo/lfp-chat#readme",
+  repository: manifest.repository,
+  bugs: manifest.bugs,
+  homepage: manifest.homepage,
 };
 
 await Bun.write(

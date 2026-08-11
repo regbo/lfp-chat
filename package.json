@@ -9,6 +9,18 @@
   "engines": {
     "node": ">=22.13.0"
   },
+  "config": {
+    "npmPackageName": "@lfpconnect/chat"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/regbo/lfp-chat.git",
+    "directory": "."
+  },
+  "bugs": {
+    "url": "https://github.com/regbo/lfp-chat/issues"
+  },
+  "homepage": "https://github.com/regbo/lfp-chat#readme",
   "scripts": {
     "dev": "bun run --parallel \"dev:*\"",
     "dev:web": "next dev --hostname 127.0.0.1",

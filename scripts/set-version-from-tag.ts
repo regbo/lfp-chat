@@ -10,4 +10,4 @@ const manifest = await Bun.file(manifestPath).json();
 manifest.version = version;
 await Bun.write(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
 
-console.log(`Publishing @lfp/chat@${version}`);
+console.log(`Publishing ${manifest.config.npmPackageName}@${version}`);
