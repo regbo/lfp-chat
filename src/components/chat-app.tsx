@@ -929,7 +929,7 @@ function ChatSession({
         <ConversationContent
           className={cn(
             "chat-conversation-content mx-auto w-full max-w-none pt-4",
-            isEmpty ? "pb-28 md:pb-6" : "pb-28",
+            isEmpty ? "pb-6" : "pb-28",
           )}
         >
           {loadingOlder && (
