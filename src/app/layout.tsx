@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Geist_Mono } from "next/font/google";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { PwaRegister } from "@/components/pwa-register";
+import "@regbo/lfp-chat/styles.css";
 import "./globals.css";
 
 const geistMono = Geist_Mono({

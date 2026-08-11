@@ -44,6 +44,7 @@
     "db:down": "docker compose down"
   },
   "dependencies": {
+    "@regbo/lfp-chat": "0.1.5",
     "@agentclientprotocol/codex-acp": "^1.1.14",
     "@ai-sdk/openai": "^4.0.36",
     "@base-ui/react": "^1.7.0",
