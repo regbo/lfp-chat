@@ -16,7 +16,7 @@ jobs:
 
     steps:
       - name: Check out tag
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2
@@ -35,13 +35,20 @@ jobs:
       - name: Verify package contents
         run: bun run pack:check
 
+      - name: Set up npm publishing
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          package-manager-cache: false
+          registry-url: https://registry.npmjs.org/
+
       - name: Publish package
         working-directory: dist/package
         env:
-          NPM_CONFIG_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          if [ -z "$NPM_CONFIG_TOKEN" ]; then
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
             echo "::error::Add an npm automation token as the NPM_TOKEN repository secret."
             exit 1
           fi
-          bun publish --access public
+          npm publish --access public
