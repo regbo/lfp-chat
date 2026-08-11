@@ -46,9 +46,11 @@ await $`${process.execPath} x tsc -p ${resolve(projectRoot, "tsconfig.publish.js
 
 const publicTypesRoot = resolve(packageRoot, "types");
 await mkdir(resolve(publicTypesRoot, "components"), { recursive: true });
+await mkdir(resolve(publicTypesRoot, "lib"), { recursive: true });
 for (const relativePath of [
   "index.d.ts",
   "components/chat-app.d.ts",
+  "lib/chat-app-plugins.d.ts",
 ]) {
   await Bun.write(
     resolve(publicTypesRoot, relativePath),

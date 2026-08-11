@@ -15,6 +15,34 @@ export default function ChatPage() {
 }
 ```
 
+### Add a menu view
+
+Pass self-contained views through the typed `plugins` prop. Each plugin gets a
+menu item in both desktop and mobile navigation and a content slot inside the
+app shell. Array order controls the order of contributed items.
+
+```tsx
+import { ChatApp, type ChatAppPlugin } from "@regbo/lfp-chat";
+import { Dashboard } from "./dashboard";
+
+const plugins = [
+  {
+    id: "dashboard",
+    label: "Dashboard",
+    content: <Dashboard />,
+  },
+] satisfies readonly ChatAppPlugin[];
+
+export default function ChatPage() {
+  return <ChatApp plugins={plugins} />;
+}
+```
+
+An optional `icon` can be any React node. Plugin IDs must be non-empty and
+unique. Content owns its own data and state, so interactive plugins can use a
+Client Component while server-rendered elements can be passed through the same
+slot.
+
 Create a release with Bun, then push the generated commit and tag:
 
 ```powershell

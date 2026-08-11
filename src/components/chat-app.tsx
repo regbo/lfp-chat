@@ -98,12 +98,18 @@ import {
   TOOLS_CONTEXT_KEY,
   type SelectableToolId,
 } from "@/lib/tool-catalog";
+// This relative path remains resolvable in the package's emitted declarations.
+import {
+  validateChatAppPlugins,
+  type ChatAppPlugin,
+} from "../lib/chat-app-plugins";
 import { type FileUIPart, type UIMessage } from "ai";
 import Image from "next/image";
 import Link from "next/link";
 import {
   Archive,
   ArchiveRestore,
+  Blocks,
   Check,
   ChevronDown,
   Clock3,
@@ -139,7 +145,10 @@ import {
   useSyncExternalStore,
 } from "react";
 
-type ActiveView = "chat" | "search" | "scheduled" | "tools" | "archived";
+type CoreView = "chat" | "search" | "scheduled" | "tools" | "archived";
+type ActiveView = CoreView | `plugin:${string}`;
+
+const pluginView = (id: string): ActiveView => `plugin:${id}`;
 
 type InstallPromptEvent = Event & {
   prompt: () => Promise<void>;
@@ -1114,9 +1123,15 @@ function ThreadActionsMenu({
 
 export type ChatAppProps = {
   initialThreadId?: string;
+  /** Views to add to the primary sidebar without changing ChatApp internals. */
+  plugins?: readonly ChatAppPlugin[];
 };
 
-export function ChatApp({ initialThreadId }: ChatAppProps) {
+export function ChatApp({ initialThreadId, plugins = [] }: ChatAppProps) {
+  const registeredPlugins = useMemo(
+    () => validateChatAppPlugins(plugins),
+    [plugins],
+  );
   const [resourceId, setResourceId] = useState("");
   const [threadId, setThreadId] = useState(() => initialThreadId || makeId());
   const [sessionSeeds, setSessionSeeds] = useState<Map<string, UIMessage[]>>(
@@ -1464,6 +1479,9 @@ export function ChatApp({ initialThreadId }: ChatAppProps) {
     [threadsWithBackgroundRuns],
   );
   const activeConversationTitle = activeThread?.title || "New chat";
+  const activePlugin = activeView.startsWith("plugin:")
+    ? registeredPlugins.find((plugin) => pluginView(plugin.id) === activeView)
+    : undefined;
   const handleConversationChange = useCallback((changedThreadId: string) => {
     if (changedThreadId === threadId) {
       window.history.replaceState(null, "", threadHref(changedThreadId));
@@ -1531,6 +1549,22 @@ export function ChatApp({ initialThreadId }: ChatAppProps) {
         <button className={cn("sidebar-item", activeView === "archived" && "bg-sidebar-accent")} onClick={() => showView("archived")} type="button">
           <Archive className="size-[18px]" /> Archived
         </button>
+        {registeredPlugins.map((plugin) => {
+          const view = pluginView(plugin.id);
+          return (
+            <button
+              className={cn("sidebar-item", activeView === view && "bg-sidebar-accent")}
+              key={plugin.id}
+              onClick={() => showView(view)}
+              type="button"
+            >
+              <span className="grid size-[18px] shrink-0 place-items-center [&>svg]:size-[18px]">
+                {plugin.icon ?? <Blocks />}
+              </span>
+              {plugin.label}
+            </button>
+          );
+        })}
       </nav>
       <div className="mt-4 min-h-0 flex-1 overflow-y-auto">
         {pinnedThreads.length > 0 && (
@@ -1625,7 +1659,9 @@ export function ChatApp({ initialThreadId }: ChatAppProps) {
               </DropdownMenuContent>
             </DropdownMenu>
           ) : (
-            <span className="chat-ui-emphasis font-medium">{activeView[0].toUpperCase() + activeView.slice(1)}</span>
+            <span className="chat-ui-emphasis font-medium">
+              {activePlugin?.label ?? activeView[0].toUpperCase() + activeView.slice(1)}
+            </span>
           )}
           {activeView === "chat" && activeThread && (
             <ThreadActionsMenu
@@ -1690,6 +1726,7 @@ export function ChatApp({ initialThreadId }: ChatAppProps) {
             threads={archivedThreads}
           />
         )}
+        {activePlugin?.content}
       </section>
     </main>
     <Dialog onOpenChange={(open) => !open && setRenamingThread(null)} open={Boolean(renamingThread)}>

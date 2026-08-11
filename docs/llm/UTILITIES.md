@@ -2,6 +2,7 @@
 
 - `src/lib/browser-mastra-client.ts` — browser-facing Mastra client and per-call agent streaming with explicit run, thread, resource, and abort identity.
 - `src/lib/chat-session-store.ts` — shared per-thread transcript/run registry; keeps background streams alive across route and chat selection changes.
+- `src/lib/chat-app-plugins.ts` — public plugin contract and registration validation for adding self-contained views to the primary ChatApp menu.
 - `src/lib/tool-output.ts` — centralized head/tail truncation for tool values before they enter the visible transcript or model history.
 - `src/lib/model-catalog.ts` — model selection, reasoning-effort normalization, and request-context keys.
 - `src/lib/tool-catalog.ts` — selectable tool definitions, defaults, and request-context keys.
