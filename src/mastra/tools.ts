@@ -158,7 +158,7 @@ function getFamilySqlPool() {
 export const familySqlTool = createTool({
   id: "family_sql",
   description: `Run one read-only PostgreSQL SELECT generated for a family-context question.
-Available public tables: documents (ingest_id, family_id, source, external_id, title, body_text, metadata JSONB, occurred_at, ingested_at, processed_at), deadlines (title, due_at, evidence, confidence, status), source_cursors, processing_events (source, stage, status, detail JSONB, created_at), and graph_outbox (attempts, delivered_at, last_error). Use JSONB operators for attachment or message metadata. Always select only the columns needed and add a LIMIT.`,
+Available public tables: documents (ingest_id, family_id, source, external_id, title, body_text, metadata JSONB, labels JSONB, occurred_at, ingested_at, processed_at), attachments (attachment_id, ingest_id, filename, content_type, size, extracted_text, labels JSONB, metadata JSONB, processed_at), deadlines (title, due_at, evidence, confidence, status), source_cursors, processing_events (source, stage, status, detail JSONB, created_at), and graph_outbox (attempts, delivered_at, last_error). Use JSONB operators for labels or metadata. Always select only the columns needed and add a LIMIT.`,
   inputSchema: z.object({
     sql: z
       .string()
@@ -238,5 +238,74 @@ export const familyGraphTool = createTool({
       facts?: Array<Record<string, unknown>>;
     };
     return { query, facts: payload.facts ?? [] };
+  },
+});
+
+async function familyContextRequest(path: string) {
+  if (!serverConfig.familyContextApiUrl || !serverConfig.familyContextApiKey) {
+    throw new Error("The family context retrieval API is not configured.");
+  }
+  const response = await fetch(new URL(path, serverConfig.familyContextApiUrl), {
+    headers: { "X-LFP-Context-Key": serverConfig.familyContextApiKey },
+    signal: AbortSignal.timeout(300_000),
+  });
+  if (!response.ok) {
+    throw new Error(`Family context request failed with HTTP ${response.status}.`);
+  }
+  return response;
+}
+
+export const familyEmailTool = createTool({
+  id: "family_email",
+  description:
+    "Retrieve an actual archived Gmail message by ingest UUID. Use content for parsed body and attachment metadata, mime for the MIME structure, or raw for the original RFC 822 message as base64.",
+  inputSchema: z.object({
+    ingestId: z.string().uuid(),
+    mode: z.enum(["content", "mime", "raw"]).default("content"),
+  }),
+  outputSchema: z.record(z.string(), z.unknown()),
+  execute: async ({ ingestId, mode }) => {
+    const suffix = mode === "content" ? "" : `/${mode}`;
+    const response = await familyContextRequest(`/v1/messages/${ingestId}${suffix}`);
+    if (mode === "raw") {
+      const bytes = Buffer.from(await response.arrayBuffer());
+      return {
+        ingestId,
+        contentType: response.headers.get("content-type") ?? "message/rfc822",
+        size: bytes.length,
+        contentBase64: bytes.toString("base64"),
+      };
+    }
+    return truncateToolValue(await response.json()) as Record<string, unknown>;
+  },
+});
+
+export const familyAttachmentTool = createTool({
+  id: "family_attachment",
+  description:
+    "Retrieve a stored Gmail attachment by attachment UUID. Use metadata for Docling text and labels, or raw for the actual attachment bytes as base64.",
+  inputSchema: z.object({
+    attachmentId: z.string().uuid(),
+    mode: z.enum(["metadata", "raw"]).default("metadata"),
+  }),
+  outputSchema: z.record(z.string(), z.unknown()),
+  execute: async ({ attachmentId, mode }) => {
+    const suffix = mode === "raw" ? "/raw" : "";
+    const response = await familyContextRequest(
+      `/v1/attachments/${attachmentId}${suffix}`,
+    );
+    if (mode === "raw") {
+      const bytes = Buffer.from(await response.arrayBuffer());
+      if (bytes.length > 5 * 1024 * 1024) {
+        throw new Error("Attachment exceeds the 5 MiB tool transfer limit.");
+      }
+      return {
+        attachmentId,
+        contentType: response.headers.get("content-type") ?? "application/octet-stream",
+        size: bytes.length,
+        contentBase64: bytes.toString("base64"),
+      };
+    }
+    return truncateToolValue(await response.json()) as Record<string, unknown>;
   },
 });

@@ -32,6 +32,18 @@ export const toolCatalog = [
     defaultEnabled: true,
   },
   {
+    id: "family_email",
+    title: "Family email",
+    description: "Retrieve original emails and inspect parsed MIME content.",
+    defaultEnabled: true,
+  },
+  {
+    id: "family_attachment",
+    title: "Family attachment",
+    description: "Retrieve attachment text, labels, metadata, or original bytes.",
+    defaultEnabled: true,
+  },
+  {
     id: "web_search",
     title: "Web search",
     description: "Search current information with the model provider's hosted tool.",

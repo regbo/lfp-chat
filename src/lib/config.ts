@@ -57,6 +57,11 @@ export const serverConfig = {
     "FAMILY_DATABASE_URL_FILE",
   ),
   graphitiApiUrl: process.env.GRAPHITI_API_URL?.trim(),
+  familyContextApiUrl: process.env.FAMILY_CONTEXT_API_URL?.trim(),
+  familyContextApiKey: secretValue(
+    "FAMILY_CONTEXT_API_KEY",
+    "FAMILY_CONTEXT_API_KEY_FILE",
+  ),
   familyGraphGroupId:
     process.env.FAMILY_GRAPH_GROUP_ID?.trim() || "family-home",
   mastraHost: process.env.MASTRA_HOST?.trim() || "127.0.0.1",
