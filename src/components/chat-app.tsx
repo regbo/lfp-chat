@@ -1515,7 +1515,7 @@ export function ChatApp({ initialThreadId }: { initialThreadId?: string }) {
 
   return (
     <>
-    <main className="relative flex h-dvh overflow-hidden bg-background">
+    <main className="app-shell flex bg-background">
       <div className={cn("hidden transition-[width] duration-200 md:block", sidebarOpen ? "w-[244px]" : "w-0 overflow-hidden")}>{sidebar}</div>
       {mobileSidebarOpen && (
         <div className="absolute inset-0 z-40 flex md:hidden">

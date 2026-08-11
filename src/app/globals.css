@@ -111,6 +111,7 @@
   --composer-radius: calc(var(--composer-height) / 2);
   --composer-submit-size: 2.25rem;
   --composer-input-padding-block: 1rem;
+  --mobile-composer-font-size: 1rem;
   --icon-size-sm: 0.75rem;
   --icon-size-md: 0.875rem;
   --icon-size-lg: 1rem;
@@ -169,15 +170,35 @@
   }
   body {
     @apply bg-background text-foreground antialiased;
+    width: 100%;
+    max-width: 100%;
+    height: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
     font-weight: 400;
     letter-spacing: -0.011em;
   }
   html {
     @apply font-sans;
+    width: 100%;
+    max-width: 100%;
+    height: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
   }
 }
 
 @layer components {
+  .app-shell {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    max-width: 100vw;
+    height: 100dvh;
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+
   .chat-column {
     width: 100%;
     max-width: var(--chat-column-width);
@@ -187,6 +208,17 @@
   .chat-conversation-content {
     gap: var(--chat-turn-gap);
     padding-inline: var(--chat-inline-gutter);
+  }
+
+  .chat-scroll-region,
+  .chat-scroll-region > div {
+    overflow-x: hidden;
+    overscroll-behavior-x: none;
+  }
+
+  .chat-scroll-region > div {
+    overscroll-behavior-y: contain;
+    touch-action: pan-y;
   }
 
   .chat-ui-emphasis {
@@ -428,6 +460,14 @@
   padding: var(--composer-input-padding-block) 0.5rem;
   font-size: var(--text-ui-emphasis);
   line-height: var(--leading-ui);
+}
+
+@media (max-width: 767px) {
+  .chat-composer [data-slot="input-group-control"] {
+    /* iOS zooms focused inputs below 16px, which makes the fixed app shell
+       appear draggable even when the document itself cannot scroll. */
+    font-size: var(--mobile-composer-font-size);
+  }
 }
 
 /* Streamdown has its own fixed type scale. These selectors make rich output
