@@ -112,6 +112,12 @@
   --composer-submit-size: 2.25rem;
   --composer-input-padding-block: 1rem;
   --mobile-composer-font-size: 1rem;
+  --mobile-composer-height: 5.75rem;
+  --mobile-composer-input-height: 3rem;
+  --mobile-composer-input-max-height: min(12rem, 35dvh);
+  --mobile-composer-padding-inline: 0.5rem;
+  --mobile-composer-padding-block: 0.25rem;
+  --mobile-composer-control-gap: 0.125rem;
   --icon-size-sm: 0.75rem;
   --icon-size-md: 0.875rem;
   --icon-size-lg: 1rem;
@@ -475,6 +481,57 @@
     /* iOS zooms focused inputs below 16px, which makes the fixed app shell
        appear draggable even when the document itself cannot scroll. */
     font-size: var(--mobile-composer-font-size);
+  }
+
+  .chat-composer [data-slot="input-group"] {
+    display: grid;
+    grid-template-columns:
+      var(--control-height-md)
+      minmax(0, 1fr)
+      var(--control-height-md)
+      var(--composer-submit-size);
+    grid-template-rows: 0 minmax(var(--mobile-composer-input-height), auto) var(--composer-submit-size);
+    column-gap: var(--mobile-composer-control-gap);
+    min-height: var(--mobile-composer-height);
+    padding: var(--mobile-composer-padding-block) var(--mobile-composer-padding-inline);
+    border-radius: calc(var(--composer-submit-size) * 0.9);
+  }
+
+  .chat-composer [data-attachments] {
+    grid-row: 1;
+    grid-column: 1 / -1;
+  }
+
+  .chat-composer [data-slot="input-group-control"] {
+    grid-row: 2;
+    grid-column: 1 / -1;
+    align-self: stretch;
+    min-height: var(--mobile-composer-input-height);
+    max-height: var(--mobile-composer-input-max-height);
+    overflow-y: auto;
+    padding: 0.625rem 0.5rem 0.25rem;
+  }
+
+  .chat-composer button[aria-label="Add files"] {
+    grid-row: 3;
+    grid-column: 1;
+  }
+
+  .chat-composer button[aria-label="Select model, agent, and reasoning"] {
+    grid-row: 3;
+    grid-column: 2;
+    justify-self: end;
+    max-width: 100%;
+  }
+
+  .chat-composer button[aria-label="Start dictation"] {
+    grid-row: 3;
+    grid-column: 3;
+  }
+
+  .chat-composer .chat-composer-submit {
+    grid-row: 3;
+    grid-column: 4;
   }
 }
 

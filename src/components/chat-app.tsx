@@ -929,7 +929,7 @@ function ChatSession({
         <ConversationContent
           className={cn(
             "chat-conversation-content mx-auto w-full max-w-none pt-4",
-            isEmpty ? "pb-6" : "pb-28",
+            isEmpty ? "pb-28 md:pb-6" : "pb-28",
           )}
         >
           {loadingOlder && (
@@ -943,7 +943,9 @@ function ChatSession({
                 <h1 className="chat-display-text text-balance text-center">
                   What&apos;s on your mind today?
                 </h1>
-                <ChatComposer {...composerProps} />
+                <div className="hidden md:block">
+                  <ChatComposer {...composerProps} />
+                </div>
                 <div className="mx-auto flex max-w-[650px] flex-col gap-1.5 px-4">
                   {suggestions.map((suggestion) => (
                     <button
@@ -988,13 +990,16 @@ function ChatSession({
         <ConversationScrollButton />
       </Conversation>
 
-      {!isEmpty && (
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-background via-background/95 to-transparent px-[var(--chat-inline-gutter)] pb-2.5 pt-9">
+      <div
+        className={cn(
+          "pointer-events-none absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-background via-background/95 to-transparent px-[var(--chat-inline-gutter)] pb-2.5 pt-9",
+          isEmpty && "md:hidden",
+        )}
+      >
           <div className="chat-column pointer-events-auto">
             <ChatComposer {...composerProps} />
           </div>
-        </div>
-      )}
+      </div>
     </div>
   );
 }
