@@ -463,6 +463,14 @@
 }
 
 @media (max-width: 767px) {
+  :root {
+    --text-chat: 1rem;
+    --text-ui: 0.9375rem;
+    --text-ui-emphasis: 1rem;
+    --text-meta: 0.8125rem;
+    --code-block-font-size: 0.875rem;
+  }
+
   .chat-composer [data-slot="input-group-control"] {
     /* iOS zooms focused inputs below 16px, which makes the fixed app shell
        appear draggable even when the document itself cannot scroll. */
