@@ -2,6 +2,28 @@
 
 A ChatGPT-inspired Mastra chat application with rich tool events and PostgreSQL-backed conversation and working memory.
 
+## Package
+
+The reusable chat client is published as `@lfp/chat`. It exports the client-side `ChatApp` component and a compiled stylesheet:
+
+```tsx
+import { ChatApp } from "@lfp/chat";
+import "@lfp/chat/styles.css";
+
+export default function ChatPage() {
+  return <ChatApp />;
+}
+```
+
+Create a release with Bun, then push the generated commit and tag:
+
+```powershell
+bun run release patch
+git push origin main --follow-tags
+```
+
+Tags must use semantic versions such as `v0.2.0`. The GitHub Actions workflow validates the package, derives the npm version from the tag, and publishes it publicly. Add an npm automation token with permission to publish under the `@lfp` scope as the private repository secret `NPM_TOKEN` before pushing the first release tag.
+
 ## Stack
 
 - Next.js 16, React 19, TypeScript, and Tailwind CSS 4

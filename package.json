@@ -1,7 +1,10 @@
 {
   "name": "lfp-chat",
   "version": "0.1.0",
+  "description": "Reusable LFP Chat interface for Mastra-powered React applications.",
   "private": true,
+  "license": "UNLICENSED",
+  "type": "module",
   "packageManager": "bun@1.3.14",
   "engines": {
     "node": ">=22.13.0"
@@ -14,6 +17,7 @@
     "build": "bun run build:mastra && bun run build:web",
     "build:web": "next build",
     "build:mastra": "bun build src/server/index.ts --target bun --outdir dist/server --external @pydantic/monty",
+    "build:package": "bun scripts/build-package.ts",
     "start": "bun run --parallel \"start:*\"",
     "start:web": "next start --hostname 127.0.0.1",
     "start:mastra": "MASTRA_HOST=127.0.0.1 bun dist/server/index.js",
@@ -22,6 +26,8 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "check": "bun run lint && bun run typecheck && bun run build",
+    "pack:check": "bun run build:package && cd dist/package && bun pm pack --dry-run --ignore-scripts",
+    "release": "bun pm version",
     "db:up": "docker compose up -d postgres",
     "db:down": "docker compose down"
   },
@@ -65,7 +71,9 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@tailwindcss/cli": "^4",
     "@tailwindcss/postcss": "^4",
+    "@types/bun": "^1.3.14",
     "@types/node": "^20",
     "@types/pg": "^8.21.0",
     "@types/react": "^19",

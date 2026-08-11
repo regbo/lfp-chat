@@ -1056,7 +1056,11 @@ function ThreadActionsMenu({
   );
 }
 
-export function ChatApp({ initialThreadId }: { initialThreadId?: string }) {
+export type ChatAppProps = {
+  initialThreadId?: string;
+};
+
+export function ChatApp({ initialThreadId }: ChatAppProps) {
   const [resourceId, setResourceId] = useState("");
   const [threadId, setThreadId] = useState(() => initialThreadId || makeId());
   const [sessionSeeds, setSessionSeeds] = useState<Map<string, UIMessage[]>>(
