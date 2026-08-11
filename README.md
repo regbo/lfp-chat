@@ -4,11 +4,11 @@ A ChatGPT-inspired Mastra chat application with rich tool events and PostgreSQL-
 
 ## Package
 
-The reusable chat client is published as `@lfpconnect/chat`. It exports the client-side `ChatApp` component and a compiled stylesheet:
+The reusable chat client is published as `@regbo/lfp-chat`. It exports the client-side `ChatApp` component and a compiled stylesheet:
 
 ```tsx
-import { ChatApp } from "@lfpconnect/chat";
-import "@lfpconnect/chat/styles.css";
+import { ChatApp } from "@regbo/lfp-chat";
+import "@regbo/lfp-chat/styles.css";
 
 export default function ChatPage() {
   return <ChatApp />;
@@ -22,7 +22,7 @@ bun run release patch
 git push origin main --follow-tags
 ```
 
-Tags must use semantic versions such as `v0.2.0`. The GitHub Actions workflow validates the package, derives the npm version from the tag, and publishes it publicly. The private repository secret `NPM_TOKEN` must have permission to publish under the `@lfpconnect` scope.
+Tags must use semantic versions such as `v0.2.0`. The GitHub Actions workflow validates the package, derives the npm version from the tag, and publishes it publicly. The private repository secret `NPM_TOKEN` must have permission to publish under the `@regbo` scope.
 
 ## Stack
 

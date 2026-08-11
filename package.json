@@ -1,6 +1,6 @@
 {
   "name": "lfp-chat",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Reusable LFP Chat interface for Mastra-powered React applications.",
   "private": true,
   "license": "UNLICENSED",
@@ -10,7 +10,7 @@
     "node": ">=22.13.0"
   },
   "config": {
-    "npmPackageName": "@lfpconnect/chat"
+    "npmPackageName": "@regbo/lfp-chat"
   },
   "repository": {
     "type": "git",
