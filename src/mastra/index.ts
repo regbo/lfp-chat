@@ -9,7 +9,13 @@ import {
   resolveRuntimeModel,
   resolveRuntimeOptions,
 } from "@/mastra/model-provider";
-import { calculatorTool, montyTool, searchTool } from "@/mastra/tools";
+import {
+  calculatorTool,
+  familyGraphTool,
+  familySqlTool,
+  montyTool,
+  searchTool,
+} from "@/mastra/tools";
 import { hostWorkspace } from "@/mastra/host-workspace";
 import { createCodexAgent } from "@/mastra/codex-agent";
 import {
@@ -63,6 +69,8 @@ function createMastra() {
         search: searchTool,
         calculator: calculatorTool,
         monty: montyTool,
+        family_sql: familySqlTool,
+        family_graph: familyGraphTool,
         ...modelProvider.tools,
       };
       return Object.fromEntries(
@@ -81,7 +89,7 @@ function createMastra() {
       );
       return `You are LFP Chat, a capable and concise assistant.
 
-The user has enabled these capabilities for this run: ${enabled.join(", ") || "none"}. Only use tools that are enabled. Use project search for this app's stack, calculator for arithmetic, and Monty for isolated Python. When Code mode is enabled, the workspace tools operate directly on the host filesystem and shell; do not read secrets or modify unrelated files unless the user explicitly asks. ${modelProvider.capabilityInstructions} When multiple tools are relevant, call them in the same step so the interface can present a grouped tool summary.
+The user has enabled these capabilities for this run: ${enabled.join(", ") || "none"}. Only use tools that are enabled. Use project search for this app's stack, calculator for arithmetic, and Monty for isolated Python. For questions about family email, documents, attachments, deadlines, ingestion, or processing, generate a focused read-only query with family_sql. Use family_graph for semantic relationships and temporal facts; call family_sql and family_graph together when both structured evidence and graph context are useful. When Code mode is enabled, the workspace tools operate directly on the host filesystem and shell; do not read secrets or modify unrelated files unless the user explicitly asks. ${modelProvider.capabilityInstructions} When multiple tools are relevant, call them in the same step so the interface can present a grouped tool summary.
 
 Be direct and useful. Use short paragraphs and lists only when they improve clarity. Remember stable user preferences in working memory, but do not store secrets or sensitive credentials.`;
     },
@@ -98,7 +106,13 @@ Be direct and useful. Use short paragraphs and lists only when they improve clar
       chatAgent,
       ...(codexAgent ? { codexAgent } : {}),
     },
-    tools: { search: searchTool, calculator: calculatorTool, monty: montyTool },
+    tools: {
+      search: searchTool,
+      calculator: calculatorTool,
+      monty: montyTool,
+      family_sql: familySqlTool,
+      family_graph: familyGraphTool,
+    },
     storage,
     scheduler: {
       enabled: true,

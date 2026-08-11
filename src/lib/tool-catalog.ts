@@ -20,6 +20,18 @@ export const toolCatalog = [
     defaultEnabled: true,
   },
   {
+    id: "family_sql",
+    title: "Family SQL",
+    description: "Generate and run read-only SQL over ingested family context.",
+    defaultEnabled: true,
+  },
+  {
+    id: "family_graph",
+    title: "Family graph",
+    description: "Search Graphiti for temporal family facts and relationships.",
+    defaultEnabled: true,
+  },
+  {
     id: "web_search",
     title: "Web search",
     description: "Search current information with the model provider's hosted tool.",

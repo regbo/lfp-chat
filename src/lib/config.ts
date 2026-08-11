@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+
 const LOCAL_DATABASE_URL =
   "postgresql://mastra:mastra@localhost:5432/mastra";
 
@@ -5,6 +7,16 @@ const LOCAL_MASTRA_API_URL = "http://localhost:4111";
 const DEFAULT_MODEL_PROVIDER = "openai";
 const DEFAULT_OPENAI_MODEL = "gpt-5.6-luna";
 const DEFAULT_CODEX_AGENT_MODE = "agent";
+
+function secretValue(valueName: string, fileName: string) {
+  const file = process.env[fileName]?.trim();
+  if (file) {
+    const value = readFileSync(file, "utf8").trim();
+    if (!value) throw new Error(`${fileName} is empty: ${file}`);
+    return value;
+  }
+  return process.env[valueName]?.trim();
+}
 
 const codexAgentMode =
   process.env.CODEX_AGENT_MODE?.trim().toLowerCase() || DEFAULT_CODEX_AGENT_MODE;
@@ -38,7 +50,15 @@ export const publicConfig = {
 } as const;
 
 export const serverConfig = {
-  databaseUrl: process.env.DATABASE_URL ?? LOCAL_DATABASE_URL,
+  databaseUrl:
+    secretValue("DATABASE_URL", "DATABASE_URL_FILE") ?? LOCAL_DATABASE_URL,
+  familyDatabaseUrl: secretValue(
+    "FAMILY_DATABASE_URL",
+    "FAMILY_DATABASE_URL_FILE",
+  ),
+  graphitiApiUrl: process.env.GRAPHITI_API_URL?.trim(),
+  familyGraphGroupId:
+    process.env.FAMILY_GRAPH_GROUP_ID?.trim() || "family-home",
   mastraHost: process.env.MASTRA_HOST?.trim() || "127.0.0.1",
   mastraApiUrl: process.env.MASTRA_API_URL ?? LOCAL_MASTRA_API_URL,
   modelProvider,

@@ -1,11 +1,15 @@
 import { createTool } from "@mastra/core/tools";
 import { CollectStreams, Monty } from "@pydantic/monty";
+import { parse } from "pgsql-ast-parser";
+import { Pool } from "pg";
 import { z } from "zod";
 
+import { serverConfig } from "@/lib/config";
 import { truncateToolText, truncateToolValue } from "@/lib/tool-output";
 
 const globalForMonty = globalThis as typeof globalThis & {
   lfpMontyPool?: Promise<Monty>;
+  lfpFamilySqlPool?: Pool;
 };
 
 function getMontyPool() {
@@ -136,5 +140,103 @@ export const montyTool = createTool({
         .map((entry) => entry.text)
         .join("")),
     };
+  },
+});
+
+function getFamilySqlPool() {
+  if (!serverConfig.familyDatabaseUrl) {
+    throw new Error("FAMILY_DATABASE_URL_FILE is not configured.");
+  }
+  return (globalForMonty.lfpFamilySqlPool ??= new Pool({
+    connectionString: serverConfig.familyDatabaseUrl,
+    max: 3,
+    idleTimeoutMillis: 30_000,
+    connectionTimeoutMillis: 5_000,
+  }));
+}
+
+export const familySqlTool = createTool({
+  id: "family_sql",
+  description: `Run one read-only PostgreSQL SELECT generated for a family-context question.
+Available public tables: documents (ingest_id, family_id, source, external_id, title, body_text, metadata JSONB, occurred_at, ingested_at, processed_at), deadlines (title, due_at, evidence, confidence, status), source_cursors, processing_events (source, stage, status, detail JSONB, created_at), and graph_outbox (attempts, delivered_at, last_error). Use JSONB operators for attachment or message metadata. Always select only the columns needed and add a LIMIT.`,
+  inputSchema: z.object({
+    sql: z
+      .string()
+      .min(1)
+      .max(10_000)
+      .describe("One PostgreSQL SELECT statement with no mutation"),
+  }),
+  outputSchema: z.object({
+    columns: z.array(z.string()),
+    rows: z.array(z.record(z.string(), z.unknown())),
+    rowCount: z.number(),
+    truncated: z.boolean(),
+  }),
+  execute: async ({ sql }) => {
+    const statements = parse(sql);
+    if (statements.length !== 1 || statements[0]?.type !== "select") {
+      throw new Error("Only one read-only SELECT statement is allowed.");
+    }
+
+    const client = await getFamilySqlPool().connect();
+    try {
+      await client.query("BEGIN READ ONLY");
+      await client.query("SET LOCAL statement_timeout = '5s'");
+      const result = await client.query<Record<string, unknown>>(sql);
+      const rows = result.rows.slice(0, 100).map((row) =>
+        truncateToolValue(row) as Record<string, unknown>,
+      );
+      await client.query("ROLLBACK");
+      return {
+        columns: result.fields.map((field) => field.name),
+        rows,
+        rowCount: result.rowCount ?? rows.length,
+        truncated: result.rows.length > rows.length,
+      };
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => undefined);
+      throw error;
+    } finally {
+      client.release();
+    }
+  },
+});
+
+export const familyGraphTool = createTool({
+  id: "family_graph",
+  description:
+    "Search Graphiti's temporal family knowledge graph for entities, relationships, and facts derived from ingested family context. Use alongside family_sql when both structured records and semantic relationships can help.",
+  inputSchema: z.object({
+    query: z.string().min(1).max(2_000),
+    maxFacts: z.number().int().min(1).max(25).default(10),
+  }),
+  outputSchema: z.object({
+    query: z.string(),
+    facts: z.array(z.record(z.string(), z.unknown())),
+  }),
+  execute: async ({ query, maxFacts }) => {
+    if (!serverConfig.graphitiApiUrl) {
+      throw new Error("GRAPHITI_API_URL is not configured.");
+    }
+    const response = await fetch(
+      new URL("/search", serverConfig.graphitiApiUrl),
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          group_ids: [serverConfig.familyGraphGroupId],
+          query,
+          max_facts: maxFacts,
+        }),
+        signal: AbortSignal.timeout(15_000),
+      },
+    );
+    if (!response.ok) {
+      throw new Error(`Graphiti search failed with HTTP ${response.status}.`);
+    }
+    const payload = (await response.json()) as {
+      facts?: Array<Record<string, unknown>>;
+    };
+    return { query, facts: payload.facts ?? [] };
   },
 });
