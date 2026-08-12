@@ -627,7 +627,7 @@ const toolIcons: Record<SelectableToolId, LucideIcon> = {
   family_graph: Share2,
   family_email: Mail,
   family_attachment: Paperclip,
-  family_tasks: ListTodo,
+  tasks: ListTodo,
   scheduling: Clock3,
   web_search: Globe2,
   code_interpreter: Code2,

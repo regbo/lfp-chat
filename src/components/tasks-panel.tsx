@@ -1,32 +1,63 @@
 "use client";
 
-import { Check, Circle, Loader2, Plus } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import {
+  CalendarDays,
+  Check,
+  Circle,
+  Plus,
+  UserRound,
+} from "lucide-react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
 
-import type { FamilyTask } from "@/lib/vikunja";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Spinner } from "@/components/ui/spinner";
+import type { Task } from "@/lib/tasks";
 
 async function requestTasks() {
   const response = await fetch("/api/tasks");
-  const payload = (await response.json()) as { tasks?: FamilyTask[]; error?: string };
+  const payload = (await response.json()) as {
+    tasks?: Task[];
+    error?: string;
+  };
   if (!response.ok) throw new Error(payload.error || "Could not load tasks.");
   return payload.tasks || [];
 }
 
+function formatDueDate(value: string) {
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(value));
+}
+
 export function TasksPanel() {
-  const [tasks, setTasks] = useState<FamilyTask[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
   const [title, setTitle] = useState("");
   const [assignee, setAssignee] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
+  const [loadError, setLoadError] = useState("");
+  const [createError, setCreateError] = useState("");
+  const [createOpen, setCreateOpen] = useState(false);
 
   const refresh = useCallback(async () => {
     setLoading(true);
-    setError("");
+    setLoadError("");
     try {
       setTasks(await requestTasks());
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Could not load tasks.");
+      setLoadError(
+        cause instanceof Error ? cause.message : "Could not load tasks.",
+      );
     } finally {
       setLoading(false);
     }
@@ -35,20 +66,29 @@ export function TasksPanel() {
   useEffect(() => {
     let active = true;
     void requestTasks()
-      .then((items) => active && setTasks(items))
-      .catch((cause: unknown) => {
-        if (active) setError(cause instanceof Error ? cause.message : "Could not load tasks.");
+      .then((items) => {
+        if (active) setTasks(items);
       })
-      .finally(() => active && setLoading(false));
+      .catch((cause: unknown) => {
+        if (active) {
+          setLoadError(
+            cause instanceof Error ? cause.message : "Could not load tasks.",
+          );
+        }
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
     return () => {
       active = false;
     };
   }, []);
 
-  async function createTask() {
+  async function createTask(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
     if (!title.trim() || saving) return;
     setSaving(true);
-    setError("");
+    setCreateError("");
     try {
       const response = await fetch("/api/tasks", {
         method: "POST",
@@ -58,73 +98,187 @@ export function TasksPanel() {
           ...(assignee.trim() ? { assignee: assignee.trim() } : {}),
         }),
       });
-      const payload = (await response.json()) as { error?: string };
-      if (!response.ok) throw new Error(payload.error || "Could not create task.");
+      const payload = (await response.json()) as {
+        task?: Task;
+        error?: string;
+      };
+      if (!response.ok) {
+        throw new Error(payload.error || "Could not create task.");
+      }
+      const createdTask = payload.task;
+      if (createdTask) setTasks((current) => [...current, createdTask]);
       setTitle("");
-      await refresh();
+      setAssignee("");
+      setCreateOpen(false);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Could not create task.");
+      setCreateError(
+        cause instanceof Error ? cause.message : "Could not create task.",
+      );
     } finally {
       setSaving(false);
     }
   }
 
-  async function toggle(task: FamilyTask) {
+  async function completeTask(task: Task) {
     setTasks((current) => current.filter((item) => item.id !== task.id));
-    const response = await fetch("/api/tasks", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: task.id, done: !task.done }),
-    });
-    if (!response.ok) await refresh();
+    try {
+      const response = await fetch("/api/tasks", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: task.id, done: true }),
+      });
+      if (!response.ok) throw new Error("Task update failed.");
+    } catch {
+      await refresh();
+      setLoadError(`Could not complete “${task.title}.” Try again.`);
+    }
   }
 
   return (
-    <div className="mx-auto flex h-full w-full max-w-3xl flex-col gap-5 overflow-y-auto p-4 sm:p-6">
-      <div>
-        <h2 className="text-lg font-semibold">Household</h2>
-        <p className="chat-meta-text text-muted-foreground">
-          Shared tasks created by you, your family, chat, and ingestion automations.
-        </p>
-      </div>
-      <div className="rounded-2xl border bg-card p-3 shadow-sm">
-        <div className="flex flex-col gap-2 sm:flex-row">
-          <input aria-label="Task title" className="min-h-10 flex-1 rounded-xl border bg-background px-3 outline-none focus:ring-2 focus:ring-ring" onChange={(event) => setTitle(event.target.value)} onKeyDown={(event) => event.key === "Enter" && void createTask()} placeholder="Add a household task" value={title} />
-          <input aria-label="Assignee" className="min-h-10 rounded-xl border bg-background px-3 outline-none focus:ring-2 focus:ring-ring sm:w-52" onChange={(event) => setAssignee(event.target.value)} placeholder="Assignee email (optional)" value={assignee} />
-          <button className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-primary px-4 text-primary-foreground disabled:opacity-50" disabled={!title.trim() || saving} onClick={() => void createTask()} type="button">
-            {saving ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />} Add
-          </button>
+    <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-12 pt-8 md:px-10">
+      <div className="mx-auto w-full max-w-3xl">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex min-w-0 items-baseline gap-2.5">
+            <h1 className="chat-display-text text-balance">Tasks</h1>
+            {!loading && !loadError && (
+              <span className="chat-meta-text text-muted-foreground tabular-nums">
+                {tasks.length} open
+              </span>
+            )}
+          </div>
+          <Button
+            className="shrink-0 rounded-full"
+            onClick={() => {
+              setCreateError("");
+              setCreateOpen(true);
+            }}
+          >
+            <Plus aria-hidden="true" className="size-4" /> New Task
+          </Button>
         </div>
-        {error && <p className="mt-2 text-sm text-destructive">{error}</p>}
+
+        <div className="mt-7">
+          {loading ? (
+            <div className="chat-ui-text flex items-center justify-center gap-2 py-14 text-muted-foreground" role="status">
+              <Spinner /> Loading…
+            </div>
+          ) : loadError ? (
+            <div className="rounded-xl border border-destructive/25 bg-destructive/5 px-4 py-3" role="alert">
+              <p className="chat-ui-text text-destructive">{loadError}</p>
+              <Button className="mt-2" onClick={() => void refresh()} size="sm" variant="outline">
+                Try Again
+              </Button>
+            </div>
+          ) : tasks.length === 0 ? (
+            <p className="chat-ui-text py-14 text-center text-muted-foreground" role="status">
+              No open tasks.
+            </p>
+          ) : (
+            <ul className="divide-y divide-border/70 border-y">
+              {tasks.map((task) => {
+                const assignees = task.assignees
+                  ?.map((person) => person.name || person.username)
+                  .filter(Boolean)
+                  .join(", ");
+                return (
+                  <li className="group flex min-w-0 items-start gap-3 py-3.5 [contain-intrinsic-size:0_3.5rem] [content-visibility:auto]" key={task.id}>
+                    <button
+                      aria-label={`Complete ${task.title}`}
+                      className="mt-px grid size-7 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+                      onClick={() => void completeTask(task)}
+                      type="button"
+                    >
+                      {task.done ? (
+                        <Check aria-hidden="true" className="size-4" />
+                      ) : (
+                        <Circle aria-hidden="true" className="size-4" />
+                      )}
+                    </button>
+                    <div className="min-w-0 flex-1 pt-1">
+                      <p className="chat-ui-text break-words font-medium">{task.title}</p>
+                      {(task.due_date || assignees) && (
+                        <div className="chat-meta-text mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-muted-foreground">
+                          {task.due_date && (
+                            <span className="inline-flex items-center gap-1.5">
+                              <CalendarDays aria-hidden="true" className="size-3.5" />
+                              {formatDueDate(task.due_date)}
+                            </span>
+                          )}
+                          {assignees && (
+                            <span className="inline-flex items-center gap-1.5">
+                              <UserRound aria-hidden="true" className="size-3.5" />
+                              {assignees}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+
       </div>
-      <div className="overflow-hidden rounded-2xl border bg-card">
-        {loading ? (
-          <div className="flex items-center justify-center gap-2 p-8 text-muted-foreground"><Loader2 className="size-4 animate-spin" /> Loading tasks</div>
-        ) : tasks.length === 0 ? (
-          <p className="p-8 text-center text-muted-foreground">No open household tasks.</p>
-        ) : (
-          <ul className="divide-y">
-            {tasks.map((task) => (
-              <li className="flex items-start gap-3 p-4" key={task.id}>
-                <button aria-label={`Complete ${task.title}`} className="mt-0.5 text-muted-foreground hover:text-foreground" onClick={() => void toggle(task)} type="button">
-                  {task.done ? <Check className="size-5" /> : <Circle className="size-5" />}
-                </button>
-                <div className="min-w-0 flex-1">
-                  <p className="font-medium">{task.title}</p>
-                  <div className="chat-meta-text mt-1 flex flex-wrap gap-x-3 text-muted-foreground">
-                    {task.due_date && <span>Due {new Date(task.due_date).toLocaleString()}</span>}
-                    {task.assignees?.map((person) => <span key={person.id}>Assigned to {person.name || person.username}</span>)}
-                    <span>HOME-{task.id}</span>
-                  </div>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-      <a className="self-start text-sm text-primary underline-offset-4 hover:underline" href="https://tasks.lfpconnect.io/login?redirectToProvider=authentik" rel="noreferrer" target="_blank">
-        Open full projects, Kanban, and settings
-      </a>
+
+      <Dialog onOpenChange={setCreateOpen} open={createOpen}>
+        <DialogContent>
+          <form onSubmit={createTask}>
+            <DialogHeader>
+              <DialogTitle>New Task</DialogTitle>
+              <DialogDescription className="sr-only">
+                Create a task.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="mt-5 space-y-4">
+              <div className="space-y-1.5">
+                <label className="chat-ui-text font-medium" htmlFor="task-title">
+                  Task
+                </label>
+                <Input
+                  autoComplete="off"
+                  id="task-title"
+                  maxLength={500}
+                  name="title"
+                  onChange={(event) => setTitle(event.target.value)}
+                  placeholder="Replace the air filter…"
+                  required
+                  value={title}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="chat-ui-text font-medium" htmlFor="task-assignee">
+                  Assign To <span className="font-normal text-muted-foreground">(optional)</span>
+                </label>
+                <Input
+                  autoComplete="off"
+                  id="task-assignee"
+                  maxLength={250}
+                  name="assignee"
+                  onChange={(event) => setAssignee(event.target.value)}
+                  placeholder="Name, username, or email…"
+                  value={assignee}
+                />
+              </div>
+              {createError && (
+                <p aria-live="polite" className="chat-ui-text text-destructive" role="alert">
+                  {createError}
+                </p>
+              )}
+            </div>
+            <DialogFooter className="mt-6">
+              <Button onClick={() => setCreateOpen(false)} type="button" variant="ghost">
+                Cancel
+              </Button>
+              <Button disabled={saving} type="submit">
+                {saving ? <Spinner /> : <Plus aria-hidden="true" className="size-4" />}
+                {saving ? "Creating…" : "Create Task"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

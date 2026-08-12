@@ -10,4 +10,8 @@ describe("tool catalog migrations", () => {
   test("preserves an explicit v2 scheduling choice", () => {
     expect(migrateEnabledToolIds(["search"], 2)).toEqual(["search"]);
   });
+
+  test("migrates the deployment-specific task capability name", () => {
+    expect(migrateEnabledToolIds(["family_tasks"], 2)).toEqual(["tasks"]);
+  });
 });

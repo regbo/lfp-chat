@@ -1,20 +1,9 @@
 import { serverConfig } from "@/lib/config";
-
-export type FamilyTask = {
-  id: number;
-  title: string;
-  description?: string;
-  done: boolean;
-  due_date?: string;
-  priority?: number;
-  assignees?: Array<{ id: number; username: string; name?: string; email?: string }>;
-  created?: string;
-  updated?: string;
-};
+import type { Task } from "@/lib/tasks";
 
 function configuration() {
   if (!serverConfig.vikunjaApiUrl || !serverConfig.vikunjaApiToken) {
-    throw new Error("The family task service is not configured.");
+    throw new Error("The task service is not configured.");
   }
   return {
     baseUrl: serverConfig.vikunjaApiUrl.replace(/\/$/, ""),
@@ -41,7 +30,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return (await response.json()) as T;
 }
 
-export async function listFamilyTasks(includeDone = false) {
+export async function listTasks(includeDone = false) {
   const { projectId } = configuration();
   const filter = includeDone
     ? `project = ${projectId}`
@@ -52,7 +41,7 @@ export async function listFamilyTasks(includeDone = false) {
     order_by: "asc",
     per_page: "100",
   });
-  return request<FamilyTask[]>(`api/v1/tasks?${query}`);
+  return request<Task[]>(`api/v1/tasks?${query}`);
 }
 
 async function findAssignee(search: string) {
@@ -80,11 +69,11 @@ async function ensureProjectAccess(userId: number) {
   }
 }
 
-export async function assignFamilyTask(taskId: number, assignee: string) {
+export async function assignTask(taskId: number, assignee: string) {
   const user = await findAssignee(assignee);
   if (!user) {
     throw new Error(
-      `No Vikunja user matches ${assignee}. They must sign in to Family Tasks once before assignment.`,
+      `No task-service user matches ${assignee}. They may need to sign in to the configured task service before assignment.`,
     );
   }
   await ensureProjectAccess(user.id);
@@ -95,7 +84,7 @@ export async function assignFamilyTask(taskId: number, assignee: string) {
   return user;
 }
 
-export async function createFamilyTask(input: {
+export async function createTask(input: {
   title: string;
   description?: string;
   dueDate?: string;
@@ -103,7 +92,7 @@ export async function createFamilyTask(input: {
   assignee?: string;
 }) {
   const { projectId } = configuration();
-  const task = await request<FamilyTask>(`api/v1/projects/${projectId}/tasks`, {
+  const task = await request<Task>(`api/v1/projects/${projectId}/tasks`, {
     method: "PUT",
     body: JSON.stringify({
       title: input.title,
@@ -112,15 +101,15 @@ export async function createFamilyTask(input: {
       ...(input.priority ? { priority: input.priority } : {}),
     }),
   });
-  if (input.assignee) await assignFamilyTask(task.id, input.assignee);
-  return request<FamilyTask>(`api/v1/tasks/${task.id}`);
+  if (input.assignee) await assignTask(task.id, input.assignee);
+  return request<Task>(`api/v1/tasks/${task.id}`);
 }
 
-export async function updateFamilyTask(
+export async function updateTask(
   taskId: number,
   update: { title?: string; description?: string; dueDate?: string; done?: boolean; priority?: number },
 ) {
-  return request<FamilyTask>(`api/v1/tasks/${taskId}`, {
+  return request<Task>(`api/v1/tasks/${taskId}`, {
     method: "POST",
     body: JSON.stringify({
       ...(update.title !== undefined ? { title: update.title } : {}),

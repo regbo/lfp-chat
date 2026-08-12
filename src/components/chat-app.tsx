@@ -1178,6 +1178,38 @@ function ThreadActionsMenu({
   );
 }
 
+function SidebarChatTitle({ title }: { title: string }) {
+  const titleRef = useRef<HTMLSpanElement>(null);
+  const [overflowing, setOverflowing] = useState(false);
+
+  useEffect(() => {
+    const element = titleRef.current;
+    if (!element) return;
+    const measure = () => {
+      const nextOverflowing = element.scrollWidth > element.clientWidth + 1;
+      setOverflowing((current) =>
+        current === nextOverflowing ? current : nextOverflowing,
+      );
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [title]);
+
+  return (
+    <span
+      className={cn(
+        "sidebar-chat-title",
+        overflowing && "sidebar-chat-title-overflowing",
+      )}
+      ref={titleRef}
+    >
+      {title}
+    </span>
+  );
+}
+
 export type ChatAppProps = {
   /** Views to add to the primary sidebar without changing ChatApp internals. */
   plugins?: readonly ChatAppPlugin[];
@@ -1572,7 +1604,7 @@ export function ChatApp({ plugins = [] }: ChatAppProps) {
   const renderSidebarThreadControls = useCallback((thread: ThreadSummary) => {
     const running = runningThreadIds.has(thread.id);
     return (
-      <span className="relative mr-1 grid size-6 shrink-0 place-items-center">
+      <span className="sidebar-chat-actions relative mr-1 grid size-6 shrink-0 place-items-center">
         {running && (
           <LoaderCircle
             aria-label={`${thread.title || "Chat"} is running`}
@@ -1646,7 +1678,7 @@ export function ChatApp({ plugins = [] }: ChatAppProps) {
               {pinnedThreads.map((thread) => (
                 <div className={cn("sidebar-chat-row group flex min-h-8 items-center rounded-lg hover:bg-sidebar-accent", thread.id === threadId && "sidebar-chat-link-active")} key={`pinned-${thread.id}`}>
                   <Link className="sidebar-chat-link min-w-0 flex-1" href={threadHref(thread.id)} onFocus={() => void prefetchThread(thread.id)} onPointerEnter={() => void prefetchThread(thread.id)} onClick={(event) => { event.preventDefault(); void openThread(thread.id); }}>
-                    <span className="sidebar-chat-title">{thread.title || "New chat"}</span>
+                    <SidebarChatTitle title={thread.title || "New chat"} />
                   </Link>
                   {renderSidebarThreadControls(thread)}
                 </div>
@@ -1659,7 +1691,7 @@ export function ChatApp({ plugins = [] }: ChatAppProps) {
           {recentThreads.map((thread) => (
             <div className={cn("sidebar-chat-row group flex min-h-8 items-center rounded-lg hover:bg-sidebar-accent", thread.id === threadId && "sidebar-chat-link-active")} key={thread.id}>
               <Link className="sidebar-chat-link min-w-0 flex-1" href={threadHref(thread.id)} onFocus={() => void prefetchThread(thread.id)} onPointerEnter={() => void prefetchThread(thread.id)} onClick={(event) => { event.preventDefault(); void openThread(thread.id); }}>
-                <span className="sidebar-chat-title">{thread.title || "New chat"}</span>
+                <SidebarChatTitle title={thread.title || "New chat"} />
               </Link>
               {renderSidebarThreadControls(thread)}
             </div>

@@ -18,9 +18,9 @@ import {
   familyGraphTool,
   familySearchTool,
   familyDatabaseTool,
-  familyTaskCreateTool,
-  familyTaskListTool,
-  familyTaskUpdateTool,
+  taskCreateTool,
+  taskListTool,
+  taskUpdateTool,
   montyTool,
   searchTool,
 } from "@/mastra/tools";
@@ -90,9 +90,9 @@ function createMastra() {
         family_graph: familyGraphTool,
         family_email: familyEmailTool,
         family_attachment: familyAttachmentTool,
-        family_task_list: familyTaskListTool,
-        family_task_create: familyTaskCreateTool,
-        family_task_update: familyTaskUpdateTool,
+        task_list: taskListTool,
+        task_create: taskCreateTool,
+        task_update: taskUpdateTool,
         family_automation_list: familyAutomationListTool,
         family_automation_upsert: familyAutomationUpsertTool,
         schedule_create: scheduleCreateTool,
@@ -105,8 +105,8 @@ function createMastra() {
         Object.entries(availableTools).filter(
           ([id]) =>
             enabled.has(id) ||
-            (enabled.has("family_tasks") &&
-              (id.startsWith("family_task_") || id.startsWith("family_automation_"))) ||
+            (enabled.has("tasks") &&
+              (id.startsWith("task_") || id.startsWith("family_automation_"))) ||
             (enabled.has("scheduling") && id.startsWith("schedule_")) ||
             (isScheduledJob && id === "job_memory_recall"),
         ),
@@ -128,7 +128,7 @@ function createMastra() {
           : "";
       return `You are LFP Chat, a capable and concise assistant.
 
-The user has enabled these capabilities for this run: ${enabled.join(", ") || "none"}. Only use tools that are enabled. ${scheduledJobInstructions} Use project search for this app's stack, calculator for arithmetic, and Monty for isolated Python. For questions about family email, documents, attachments, deadlines, ingestion, or processing, use family_search for semantic and full-text retrieval and family_database for structured filters or aggregation. Use family_graph for temporal relationships and derived facts. Use family_email and family_attachment only when the user needs actual archived content, a MIME structure, or original bytes; first use family_search or family_database to find the required UUID. Use family task tools whenever the user asks to view, create, assign, complete, or change household todos. When the user says "every time", "whenever ingestion finds", or otherwise asks for ongoing behavior based on newly ingested records, create a persistent extraction directive plus automation rule with family_automation_upsert instead of creating a single task. When the user asks for work on a time cadence (for example every Tuesday, daily, or monthly), use schedule_create. Put only the recurring work in its prompt, and pass the cadence as either the user's plain-language schedule or a cron expression. Include the user's timezone when it is known. The scheduling tool checks for equivalent existing work before creation. Call relevant retrieval tools together when their evidence is complementary. When Code mode is enabled, the workspace tools operate directly on the host filesystem and shell; do not read secrets or modify unrelated files unless the user explicitly asks. ${modelProvider.capabilityInstructions} When multiple tools are relevant, call them in the same step so the interface can present a grouped tool summary.
+The user has enabled these capabilities for this run: ${enabled.join(", ") || "none"}. Only use tools that are enabled. ${scheduledJobInstructions} Use project search for this app's stack, calculator for arithmetic, and Monty for isolated Python. For questions about family email, documents, attachments, deadlines, ingestion, or processing, use family_search for semantic and full-text retrieval and family_database for structured filters or aggregation. Use family_graph for temporal relationships and derived facts. Use family_email and family_attachment only when the user needs actual archived content, a MIME structure, or original bytes; first use family_search or family_database to find the required UUID. Use task tools whenever the user asks to view, create, assign, complete, or change todos. When the user says "every time", "whenever ingestion finds", or otherwise asks for ongoing behavior based on newly ingested records, create a persistent extraction directive plus automation rule with family_automation_upsert instead of creating a single task. When the user asks for work on a time cadence (for example every Tuesday, daily, or monthly), use schedule_create. Put only the recurring work in its prompt, and pass the cadence as either the user's plain-language schedule or a cron expression. Include the user's timezone when it is known. The scheduling tool checks for equivalent existing work before creation. Call relevant retrieval tools together when their evidence is complementary. When Code mode is enabled, the workspace tools operate directly on the host filesystem and shell; do not read secrets or modify unrelated files unless the user explicitly asks. ${modelProvider.capabilityInstructions} When multiple tools are relevant, call them in the same step so the interface can present a grouped tool summary.
 
 Be direct and useful. Use short paragraphs and lists only when they improve clarity. Remember stable user preferences in working memory, but do not store secrets or sensitive credentials.`;
     },
@@ -154,9 +154,9 @@ Be direct and useful. Use short paragraphs and lists only when they improve clar
       family_graph: familyGraphTool,
       family_email: familyEmailTool,
       family_attachment: familyAttachmentTool,
-      family_task_list: familyTaskListTool,
-      family_task_create: familyTaskCreateTool,
-      family_task_update: familyTaskUpdateTool,
+      task_list: taskListTool,
+      task_create: taskCreateTool,
+      task_update: taskUpdateTool,
       family_automation_list: familyAutomationListTool,
       family_automation_upsert: familyAutomationUpsertTool,
       schedule_create: scheduleCreateTool,

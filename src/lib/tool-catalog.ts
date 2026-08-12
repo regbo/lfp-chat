@@ -1,5 +1,5 @@
 export const TOOLS_CONTEXT_KEY = "lfp.tools";
-export const TOOL_CATALOG_VERSION = 2;
+export const TOOL_CATALOG_VERSION = 3;
 
 export const toolCatalog = [
   {
@@ -51,9 +51,9 @@ export const toolCatalog = [
     defaultEnabled: true,
   },
   {
-    id: "family_tasks",
-    title: "Family tasks",
-    description: "Create, assign, update, and review shared household tasks.",
+    id: "tasks",
+    title: "Tasks",
+    description: "Create, assign, update, and review tasks.",
     defaultEnabled: true,
   },
   {
@@ -101,7 +101,11 @@ export function normalizeEnabledToolIds(value: unknown): SelectableToolId[] {
   if (!Array.isArray(value)) return [...defaultEnabledToolIds];
   return Array.from(
     new Set(
-      value.map((id) => (id === "family_sql" ? "family_database" : id)).filter(
+      value.map((id) => {
+        if (id === "family_sql") return "family_database";
+        if (id === "family_tasks") return "tasks";
+        return id;
+      }).filter(
         (id): id is SelectableToolId =>
           typeof id === "string" && selectableToolIds.has(id),
       ),
@@ -114,10 +118,10 @@ export function migrateEnabledToolIds(
   storedCatalogVersion: number,
 ): SelectableToolId[] {
   const normalized = normalizeEnabledToolIds(value);
-  if (storedCatalogVersion >= TOOL_CATALOG_VERSION) return normalized;
-
   // Scheduling was introduced in catalog v2 and should be available once to
   // people whose saved v1 selection predates the capability. They can still
   // disable it normally after this one-time migration.
-  return Array.from(new Set([...normalized, "scheduling" as const]));
+  return storedCatalogVersion < 2
+    ? Array.from(new Set([...normalized, "scheduling" as const]))
+    : normalized;
 }

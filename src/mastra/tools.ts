@@ -7,9 +7,9 @@ import { z } from "zod";
 import { serverConfig } from "@/lib/config";
 import { truncateToolText, truncateToolValue } from "@/lib/tool-output";
 import {
-  createFamilyTask,
-  listFamilyTasks,
-  updateFamilyTask,
+  createTask,
+  listTasks,
+  updateTask,
 } from "@/lib/vikunja";
 
 const globalForMonty = globalThis as typeof globalThis & {
@@ -446,23 +446,23 @@ export const familyAttachmentTool = createTool({
   },
 });
 
-export const familyTaskListTool = createTool({
-  id: "family_task_list",
+export const taskListTool = createTool({
+  id: "task_list",
   description:
-    "List shared household tasks, including due dates and assignees. Use this before answering questions about the family todo list.",
+    "List tasks, including due dates and assignees. Use this before answering questions about the user's todo list.",
   inputSchema: z.object({ includeDone: z.boolean().default(false) }),
   outputSchema: z.object({ tasks: z.array(z.record(z.string(), z.unknown())) }),
   execute: async ({ includeDone }) => ({
-    tasks: (await listFamilyTasks(includeDone)).map(
+    tasks: (await listTasks(includeDone)).map(
       (task) => truncateToolValue(task) as Record<string, unknown>,
     ),
   }),
 });
 
-export const familyTaskCreateTool = createTool({
-  id: "family_task_create",
+export const taskCreateTool = createTool({
+  id: "task_create",
   description:
-    "Create a shared household task. An assignee may be a Vikunja username, full name, or exact email. A person must sign in to Family Tasks once before assignment.",
+    "Create a task. An assignee may be a username, full name, or exact email recognized by the configured task service.",
   inputSchema: z.object({
     title: z.string().min(1).max(500),
     description: z.string().max(20_000).optional(),
@@ -472,13 +472,13 @@ export const familyTaskCreateTool = createTool({
   }),
   outputSchema: z.record(z.string(), z.unknown()),
   execute: async (input) =>
-    truncateToolValue(await createFamilyTask(input)) as Record<string, unknown>,
+    truncateToolValue(await createTask(input)) as Record<string, unknown>,
 });
 
-export const familyTaskUpdateTool = createTool({
-  id: "family_task_update",
+export const taskUpdateTool = createTool({
+  id: "task_update",
   description:
-    "Update a household task by numeric task ID, including completing or reopening it.",
+    "Update a task by numeric task ID, including completing or reopening it.",
   inputSchema: z.object({
     taskId: z.number().int().positive(),
     title: z.string().min(1).max(500).optional(),
@@ -489,7 +489,7 @@ export const familyTaskUpdateTool = createTool({
   }),
   outputSchema: z.record(z.string(), z.unknown()),
   execute: async ({ taskId, ...update }) =>
-    truncateToolValue(await updateFamilyTask(taskId, update)) as Record<
+    truncateToolValue(await updateTask(taskId, update)) as Record<
       string,
       unknown
     >,

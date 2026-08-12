@@ -1,9 +1,9 @@
 import { z } from "zod";
 
 import {
-  createFamilyTask,
-  listFamilyTasks,
-  updateFamilyTask,
+  createTask,
+  listTasks,
+  updateTask,
 } from "@/lib/vikunja";
 
 const createSchema = z.object({
@@ -26,7 +26,7 @@ const updateSchema = z.object({
 export async function GET(request: Request) {
   try {
     const includeDone = new URL(request.url).searchParams.get("includeDone") === "true";
-    return Response.json({ tasks: await listFamilyTasks(includeDone) });
+    return Response.json({ tasks: await listTasks(includeDone) });
   } catch (error) {
     return Response.json(
       { error: error instanceof Error ? error.message : "Could not load tasks." },
@@ -39,7 +39,7 @@ export async function POST(request: Request) {
   const parsed = createSchema.safeParse(await request.json());
   if (!parsed.success) return Response.json({ error: parsed.error.message }, { status: 400 });
   try {
-    return Response.json({ task: await createFamilyTask(parsed.data) }, { status: 201 });
+    return Response.json({ task: await createTask(parsed.data) }, { status: 201 });
   } catch (error) {
     return Response.json(
       { error: error instanceof Error ? error.message : "Could not create task." },
@@ -53,7 +53,7 @@ export async function PATCH(request: Request) {
   if (!parsed.success) return Response.json({ error: parsed.error.message }, { status: 400 });
   const { id, ...update } = parsed.data;
   try {
-    return Response.json({ task: await updateFamilyTask(id, update) });
+    return Response.json({ task: await updateTask(id, update) });
   } catch (error) {
     return Response.json(
       { error: error instanceof Error ? error.message : "Could not update task." },
