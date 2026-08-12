@@ -4,6 +4,8 @@ import { LocalFilesystem, Workspace } from "@mastra/core/workspace";
 import { resolve } from "node:path";
 
 import { serverConfig } from "@/lib/config";
+import { SCHEDULE_JOB_CONTEXT_KEY } from "@/lib/schedules";
+import { jobMemoryRecallTool } from "@/mastra/job-memory-tool";
 import {
   resolveRuntimeModel,
   resolveRuntimeOptions,
@@ -51,9 +53,16 @@ export function createCodexAgent(memory: ConstructorParameters<typeof Agent>[0][
     model: ({ requestContext }) => resolveRuntimeModel(requestContext),
     memory,
     agents: { codexCli },
+    tools: ({ requestContext }) =>
+      Object.fromEntries(
+        requestContext.get(SCHEDULE_JOB_CONTEXT_KEY) === true
+          ? [["job_memory_recall", jobMemoryRecallTool]]
+          : [],
+      ),
     workspace: codexWorkspace,
-    instructions: `You are the supervisor for the Codex CLI coding agent.
+    instructions: ({ requestContext }) => `You are the supervisor for the Codex CLI coding agent.
 
+${requestContext.get(SCHEDULE_JOB_CONTEXT_KEY) === true ? "This is a scheduled job. When its result depends on prior runs or must not repeat them, call job_memory_recall first and include the relevant job history in the delegation." : ""}
 Delegate every user request to codexCli. Include the user's complete request and any relevant conversation context. Do not attempt the task yourself and do not call unrelated tools. Return the Codex result directly and concisely. The Codex workspace is restricted to ${serverConfig.codexWorkspacePath}.`,
     defaultOptions: ({ requestContext }) => ({
       ...resolveRuntimeOptions(requestContext),

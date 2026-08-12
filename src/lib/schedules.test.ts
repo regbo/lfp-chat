@@ -74,5 +74,6 @@ test("scheduled runs keep work tools but cannot recursively schedule", () => {
   })).toEqual({
     "lfp.tools": ["family_search"],
     "lfp.timezone": "America/New_York",
+    "lfp.schedule-job": true,
   });
 });

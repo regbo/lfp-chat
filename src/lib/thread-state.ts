@@ -13,3 +13,7 @@ export function isThreadPinned(thread: ThreadSummary) {
 export function isThreadArchived(thread: ThreadSummary) {
   return thread.metadata?.archived === true;
 }
+
+export function isScheduledThread(thread: ThreadSummary) {
+  return thread.metadata?.schedule === true || thread.id.startsWith("schedule-");
+}

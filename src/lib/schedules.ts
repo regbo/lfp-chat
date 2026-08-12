@@ -1,4 +1,5 @@
 export const SCHEDULE_TIMEZONE_CONTEXT_KEY = "lfp.timezone";
+export const SCHEDULE_JOB_CONTEXT_KEY = "lfp.schedule-job";
 
 export type ComparableSchedule = {
   id: string;
@@ -95,6 +96,7 @@ export function scheduleRequestContext(input: {
     // the scheduler that launched them.
     "lfp.tools": input.enabledToolIds.filter((id) => id !== "scheduling"),
     "lfp.timezone": input.timezone,
+    [SCHEDULE_JOB_CONTEXT_KEY]: true,
     ...(input.modelId ? { "lfp.model": input.modelId } : {}),
     ...(input.reasoningEffort !== undefined
       ? { "lfp.reasoning": input.reasoningEffort }

@@ -133,7 +133,6 @@ import {
   PinOff,
   Search,
   SquarePen,
-  Sparkles,
   Trash2,
   Wrench,
   X,
@@ -1053,9 +1052,9 @@ function ChatSession({
             ))
           )}
           {isStreaming && !hasStreamingAssistant && (
-            <div className="chat-column chat-meta-text flex items-center gap-2 text-muted-foreground">
-              <Sparkles className="size-4 animate-pulse" /> Thinking
-            </div>
+            <Reasoning className="chat-column" isStreaming>
+              <ReasoningTrigger />
+            </Reasoning>
           )}
           {error && (
             <div className="chat-column chat-ui-text rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-destructive">

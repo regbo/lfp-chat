@@ -74,8 +74,14 @@ a duplicate.
 Each schedule has its own persisted memory thread. The Scheduled menu can edit
 its name, prompt, cron expression, and timezone; pause or resume it; run it
 immediately; and expand its trigger history to show outcomes and saved assistant
-output. Scheduled runs inherit the model and work tools selected when the
-schedule was created, but cannot recursively create schedules.
+output. Those private job threads stay out of normal chat history and are opened
+from their schedule instead.
+
+Scheduled runs inherit the model and work tools selected when the schedule was
+created, but cannot recursively create schedules. They also receive a job-only
+memory recall tool backed by that schedule's thread. Tasks that need continuity
+or non-repeating output can inspect prior runs without reading another schedule
+or an ordinary conversation.
 
 ## Run locally
 

@@ -1,4 +1,5 @@
 import { mastraClient } from "@/lib/mastra-client";
+import { isScheduledThread } from "@/lib/thread-state";
 
 export const runtime = "nodejs";
 
@@ -15,7 +16,11 @@ export async function GET(request: Request) {
       perPage: 100,
       orderBy: { field: "updatedAt", direction: "DESC" },
     });
-    return Response.json({ threads: result.threads });
+    // Schedule-owned threads are presented through the Scheduled view, where
+    // their configuration and run history remain attached to the schedule.
+    return Response.json({
+      threads: result.threads.filter((thread) => !isScheduledThread(thread)),
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to load chats.";
     return Response.json({ error: message }, { status: 503 });
