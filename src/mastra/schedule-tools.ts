@@ -2,6 +2,7 @@ import { createTool } from "@mastra/core/tools";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 
+import { serverConfig } from "@/lib/config";
 import {
   findCoveringSchedule,
   scheduleDedupeKey,
@@ -56,6 +57,9 @@ export const scheduleCreateTool = createTool({
     ),
     reasoningEffort: z.enum(reasoningEfforts).optional().describe(
       "An explicit reasoning effort requested for this scheduled job.",
+    ),
+    runImmediately: z.boolean().optional().describe(
+      "Omit to use the server default, which runs the job once immediately. Set false only when the user asks to wait for the first scheduled time.",
     ),
   }),
   outputSchema: scheduleOutputSchema,
@@ -156,9 +160,20 @@ export const scheduleCreateTool = createTool({
           dedupeKey: scheduleDedupeKey({ agentId, prompt: input.prompt, resourceId }),
         },
       });
+      const shouldRunImmediately =
+        input.runImmediately ?? serverConfig.scheduleRunImmediately;
+      let initialRunWarning: string | undefined;
+      if (shouldRunImmediately) {
+        try {
+          await mastra.schedules.run(schedule.id);
+        } catch (error) {
+          initialRunWarning =
+            error instanceof Error ? error.message : "unknown error";
+        }
+      }
       return {
         created: true,
-        message: `Created ${scheduleName}: ${parsedSchedule.description} (${timezone}).`,
+        message: `Created ${scheduleName}: ${parsedSchedule.description} (${timezone}).${shouldRunImmediately ? initialRunWarning ? ` The schedule is active, but its initial run could not start: ${initialRunWarning}` : " Its initial run started immediately." : " Its first run will wait for the schedule."}`,
         schedule: schedule as unknown as Record<string, unknown>,
       };
     } catch (error) {

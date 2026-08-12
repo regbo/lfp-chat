@@ -50,7 +50,9 @@ await mkdir(resolve(publicTypesRoot, "lib"), { recursive: true });
 for (const relativePath of [
   "index.d.ts",
   "components/chat-app.d.ts",
+  "components/tasks-panel.d.ts",
   "lib/chat-app-plugins.d.ts",
+  "lib/tasks.d.ts",
 ]) {
   await Bun.write(
     resolve(publicTypesRoot, relativePath),

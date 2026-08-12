@@ -8,8 +8,13 @@ import { serverConfig } from "@/lib/config";
 import { truncateToolText, truncateToolValue } from "@/lib/tool-output";
 import {
   createTask,
+  createTaskList,
+  deleteTask,
+  deleteTaskList,
+  listTaskLists,
   listTasks,
   updateTask,
+  updateTaskList,
 } from "@/lib/vikunja";
 
 const globalForMonty = globalThis as typeof globalThis & {
@@ -449,26 +454,92 @@ export const familyAttachmentTool = createTool({
 export const taskListTool = createTool({
   id: "task_list",
   description:
-    "List tasks, including due dates and assignees. Use this before answering questions about the user's todo list.",
-  inputSchema: z.object({ includeDone: z.boolean().default(false) }),
+    "List tasks in one task list, or across all lists. Use task_list_lists first when the user names a list but you do not know its ID.",
+  inputSchema: z.object({
+    listId: z.number().int().positive().optional(),
+    allLists: z.boolean().default(false),
+    includeDone: z.boolean().default(false),
+  }),
   outputSchema: z.object({ tasks: z.array(z.record(z.string(), z.unknown())) }),
-  execute: async ({ includeDone }) => ({
-    tasks: (await listTasks(includeDone)).map(
+  execute: async ({ allLists, includeDone, listId }) => ({
+    tasks: (await listTasks({ allLists, includeDone, listId })).map(
       (task) => truncateToolValue(task) as Record<string, unknown>,
     ),
   }),
 });
 
+export const taskListListsTool = createTool({
+  id: "task_list_lists",
+  description:
+    "List all available task lists and their numeric IDs. Use before creating or moving a task when a list was named.",
+  inputSchema: z.object({}),
+  outputSchema: z.object({
+    lists: z.array(z.record(z.string(), z.unknown())),
+  }),
+  execute: async () => ({
+    lists: (await listTaskLists()).map(
+      (list) => truncateToolValue(list) as Record<string, unknown>,
+    ),
+  }),
+});
+
+export const taskListCreateTool = createTool({
+  id: "task_list_create",
+  description: "Create a named task list.",
+  inputSchema: z.object({
+    name: z.string().trim().min(1).max(250),
+    description: z.string().max(20_000).optional(),
+  }),
+  outputSchema: z.record(z.string(), z.unknown()),
+  execute: async (input) =>
+    truncateToolValue(await createTaskList(input)) as Record<string, unknown>,
+});
+
+export const taskListUpdateTool = createTool({
+  id: "task_list_update",
+  description: "Rename a task list or change its description by numeric list ID.",
+  inputSchema: z.object({
+    listId: z.number().int().positive(),
+    name: z.string().trim().min(1).max(250).optional(),
+    description: z.string().max(20_000).optional(),
+  }),
+  outputSchema: z.record(z.string(), z.unknown()),
+  execute: async ({ listId, ...update }) =>
+    truncateToolValue(await updateTaskList(listId, update)) as Record<
+      string,
+      unknown
+    >,
+});
+
+export const taskListDeleteTool = createTool({
+  id: "task_list_delete",
+  description:
+    "Permanently delete a task list and every task in it. Only call after the user explicitly asks to delete that list.",
+  inputSchema: z.object({ listId: z.number().int().positive() }),
+  outputSchema: z.object({ deleted: z.boolean(), listId: z.number() }),
+  execute: async ({ listId }) => {
+    await deleteTaskList(listId);
+    return { deleted: true, listId };
+  },
+});
+
 export const taskCreateTool = createTool({
   id: "task_create",
-  description:
-    "Create a task. An assignee may be a username, full name, or exact email recognized by the configured task service.",
+  description: "Create a task in a chosen task list.",
   inputSchema: z.object({
+    listId: z.number().int().positive().optional().describe(
+      "The destination list ID. Omit to use the configured default list.",
+    ),
     title: z.string().min(1).max(500),
     description: z.string().max(20_000).optional(),
-    dueDate: z.iso.datetime({ offset: true }).optional(),
+    dueDate: z.iso.datetime({ offset: true }).nullable().optional(),
     priority: z.number().int().min(0).max(5).optional(),
-    assignee: z.string().min(1).max(250).optional(),
+    links: z.array(z.object({
+      label: z.string().trim().min(1).max(120),
+      url: z.url().max(2_000),
+    })).max(20).optional().describe(
+      "Source emails, documents, or other URLs that should remain attached to the task.",
+    ),
   }),
   outputSchema: z.record(z.string(), z.unknown()),
   execute: async (input) =>
@@ -481,11 +552,18 @@ export const taskUpdateTool = createTool({
     "Update a task by numeric task ID, including completing or reopening it.",
   inputSchema: z.object({
     taskId: z.number().int().positive(),
+    listId: z.number().int().positive().optional().describe(
+      "Move the task to this list ID.",
+    ),
     title: z.string().min(1).max(500).optional(),
     description: z.string().max(20_000).optional(),
-    dueDate: z.iso.datetime({ offset: true }).optional(),
+    dueDate: z.iso.datetime({ offset: true }).nullable().optional(),
     priority: z.number().int().min(0).max(5).optional(),
     done: z.boolean().optional(),
+    links: z.array(z.object({
+      label: z.string().trim().min(1).max(120),
+      url: z.url().max(2_000),
+    })).max(20).optional(),
   }),
   outputSchema: z.record(z.string(), z.unknown()),
   execute: async ({ taskId, ...update }) =>
@@ -493,6 +571,18 @@ export const taskUpdateTool = createTool({
       string,
       unknown
     >,
+});
+
+export const taskDeleteTool = createTool({
+  id: "task_delete",
+  description:
+    "Permanently delete a task by numeric task ID. Only call after the user explicitly asks to delete it.",
+  inputSchema: z.object({ taskId: z.number().int().positive() }),
+  outputSchema: z.object({ deleted: z.boolean(), taskId: z.number() }),
+  execute: async ({ taskId }) => {
+    await deleteTask(taskId);
+    return { deleted: true, taskId };
+  },
 });
 
 const automationFieldSchema = z.object({
@@ -516,7 +606,6 @@ export const familyAutomationUpsertTool = createTool({
     fields: z.array(automationFieldSchema).max(64).default([]),
     appliesToSources: z.array(z.string()).max(32).default([]),
     appliesToLabels: z.array(z.string()).max(32).default([]),
-    assignee: z.string().min(1).max(250).optional(),
     priority: z.number().int().min(0).max(5).default(2),
     titlePrefix: z.string().max(100).default(""),
   }),
@@ -554,7 +643,6 @@ export const familyAutomationUpsertTool = createTool({
           record_kinds: [input.recordKind],
           action_type: "vikunja_task_upsert",
           action_config: {
-            ...(input.assignee ? { assignee: input.assignee } : {}),
             priority: input.priority,
             title_prefix: input.titlePrefix,
           },

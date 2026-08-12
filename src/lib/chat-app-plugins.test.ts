@@ -1,10 +1,35 @@
 import { describe, expect, test } from "bun:test";
-import { validateChatAppPlugins, type ChatAppPlugin } from "./chat-app-plugins";
+import {
+  validateChatAppMods,
+  validateChatAppPlugins,
+  type ChatAppPlugin,
+} from "./chat-app-plugins";
 
 const plugin = (id: string, label = id): ChatAppPlugin => ({
   content: null,
   id,
   label,
+});
+
+describe("validateChatAppMods", () => {
+  test("accepts routed views, settings, and tool contributions", () => {
+    const mods = [{
+      id: "home",
+      settings: null,
+      tools: [{ id: "home_assign", title: "Assignment", description: "Assign work." }],
+      views: [plugin("tasks")],
+    }];
+    expect(validateChatAppMods(mods)).toBe(mods);
+  });
+
+  test("rejects duplicate mod and contributed tool ids", () => {
+    expect(() => validateChatAppMods([{ id: "home" }, { id: "home" }]))
+      .toThrow('ChatApp mod id "home" is registered more than once.');
+    expect(() => validateChatAppMods([
+      { id: "home", tools: [{ id: "assign", title: "Assign", description: "Assign." }] },
+      { id: "work", tools: [{ id: "assign", title: "Assign", description: "Assign." }] },
+    ])).toThrow('ChatApp tool id "assign" is registered more than once.');
+  });
 });
 
 describe("validateChatAppPlugins", () => {

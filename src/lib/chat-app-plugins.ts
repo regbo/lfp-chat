@@ -14,6 +14,27 @@ export type ChatAppPlugin = {
   content: ReactNode;
 };
 
+/** A capability supplied by a host mod and implemented by its Mastra server. */
+export type ChatAppToolContribution = {
+  id: string;
+  title: string;
+  description: string;
+  icon?: ReactNode;
+  defaultEnabled?: boolean;
+  dangerous?: boolean;
+};
+
+/** App-wide extension bundle supplied without patching ChatApp internals. */
+export type ChatAppMod = {
+  id: string;
+  /** Routed views added to primary navigation. */
+  views?: readonly ChatAppPlugin[];
+  /** Sections appended to the Settings route. */
+  settings?: ReactNode;
+  /** Client catalog entries whose matching tools are registered by the host. */
+  tools?: readonly ChatAppToolContribution[];
+};
+
 const reservedRoutes = new Set([
   "/",
   "/archived",
@@ -58,4 +79,28 @@ export function validateChatAppPlugins(
   }
 
   return plugins;
+}
+
+export function validateChatAppMods(mods: readonly ChatAppMod[]) {
+  const modIds = new Set<string>();
+  const toolIds = new Set<string>();
+  const views = mods.flatMap((mod) => {
+    if (!mod.id.trim()) throw new Error("ChatApp mod ids must not be empty.");
+    if (modIds.has(mod.id)) {
+      throw new Error(`ChatApp mod id "${mod.id}" is registered more than once.`);
+    }
+    modIds.add(mod.id);
+    for (const tool of mod.tools ?? []) {
+      if (!tool.id.trim() || !tool.title.trim() || !tool.description.trim()) {
+        throw new Error(`ChatApp mod "${mod.id}" has an incomplete tool contribution.`);
+      }
+      if (toolIds.has(tool.id)) {
+        throw new Error(`ChatApp tool id "${tool.id}" is registered more than once.`);
+      }
+      toolIds.add(tool.id);
+    }
+    return [...(mod.views ?? [])];
+  });
+  validateChatAppPlugins(views);
+  return mods;
 }

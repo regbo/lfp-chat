@@ -23,6 +23,14 @@ function boundedInteger(
   return value;
 }
 
+function booleanValue(name: string, fallback: boolean) {
+  const raw = process.env[name]?.trim().toLowerCase();
+  if (!raw) return fallback;
+  if (["1", "true", "yes", "on"].includes(raw)) return true;
+  if (["0", "false", "no", "off"].includes(raw)) return false;
+  throw new Error(`${name} must be true or false.`);
+}
+
 function secretValue(valueName: string, fileName: string) {
   const file = process.env[fileName]?.trim();
   if (file) {
@@ -83,6 +91,13 @@ export const serverConfig = {
     "VIKUNJA_API_TOKEN_FILE",
   ),
   vikunjaProjectId: boundedInteger("VIKUNJA_PROJECT_ID", 1, 1, 2_147_483_647),
+  scheduleRunImmediately: booleanValue("SCHEDULE_RUN_IMMEDIATELY", true),
+  webPushSubject: process.env.WEB_PUSH_SUBJECT?.trim() || "mailto:admin@localhost",
+  webPushPublicKey: process.env.WEB_PUSH_PUBLIC_KEY?.trim(),
+  webPushPrivateKey: secretValue(
+    "WEB_PUSH_PRIVATE_KEY",
+    "WEB_PUSH_PRIVATE_KEY_FILE",
+  ),
   familyGraphGroupId:
     process.env.FAMILY_GRAPH_GROUP_ID?.trim() || "family-home",
   familyEmbeddingModel:

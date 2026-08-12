@@ -1,4 +1,4 @@
-const CACHE_NAME = "lfp-chat-shell-v2";
+const CACHE_NAME = "lfp-chat-shell-v3";
 const APP_SHELL = ["/", "/manifest.webmanifest", "/icon-192.png", "/icon-512.png"];
 
 self.addEventListener("install", (event) => {
@@ -38,5 +38,28 @@ self.addEventListener("fetch", (event) => {
         if (request.mode === "navigate") return caches.match("/");
         return Response.error();
       }),
+  );
+});
+
+self.addEventListener("push", (event) => {
+  const data = event.data?.json() || {};
+  event.waitUntil(self.registration.showNotification(data.title || "LFP Chat", {
+    body: data.body || "Scheduled work finished.",
+    icon: "/icon-192.png",
+    badge: "/icon-192.png",
+    tag: data.tag || "lfp-chat-schedule",
+    data: { url: data.url || "/scheduled" },
+  }));
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const target = new URL(event.notification.data?.url || "/scheduled", self.location.origin).href;
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
+      const existing = clients.find((client) => client.url === target);
+      if (existing) return existing.focus();
+      return self.clients.openWindow(target);
+    }),
   );
 });

@@ -33,27 +33,25 @@ import {
   toolCatalog,
   type SelectableToolId,
 } from "@/lib/tool-catalog";
+import type { ChatAppToolContribution } from "@/lib/chat-app-plugins";
 import {
   Calculator,
+  Bell,
+  Blocks,
   Check,
   ChevronDown,
   Clock3,
   Code2,
-  Database,
   Globe2,
   ImageIcon,
   LoaderCircle,
-  ListTodo,
-  Mail,
   MessageSquare,
-  Paperclip,
   Pause,
   Pencil,
   Play,
   Plus,
   RefreshCw,
   Search,
-  Share2,
   ShieldAlert,
   Terminal,
   Trash2,
@@ -105,7 +103,7 @@ function PanelShell({
   return (
     <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-12 pt-8 md:px-10">
       <div className="mx-auto w-full max-w-3xl">
-        <div className="flex items-start justify-between gap-4">
+        <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
             <h1 className="chat-display-text">{title}</h1>
             <p className="chat-ui-text mt-1 text-muted-foreground">{description}</p>
@@ -329,7 +327,7 @@ export function SchedulesPanel({
   onOpenConversation,
   resourceId,
 }: {
-  enabledToolIds: SelectableToolId[];
+  enabledToolIds: string[];
   modelCatalog: ModelCatalogResponse | null;
   modelSelection: ModelSelection | null;
   onConversationChange: () => void;
@@ -345,6 +343,7 @@ export function SchedulesPanel({
   const [name, setName] = useState("");
   const [prompt, setPrompt] = useState("");
   const [schedule, setSchedule] = useState("Every weekday at 9:00 AM");
+  const [runImmediately, setRunImmediately] = useState(true);
   const [timezone, setTimezone] = useState(() => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
   const [createModelSelection, setCreateModelSelection] = useState<ModelSelection | null>(modelSelection);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -359,10 +358,17 @@ export function SchedulesPanel({
 
   const refresh = useCallback(async () => {
     const response = await fetch(`/api/schedules?resourceId=${encodeURIComponent(resourceId)}`);
-    const data = (await response.json()) as { schedules?: ScheduleSummary[]; error?: string };
+    const data = (await response.json()) as {
+      schedules?: ScheduleSummary[];
+      runImmediatelyDefault?: boolean;
+      error?: string;
+    };
     if (!response.ok) throw new Error(data.error || "Unable to load schedules.");
     setSchedules(data.schedules || []);
-  }, [resourceId]);
+    if (typeof data.runImmediatelyDefault === "boolean" && !createOpen) {
+      setRunImmediately(data.runImmediatelyDefault);
+    }
+  }, [createOpen, resourceId]);
 
   const loadRuns = useCallback(async (scheduleId: string) => {
     setRunState((current) => ({
@@ -399,8 +405,8 @@ export function SchedulesPanel({
     setCreateError("");
     setNotice("");
     try {
-      const response = await fetch("/api/schedules", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, prompt, schedule, timezone, resourceId, enabledToolIds, modelSelection: createModelSelection ?? modelSelection }) });
-      const data = (await response.json()) as { error?: string; existing?: boolean; schedule?: ScheduleSummary };
+      const response = await fetch("/api/schedules", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, prompt, schedule, timezone, resourceId, enabledToolIds, modelSelection: createModelSelection ?? modelSelection, runImmediately }) });
+      const data = (await response.json()) as { error?: string; existing?: boolean; schedule?: ScheduleSummary; initialRunStarted?: boolean; initialRunWarning?: string };
       if (!response.ok) throw new Error(data.error || "Unable to create schedule.");
       if (data.existing) {
         setNotice(`“${data.schedule?.name || "Existing schedule"}” already covers this work. Edit that schedule instead.`);
@@ -408,7 +414,7 @@ export function SchedulesPanel({
         setName("");
         setPrompt("");
         setSchedule("Every weekday at 9:00 AM");
-        setNotice("Schedule created.");
+        setNotice(data.initialRunWarning ? `Schedule created, but its first run could not start: ${data.initialRunWarning}` : data.initialRunStarted ? "Schedule created and its first run started." : "Schedule created.");
       }
       setCreateOpen(false);
       await refresh();
@@ -517,6 +523,15 @@ export function SchedulesPanel({
               />
               <p className="chat-meta-text text-muted-foreground">Use plain language or a standard cron expression.</p>
             </div>
+            <label className="chat-ui-text flex cursor-pointer items-start gap-3 rounded-xl border p-3">
+              <input
+                checked={runImmediately}
+                className="mt-0.5 size-4 accent-foreground"
+                onChange={(event) => setRunImmediately(event.target.checked)}
+                type="checkbox"
+              />
+              <span><span className="block font-medium">Run once now</span><span className="chat-meta-text mt-0.5 block text-muted-foreground">Start the first run immediately, then continue on schedule.</span></span>
+            </label>
             <div className="space-y-1.5">
               <label className="chat-ui-text font-medium" htmlFor="new-schedule-timezone">Timezone</label>
               <Input id="new-schedule-timezone" onChange={(event) => setTimezone(event.target.value)} required value={timezone} />
@@ -548,9 +563,9 @@ export function SchedulesPanel({
               </div>
               <span className={cn("chat-meta-text rounded-full px-2 py-1", schedule.status === "active" ? "bg-emerald-500/10 text-emerald-700" : "bg-muted text-muted-foreground")}>{schedule.status}</span>
             </div>
-            <div className="mt-3 flex justify-end gap-1">
+            <div className="mt-3 flex min-w-0 flex-wrap items-center gap-1 border-t pt-2 sm:border-0 sm:pt-0">
               {schedule.threadId && (
-                <Button className="mr-auto gap-1.5" disabled={busy} onClick={() => onOpenConversation(schedule.threadId!)} size="sm" variant="ghost"><MessageSquare className="size-4" /> Open conversation</Button>
+                <Button className="min-w-0 basis-full justify-start gap-1.5 sm:mr-auto sm:basis-auto" disabled={busy} onClick={() => onOpenConversation(schedule.threadId!)} size="sm" variant="ghost"><MessageSquare className="size-4" /> <span className="truncate">Open conversation</span></Button>
               )}
               <Button className="gap-1.5" disabled={busy} onClick={() => toggleHistory(schedule.id)} size="sm" variant="ghost">
                 <ChevronDown className={cn("size-4 transition-transform", expandedId === schedule.id && "rotate-180")} /> History
@@ -622,12 +637,6 @@ const toolIcons: Record<SelectableToolId, LucideIcon> = {
   search: Search,
   calculator: Calculator,
   monty: Code2,
-  family_database: Database,
-  family_search: Search,
-  family_graph: Share2,
-  family_email: Mail,
-  family_attachment: Paperclip,
-  tasks: ListTodo,
   scheduling: Clock3,
   web_search: Globe2,
   code_interpreter: Code2,
@@ -636,17 +645,20 @@ const toolIcons: Record<SelectableToolId, LucideIcon> = {
 };
 
 export function ToolsPanel({
+  contributedTools,
   enabledToolIds,
   onToggle,
 }: {
-  enabledToolIds: SelectableToolId[];
-  onToggle: (toolId: SelectableToolId) => void;
+  contributedTools?: readonly ChatAppToolContribution[];
+  enabledToolIds: string[];
+  onToggle: (toolId: string) => void;
 }) {
+  const tools = [...toolCatalog, ...(contributedTools ?? [])];
   return (
     <PanelShell title="Tools" description="Choose which capabilities are available to new chat runs and schedules.">
       <div className="space-y-2">
-        {toolCatalog.map((detail) => {
-          const Icon = toolIcons[detail.id];
+        {tools.map((detail) => {
+          const Icon = toolIcons[detail.id as SelectableToolId] ?? Blocks;
           const enabled = enabledToolIds.includes(detail.id);
           return (
             <button
@@ -659,7 +671,7 @@ export function ToolsPanel({
               onClick={() => onToggle(detail.id)}
               type="button"
             >
-              <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-background shadow-sm"><Icon className="size-4" /></span>
+              <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-background shadow-sm">{"icon" in detail && detail.icon ? detail.icon : <Icon className="size-4" />}</span>
               <span className="min-w-0 flex-1">
                 <span className="chat-ui-text flex items-center gap-2 font-medium">
                   {detail.title}
@@ -680,14 +692,106 @@ export function ToolsPanel({
 }
 
 export function SettingsPanel({
+  extensions,
   modelCatalog,
   modelSelection,
   onModelSelectionChange,
+  resourceId,
 }: {
+  extensions?: readonly React.ReactNode[];
   modelCatalog: ModelCatalogResponse | null;
   modelSelection: ModelSelection | null;
   onModelSelectionChange: (selection: ModelSelection) => void;
+  resourceId: string;
 }) {
+  const [notificationState, setNotificationState] = useState<
+    "loading" | "unsupported" | "install" | "unconfigured" | "off" | "on"
+  >("loading");
+  const [notificationBusy, setNotificationBusy] = useState(false);
+  const [notificationError, setNotificationError] = useState("");
+  const [pushPublicKey, setPushPublicKey] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      const supportsPush =
+        "serviceWorker" in navigator &&
+        "PushManager" in window &&
+        "Notification" in window;
+      if (!supportsPush) {
+        if (active) setNotificationState("unsupported");
+        return;
+      }
+      const isiOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+        (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+      const standalone = window.matchMedia("(display-mode: standalone)").matches ||
+        Boolean((navigator as Navigator & { standalone?: boolean }).standalone);
+      if (isiOS && !standalone) {
+        if (active) setNotificationState("install");
+        return;
+      }
+      const response = await fetch("/api/push", { cache: "no-store" });
+      const config = await response.json() as { enabled?: boolean; publicKey?: string };
+      if (!active) return;
+      if (!config.enabled || !config.publicKey) {
+        setNotificationState("unconfigured");
+        return;
+      }
+      setPushPublicKey(config.publicKey);
+      const registration = await navigator.serviceWorker.ready;
+      setNotificationState((await registration.pushManager.getSubscription()) ? "on" : "off");
+    })().catch((cause: unknown) => {
+      if (active) {
+        setNotificationError(cause instanceof Error ? cause.message : "Could not check notifications.");
+        setNotificationState("off");
+      }
+    });
+    return () => { active = false; };
+  }, []);
+
+  const toggleNotifications = async () => {
+    setNotificationBusy(true);
+    setNotificationError("");
+    try {
+      const registration = await navigator.serviceWorker.ready;
+      const existing = await registration.pushManager.getSubscription();
+      if (existing) {
+        await fetch("/api/push", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ endpoint: existing.endpoint }),
+        });
+        await existing.unsubscribe();
+        setNotificationState("off");
+        return;
+      }
+      const permission = await Notification.requestPermission();
+      if (permission !== "granted") throw new Error("Notification permission was not granted.");
+      const padding = "=".repeat((4 - pushPublicKey.length % 4) % 4);
+      const bytes = Uint8Array.from(
+        atob((pushPublicKey + padding).replace(/-/g, "+").replace(/_/g, "/")),
+        (character) => character.charCodeAt(0),
+      );
+      const subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: bytes,
+      });
+      const response = await fetch("/api/push", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ resourceId, subscription: subscription.toJSON() }),
+      });
+      if (!response.ok) {
+        const payload = await response.json() as { error?: string };
+        await subscription.unsubscribe();
+        throw new Error(payload.error || "Could not save notification subscription.");
+      }
+      setNotificationState("on");
+    } catch (cause) {
+      setNotificationError(cause instanceof Error ? cause.message : "Could not update notifications.");
+    } finally { setNotificationBusy(false); }
+  };
+
   return (
     <PanelShell
       title="Settings"
@@ -707,6 +811,22 @@ export function SettingsPanel({
           />
         </div>
       </div>
+      <div className="mt-3 flex items-start gap-3 rounded-2xl border p-4">
+        <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-muted"><Bell className="size-4" /></span>
+        <div className="min-w-0 flex-1">
+          <p className="chat-ui-emphasis">Schedule notifications</p>
+          <p className="chat-ui-text mt-1 text-muted-foreground">
+            {notificationState === "install" ? "Add LFP Chat to your iPhone or iPad Home Screen, then enable notifications here." : notificationState === "unconfigured" ? "Web Push keys have not been configured on this server." : notificationState === "unsupported" ? "This browser does not support Web Push notifications." : notificationState === "on" ? "This device will be notified when scheduled work finishes." : "Get an alert when scheduled work finishes."}
+          </p>
+          {notificationError && <p className="chat-meta-text mt-2 text-destructive">{notificationError}</p>}
+        </div>
+        {(["off", "on"] as const).includes(notificationState as "off" | "on") && (
+          <Button disabled={notificationBusy || !pushPublicKey} onClick={() => void toggleNotifications()} size="sm" variant={notificationState === "on" ? "outline" : "default"}>{notificationBusy && <LoaderCircle className="animate-spin" />}{notificationState === "on" ? "Disable" : "Enable"}</Button>
+        )}
+      </div>
+      {extensions?.map((extension, index) => (
+        <div className="mt-3" key={index}>{extension}</div>
+      ))}
     </PanelShell>
   );
 }

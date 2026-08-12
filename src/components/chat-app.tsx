@@ -97,13 +97,15 @@ import {
 import {
   defaultEnabledToolIds,
   migrateEnabledToolIds,
+  toolCatalog,
   TOOL_CATALOG_VERSION,
   TOOLS_CONTEXT_KEY,
-  type SelectableToolId,
 } from "@/lib/tool-catalog";
 // This relative path remains resolvable in the package's emitted declarations.
 import {
   validateChatAppPlugins,
+  validateChatAppMods,
+  type ChatAppMod,
   type ChatAppPlugin,
 } from "../lib/chat-app-plugins";
 import { type FileUIPart, type UIMessage } from "ai";
@@ -680,7 +682,7 @@ type ChatSessionProps = {
   modelCatalog: ModelCatalogResponse | null;
   modelSelection: ModelSelection | null;
   onModelSelectionChange: (selection: ModelSelection) => void;
-  enabledToolIds: SelectableToolId[];
+  enabledToolIds: string[];
 };
 
 function ChatSession({
@@ -1213,13 +1215,35 @@ function SidebarChatTitle({ title }: { title: string }) {
 export type ChatAppProps = {
   /** Views to add to the primary sidebar without changing ChatApp internals. */
   plugins?: readonly ChatAppPlugin[];
+  /** App-wide contributions for routes, settings, and host-implemented tools. */
+  mods?: readonly ChatAppMod[];
 };
 
-export function ChatApp({ plugins = [] }: ChatAppProps) {
+export function ChatApp({ mods = [], plugins = [] }: ChatAppProps) {
   const pathname = usePathname();
+  const registeredMods = useMemo(() => validateChatAppMods(mods), [mods]);
   const registeredPlugins = useMemo(
-    () => validateChatAppPlugins(plugins),
-    [plugins],
+    () => validateChatAppPlugins([
+      ...plugins,
+      ...registeredMods.flatMap((mod) => mod.views ?? []),
+    ]),
+    [plugins, registeredMods],
+  );
+  const contributedTools = useMemo(
+    () => {
+      const tools = registeredMods.flatMap((mod) => mod.tools ?? []);
+      const builtInIds = new Set(toolCatalog.map((tool) => tool.id as string));
+      const conflict = tools.find((tool) => builtInIds.has(tool.id));
+      if (conflict) {
+        throw new Error(`ChatApp tool id "${conflict.id}" conflicts with a built-in tool.`);
+      }
+      return tools;
+    },
+    [registeredMods],
+  );
+  const contributedSettings = useMemo(
+    () => registeredMods.flatMap((mod) => mod.settings ? [mod.settings] : []),
+    [registeredMods],
   );
   const initialThreadId = threadIdFromPathname(pathname);
   const activeView = useMemo(
@@ -1237,7 +1261,7 @@ export function ChatApp({ plugins = [] }: ChatAppProps) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [installPrompt, setInstallPrompt] = useState<InstallPromptEvent | null>(null);
-  const [enabledToolIds, setEnabledToolIds] = useState<SelectableToolId[]>(
+  const [enabledToolIds, setEnabledToolIds] = useState<string[]>(
     defaultEnabledToolIds,
   );
   const [modelCatalog, setModelCatalog] = useState<ModelCatalogResponse | null>(null);
@@ -1312,22 +1336,35 @@ export function ChatApp({ plugins = [] }: ChatAppProps) {
           const storedVersion = Number(
             window.localStorage.getItem("lfp-chat-tool-catalog-version") || 1,
           );
-          const migrated = migrateEnabledToolIds(JSON.parse(stored), storedVersion);
+          const raw = JSON.parse(stored) as unknown;
+          const contributedIds = new Set(contributedTools.map((tool) => tool.id));
+          const preserved = Array.isArray(raw)
+            ? raw.filter((id): id is string => typeof id === "string" && contributedIds.has(id))
+            : [];
+          const migrated = Array.from(new Set([
+            ...migrateEnabledToolIds(raw, storedVersion),
+            ...preserved,
+          ]));
           setEnabledToolIds(migrated);
           window.localStorage.setItem("lfp-chat-enabled-tools", JSON.stringify(migrated));
           window.localStorage.setItem(
             "lfp-chat-tool-catalog-version",
             String(TOOL_CATALOG_VERSION),
           );
+        } else {
+          setEnabledToolIds(Array.from(new Set([
+            ...defaultEnabledToolIds,
+            ...contributedTools.filter((tool) => tool.defaultEnabled).map((tool) => tool.id),
+          ])));
         }
       } catch {
         // Restricted browsers use the centralized defaults for this session.
       }
     }, 0);
     return () => window.clearTimeout(timer);
-  }, []);
+  }, [contributedTools]);
 
-  const toggleTool = useCallback((toolId: SelectableToolId) => {
+  const toggleTool = useCallback((toolId: string) => {
     setEnabledToolIds((current) => {
       const next = current.includes(toolId)
         ? current.filter((id) => id !== toolId)
@@ -1822,7 +1859,7 @@ export function ChatApp({ plugins = [] }: ChatAppProps) {
           />
         )}
         {resourceId && activeView === "tools" && (
-          <ToolsPanel enabledToolIds={enabledToolIds} onToggle={toggleTool} />
+          <ToolsPanel contributedTools={contributedTools} enabledToolIds={enabledToolIds} onToggle={toggleTool} />
         )}
         {resourceId && activeView === "archived" && (
           <ArchivedPanel
@@ -1836,6 +1873,8 @@ export function ChatApp({ plugins = [] }: ChatAppProps) {
             modelCatalog={modelCatalog}
             modelSelection={modelSelection}
             onModelSelectionChange={selectModel}
+            resourceId={resourceId}
+            extensions={contributedSettings}
           />
         )}
         {activePlugin?.content}

@@ -21,42 +21,6 @@ export const toolCatalog = [
     defaultEnabled: true,
   },
   {
-    id: "family_database",
-    title: "Family Database",
-    description: "Search and summarize structured family records safely.",
-    defaultEnabled: true,
-  },
-  {
-    id: "family_search",
-    title: "Family search",
-    description: "Hybrid PostgreSQL vector and full-text search across email and attachments.",
-    defaultEnabled: true,
-  },
-  {
-    id: "family_graph",
-    title: "Family graph",
-    description: "Search Graphiti for temporal family facts and relationships.",
-    defaultEnabled: true,
-  },
-  {
-    id: "family_email",
-    title: "Family email",
-    description: "Retrieve original emails and inspect parsed MIME content.",
-    defaultEnabled: true,
-  },
-  {
-    id: "family_attachment",
-    title: "Family attachment",
-    description: "Retrieve attachment text, labels, metadata, or original bytes.",
-    defaultEnabled: true,
-  },
-  {
-    id: "tasks",
-    title: "Tasks",
-    description: "Create, assign, update, and review tasks.",
-    defaultEnabled: true,
-  },
-  {
     id: "scheduling",
     title: "Scheduling",
     description: "Create and inspect recurring agent work from chat.",
@@ -91,13 +55,11 @@ export const toolCatalog = [
 
 export type SelectableToolId = (typeof toolCatalog)[number]["id"];
 
-const selectableToolIds = new Set<string>(toolCatalog.map((tool) => tool.id));
-
 export const defaultEnabledToolIds: SelectableToolId[] = toolCatalog
   .filter((tool) => tool.defaultEnabled)
   .map((tool) => tool.id);
 
-export function normalizeEnabledToolIds(value: unknown): SelectableToolId[] {
+export function normalizeEnabledToolIds(value: unknown): string[] {
   if (!Array.isArray(value)) return [...defaultEnabledToolIds];
   return Array.from(
     new Set(
@@ -105,9 +67,8 @@ export function normalizeEnabledToolIds(value: unknown): SelectableToolId[] {
         if (id === "family_sql") return "family_database";
         if (id === "family_tasks") return "tasks";
         return id;
-      }).filter(
-        (id): id is SelectableToolId =>
-          typeof id === "string" && selectableToolIds.has(id),
+      }).filter((id): id is string =>
+        typeof id === "string" && /^[a-z][a-z0-9_-]{0,62}$/.test(id),
       ),
     ),
   );
@@ -116,7 +77,7 @@ export function normalizeEnabledToolIds(value: unknown): SelectableToolId[] {
 export function migrateEnabledToolIds(
   value: unknown,
   storedCatalogVersion: number,
-): SelectableToolId[] {
+): string[] {
   const normalized = normalizeEnabledToolIds(value);
   // Scheduling was introduced in catalog v2 and should be available once to
   // people whose saved v1 selection predates the capability. They can still

@@ -46,6 +46,36 @@ and displays the plugin content there. Content owns its own data and state, so
 interactive plugins can use a Client Component while server-rendered elements
 can be passed through the same slot.
 
+### Add an app-wide mod
+
+Use `mods` when an integration spans more than one screen. A mod can contribute
+routed views, Settings sections, and entries in the Tools catalog. Contributed
+tool IDs are preserved in chat and schedule request context; the host registers
+the matching Mastra tools on its server.
+
+```tsx
+const homeMod = {
+  id: "home",
+  views: [{
+    id: "tasks",
+    href: "/tasks",
+    label: "Tasks",
+    content: <HomeTasks />,
+  }],
+  settings: <HomeSettings />,
+  tools: [{
+    id: "home_task_assignment",
+    title: "Task assignment",
+    description: "Assign tasks using the home directory.",
+    defaultEnabled: true,
+  }],
+} satisfies ChatAppMod;
+
+<ChatApp mods={[homeMod]} />
+```
+
+The legacy `plugins` prop remains available for a single routed view.
+
 The included application gives every primary view a stable URL: `/search`,
 `/scheduled`, `/tools`, `/archived`, `/tasks`, and `/settings`. Conversations
 remain addressable at `/c/[threadId]`, and `/` always starts a new chat.
@@ -78,6 +108,10 @@ to a timezone-aware Mastra cron schedule. Creation checks the current user's
 existing schedules first and returns the covering schedule instead of creating
 a duplicate.
 
+New schedules run once immediately before settling into their cadence. Set
+`SCHEDULE_RUN_IMMEDIATELY=false`, uncheck **Run once now**, or explicitly ask the
+agent to wait when the first run should happen at the scheduled time instead.
+
 Each schedule has its own persisted memory thread. The Scheduled menu can edit
 its name, prompt, cron expression, and timezone; pause or resume it; run it
 immediately; and expand its trigger history to show outcomes and saved assistant
@@ -93,6 +127,17 @@ recursively create schedules. They also receive a job-only memory recall tool
 backed by that schedule's thread, so tasks that need continuity or non-repeating
 output can inspect prior runs without reading another schedule or an ordinary
 conversation.
+
+## Task lists
+
+The **Tasks** route supports multiple independently managed lists. Lists and
+tasks can be created, renamed, moved, updated, and deleted from either the UI or
+Mastra tools. Task detail includes notes, due date, priority,
+timestamps, and generic source links that another project can inject. The
+Vikunja adapter keeps its project terminology private, and `VIKUNJA_PROJECT_ID`
+is only the backward-compatible default when a list is not specified.
+Assignment and other deployment-specific task fields are intentionally absent;
+a host can register its own `/tasks` `ChatAppPlugin` when it needs those fields.
 
 ## Run locally
 
@@ -146,6 +191,13 @@ Provider-native web search follows the selected OpenAI, Anthropic, Google, or xA
 ## Mobile PWA
 
 LFP Chat includes a web app manifest, adaptive icons, safe-area layout, and a network-first service worker. Open the sidebar and choose **Install app**, or use the browser's **Add to Home Screen** action. The application shell is available offline; chat and memory APIs always remain network-only.
+
+Installed PWAs can receive Web Push notifications when scheduled work finishes,
+and scheduled agents have a scoped notification tool for explicit alerts.
+Generate VAPID keys with `bunx web-push generate-vapid-keys`, store the private
+key outside the repository, and configure `WEB_PUSH_PUBLIC_KEY` plus
+`WEB_PUSH_PRIVATE_KEY_FILE`. On iOS, install the app to the Home Screen before
+enabling notifications in **Settings**.
 
 ## Rich event demo
 

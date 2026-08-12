@@ -39,6 +39,7 @@ const createScheduleSchema = z.object({
     modelId: z.string().min(1),
     reasoningEffort: z.enum(reasoningEfforts).nullable(),
   }).nullable().optional(),
+  runImmediately: z.boolean().optional(),
 });
 
 function isAgentSchedule(schedule: ScheduleResponse): schedule is AgentSchedule {
@@ -96,6 +97,7 @@ export async function GET(request: Request) {
         .map(nameUnlabeledSchedule),
     );
     return Response.json({
+      runImmediatelyDefault: serverConfig.scheduleRunImmediately,
       schedules: schedules.sort(
         (left, right) => left.nextFireAt - right.nextFireAt,
       ).map((schedule) => ({
@@ -200,7 +202,25 @@ export async function POST(request: Request) {
         }),
       },
     });
-    return Response.json({ schedule }, { status: 201 });
+    const shouldRunImmediately =
+      parsed.data.runImmediately ?? serverConfig.scheduleRunImmediately;
+    let initialRunWarning: string | undefined;
+    if (shouldRunImmediately) {
+      try {
+        await mastraClient.runSchedule(schedule.id);
+      } catch (error) {
+        initialRunWarning =
+          error instanceof Error ? error.message : "unknown error";
+      }
+    }
+    return Response.json(
+      {
+        schedule,
+        initialRunStarted: shouldRunImmediately && !initialRunWarning,
+        initialRunWarning,
+      },
+      { status: 201 },
+    );
   } catch (error) {
     if (threadCreated) {
       await mastraClient
