@@ -622,6 +622,7 @@ function ChatMessage({ message, streaming }: { message: UIMessage; streaming: bo
     .join("\n\n");
   const isUser = message.role === "user";
   const files = message.parts.filter((part): part is FileUIPart => part.type === "file");
+  const hasReasoningDetails = Boolean(reasoningText) || tools.length > 0;
   const showReasoning = !isUser && (streaming || Boolean(reasoningText) || tools.length > 0);
   const runningToolLabel = streaming ? getRunningToolLabel(tools) : undefined;
 
@@ -635,11 +636,13 @@ function ChatMessage({ message, streaming }: { message: UIMessage; streaming: bo
         >
           {showReasoning && (
             <Reasoning isStreaming={streaming}>
-              <ReasoningTrigger status={runningToolLabel} />
-              <ReasoningContent className="space-y-2">
-                {reasoningText && <MessageResponse>{formatCitationMarkers(reasoningText, tools)}</MessageResponse>}
-                {tools.length > 0 && <ToolEventSummary parts={tools} />}
-              </ReasoningContent>
+              <ReasoningTrigger expandable={hasReasoningDetails} status={runningToolLabel} />
+              {hasReasoningDetails ? (
+                <ReasoningContent className="space-y-2">
+                  {reasoningText && <MessageResponse>{formatCitationMarkers(reasoningText, tools)}</MessageResponse>}
+                  {tools.length > 0 && <ToolEventSummary parts={tools} />}
+                </ReasoningContent>
+              ) : null}
             </Reasoning>
           )}
           {message.parts.map((part, index) => {
@@ -1089,7 +1092,7 @@ function ChatSession({
           )}
           {isStreaming && !hasStreamingAssistant && (
             <Reasoning className="chat-column" isStreaming>
-              <ReasoningTrigger />
+              <ReasoningTrigger expandable={false} />
             </Reasoning>
           )}
           {error && (

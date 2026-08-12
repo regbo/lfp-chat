@@ -118,6 +118,7 @@ export const Reasoning = memo(
 export type ReasoningTriggerProps = ComponentProps<
   typeof CollapsibleTrigger
 > & {
+  expandable?: boolean;
   getThinkingMessage?: (isStreaming: boolean, duration?: number) => ReactNode;
   status?: ReactNode;
 };
@@ -136,6 +137,7 @@ export const ReasoningTrigger = memo(
   ({
     className,
     children,
+    expandable = true,
     getThinkingMessage = defaultGetThinkingMessage,
     status,
     ...props
@@ -146,20 +148,24 @@ export const ReasoningTrigger = memo(
       <CollapsibleTrigger
         className={cn(
           "chat-reasoning-trigger flex w-full items-center gap-2 font-normal text-muted-foreground transition-colors hover:text-foreground",
+          !expandable && "cursor-default hover:text-muted-foreground",
           className
         )}
+        disabled={!expandable}
         {...props}
       >
         {children ?? (
           <>
             <BrainIcon className="size-4" />
             {status ?? getThinkingMessage(isStreaming, duration)}
-            <ChevronDownIcon
-              className={cn(
-                "size-4 transition-transform",
-                isOpen ? "rotate-180" : "rotate-0"
-              )}
-            />
+            {expandable ? (
+              <ChevronDownIcon
+                className={cn(
+                  "size-4 transition-transform",
+                  isOpen ? "rotate-180" : "rotate-0"
+                )}
+              />
+            ) : null}
           </>
         )}
       </CollapsibleTrigger>
