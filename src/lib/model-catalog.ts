@@ -210,6 +210,24 @@ export function normalizeModelSelection(
   };
 }
 
+export function mostPowerfulModelSelection(
+  catalog: ModelCatalogResponse,
+): ModelSelection {
+  const model =
+    catalog.models.find((candidate) => /gpt-5\.6-sol(?:-|$)/i.test(candidate.id)) ??
+    catalog.models.find((candidate) => /-pro(?:-|$)/i.test(candidate.id)) ??
+    catalog.models.find((candidate) => candidate.reasoningEfforts.length > 0) ??
+    catalog.models[0];
+  const reasoningEffort = [...reasoningEfforts]
+    .reverse()
+    .find((effort) => model.reasoningEfforts.includes(effort)) ?? null;
+  return {
+    agentId: DEFAULT_CHAT_AGENT_ID,
+    modelId: model.id,
+    reasoningEffort,
+  };
+}
+
 export function formatReasoningEffort(effort: ReasoningEffort | null) {
   if (!effort) return "";
   return effort === "xhigh" ? "XHigh" : titleCase(effort);

@@ -57,6 +57,7 @@ import {
   ArchivedPanel,
   SchedulesPanel,
   SearchPanel,
+  SettingsPanel,
   ToolsPanel,
 } from "@/components/app-panels";
 import {
@@ -108,6 +109,7 @@ import {
 import { type FileUIPart, type UIMessage } from "ai";
 import Image from "next/image";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import {
   Archive,
   ArchiveRestore,
@@ -132,6 +134,7 @@ import {
   Pin,
   PinOff,
   Search,
+  Settings,
   SquarePen,
   Trash2,
   Wrench,
@@ -146,10 +149,27 @@ import {
   useSyncExternalStore,
 } from "react";
 
-type CoreView = "chat" | "search" | "scheduled" | "tools" | "archived";
+type CoreView =
+  | "chat"
+  | "search"
+  | "scheduled"
+  | "tools"
+  | "archived"
+  | "settings";
 type ActiveView = CoreView | `plugin:${string}`;
 
 const pluginView = (id: string): ActiveView => `plugin:${id}`;
+const coreViewRoutes: Record<Exclude<CoreView, "chat">, `/${string}`> = {
+  search: "/search",
+  scheduled: "/scheduled",
+  tools: "/tools",
+  archived: "/archived",
+  settings: "/settings",
+};
+
+function pluginHref(plugin: ChatAppPlugin) {
+  return plugin.href ?? `/${plugin.id}`;
+}
 
 type InstallPromptEvent = Event & {
   prompt: () => Promise<void>;
@@ -167,6 +187,22 @@ const makeId = () =>
 
 const threadHref = (threadId: string) =>
   `/c/${encodeURIComponent(threadId)}`;
+const threadIdFromPathname = (pathname: string) => {
+  const match = pathname.match(/^\/c\/([^/]+)$/);
+  return match ? decodeURIComponent(match[1]) : undefined;
+};
+
+function viewFromPathname(
+  pathname: string,
+  plugins: readonly ChatAppPlugin[],
+): ActiveView {
+  const core = Object.entries(coreViewRoutes).find(
+    ([, href]) => href === pathname,
+  );
+  if (core) return core[0] as Exclude<CoreView, "chat">;
+  const plugin = plugins.find((candidate) => pluginHref(candidate) === pathname);
+  return plugin ? pluginView(plugin.id) : "chat";
+}
 const THREAD_PAGE_SIZE = 6;
 
 function ensureRemoteBrowserCompatibility() {
@@ -1140,15 +1176,20 @@ function ThreadActionsMenu({
 }
 
 export type ChatAppProps = {
-  initialThreadId?: string;
   /** Views to add to the primary sidebar without changing ChatApp internals. */
   plugins?: readonly ChatAppPlugin[];
 };
 
-export function ChatApp({ initialThreadId, plugins = [] }: ChatAppProps) {
+export function ChatApp({ plugins = [] }: ChatAppProps) {
+  const pathname = usePathname();
   const registeredPlugins = useMemo(
     () => validateChatAppPlugins(plugins),
     [plugins],
+  );
+  const initialThreadId = threadIdFromPathname(pathname);
+  const activeView = useMemo(
+    () => viewFromPathname(pathname, registeredPlugins),
+    [pathname, registeredPlugins],
   );
   const [resourceId, setResourceId] = useState("");
   const [threadId, setThreadId] = useState(() => initialThreadId || makeId());
@@ -1161,7 +1202,6 @@ export function ChatApp({ initialThreadId, plugins = [] }: ChatAppProps) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [installPrompt, setInstallPrompt] = useState<InstallPromptEvent | null>(null);
-  const [activeView, setActiveView] = useState<ActiveView>("chat");
   const [enabledToolIds, setEnabledToolIds] = useState<SelectableToolId[]>(
     defaultEnabledToolIds,
   );
@@ -1170,6 +1210,8 @@ export function ChatApp({ initialThreadId, plugins = [] }: ChatAppProps) {
   const [renamingThread, setRenamingThread] = useState<ThreadSummary | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
   const openRequestId = useRef(0);
+  const previousPathname = useRef(pathname);
+  const skipNextRootReset = useRef(false);
   const threadLoadRequests = useRef(
     new Map<string, Promise<{ messages: UIMessage[]; hasMore: boolean } | null>>(),
   );
@@ -1333,9 +1375,9 @@ export function ChatApp({ initialThreadId, plugins = [] }: ChatAppProps) {
     setThreadId(nextThreadId);
     setThreadLoaded(true);
     setMobileSidebarOpen(false);
-    setActiveView("chat");
+    skipNextRootReset.current = pathname !== "/";
     window.history.pushState(null, "", "/");
-  }, [rememberSession]);
+  }, [pathname, rememberSession]);
 
   const loadThread = useCallback((id: string) => {
     if (!resourceId) return Promise.resolve(null);
@@ -1376,14 +1418,12 @@ export function ChatApp({ initialThreadId, plugins = [] }: ChatAppProps) {
       setThreadId(id);
       setThreadLoaded(true);
       setMobileSidebarOpen(false);
-      setActiveView("chat");
       return;
     }
 
     setThreadId(id);
     setThreadLoaded(false);
     setMobileSidebarOpen(false);
-    setActiveView("chat");
 
     const data = await loadThread(id);
     if (data) rememberSession(id, data.messages, data.hasMore);
@@ -1393,19 +1433,20 @@ export function ChatApp({ initialThreadId, plugins = [] }: ChatAppProps) {
   }, [loadThread, rememberSession, resourceId]);
 
   useEffect(() => {
-    if (!initialThreadId || !resourceId) return;
-    const timer = window.setTimeout(
-      () => void openThread(initialThreadId, false),
-      0,
-    );
-    return () => window.clearTimeout(timer);
-  }, [initialThreadId, openThread, resourceId]);
-
-  useEffect(() => {
-    const handleHistoryNavigation = () => {
-      const match = window.location.pathname.match(/^\/c\/([^/]+)$/);
-      if (match) {
-        void openThread(decodeURIComponent(match[1]), false);
+    const priorPathname = previousPathname.current;
+    previousPathname.current = pathname;
+    const routedThreadId = threadIdFromPathname(pathname);
+    if (routedThreadId && resourceId) {
+      if (routedThreadId === threadId && threadLoaded) return;
+      const timer = window.setTimeout(
+        () => void openThread(routedThreadId, false),
+        0,
+      );
+      return () => window.clearTimeout(timer);
+    }
+    if (pathname === "/" && priorPathname !== "/") {
+      if (skipNextRootReset.current) {
+        skipNextRootReset.current = false;
         return;
       }
       openRequestId.current += 1;
@@ -1413,11 +1454,8 @@ export function ChatApp({ initialThreadId, plugins = [] }: ChatAppProps) {
       rememberSession(nextThreadId, []);
       setThreadId(nextThreadId);
       setThreadLoaded(true);
-      setActiveView("chat");
-    };
-    window.addEventListener("popstate", handleHistoryNavigation);
-    return () => window.removeEventListener("popstate", handleHistoryNavigation);
-  }, [openThread, rememberSession]);
+    }
+  }, [openThread, pathname, rememberSession, resourceId, threadId, threadLoaded]);
 
   const updateThread = useCallback(async (
     thread: ThreadSummary,
@@ -1476,11 +1514,6 @@ export function ChatApp({ initialThreadId, plugins = [] }: ChatAppProps) {
     await installPrompt.prompt();
     const choice = await installPrompt.userChoice;
     if (choice.outcome === "accepted") setInstallPrompt(null);
-  };
-
-  const showView = (view: ActiveView) => {
-    setActiveView(view);
-    setMobileSidebarOpen(false);
   };
 
   const threadsWithBackgroundRuns = useMemo(() => {
@@ -1570,34 +1603,37 @@ export function ChatApp({ initialThreadId, plugins = [] }: ChatAppProps) {
         <button className={cn("sidebar-item", activeView === "chat" && "bg-sidebar-accent")} onClick={newChat} type="button">
           <SquarePen className="size-[18px]" /> New chat
         </button>
-        <button className={cn("sidebar-item", activeView === "search" && "bg-sidebar-accent")} onClick={() => showView("search")} type="button">
+        <Link className={cn("sidebar-item", activeView === "search" && "bg-sidebar-accent")} href={coreViewRoutes.search} onClick={() => setMobileSidebarOpen(false)}>
           <Search className="size-[18px]" /> Search
-        </button>
-        <button className={cn("sidebar-item", activeView === "scheduled" && "bg-sidebar-accent")} onClick={() => showView("scheduled")} type="button">
+        </Link>
+        <Link className={cn("sidebar-item", activeView === "scheduled" && "bg-sidebar-accent")} href={coreViewRoutes.scheduled} onClick={() => setMobileSidebarOpen(false)}>
           <Clock3 className="size-[18px]" /> Scheduled
-        </button>
-        <button className={cn("sidebar-item", activeView === "tools" && "bg-sidebar-accent")} onClick={() => showView("tools")} type="button">
+        </Link>
+        <Link className={cn("sidebar-item", activeView === "tools" && "bg-sidebar-accent")} href={coreViewRoutes.tools} onClick={() => setMobileSidebarOpen(false)}>
           <Wrench className="size-[18px]" /> Tools
-        </button>
-        <button className={cn("sidebar-item", activeView === "archived" && "bg-sidebar-accent")} onClick={() => showView("archived")} type="button">
+        </Link>
+        <Link className={cn("sidebar-item", activeView === "archived" && "bg-sidebar-accent")} href={coreViewRoutes.archived} onClick={() => setMobileSidebarOpen(false)}>
           <Archive className="size-[18px]" /> Archived
-        </button>
+        </Link>
         {registeredPlugins.map((plugin) => {
           const view = pluginView(plugin.id);
           return (
-            <button
+            <Link
               className={cn("sidebar-item", activeView === view && "bg-sidebar-accent")}
+              href={pluginHref(plugin)}
               key={plugin.id}
-              onClick={() => showView(view)}
-              type="button"
+              onClick={() => setMobileSidebarOpen(false)}
             >
               <span className="grid size-[18px] shrink-0 place-items-center [&>svg]:size-[18px]">
                 {plugin.icon ?? <Blocks />}
               </span>
               {plugin.label}
-            </button>
+            </Link>
           );
         })}
+        <Link className={cn("sidebar-item", activeView === "settings" && "bg-sidebar-accent")} href={coreViewRoutes.settings} onClick={() => setMobileSidebarOpen(false)}>
+          <Settings className="size-[18px]" /> Settings
+        </Link>
       </nav>
       <div className="mt-4 min-h-0 flex-1 overflow-y-auto">
         {pinnedThreads.length > 0 && (
@@ -1743,6 +1779,7 @@ export function ChatApp({ initialThreadId, plugins = [] }: ChatAppProps) {
         {resourceId && activeView === "scheduled" && (
           <SchedulesPanel
             enabledToolIds={enabledToolIds}
+            modelCatalog={modelCatalog}
             modelSelection={modelSelection}
             onConversationChange={refreshThreads}
             onOpenConversation={(id) => void openThread(id)}
@@ -1757,6 +1794,13 @@ export function ChatApp({ initialThreadId, plugins = [] }: ChatAppProps) {
             onOpen={(id) => void openThread(id)}
             renderActions={renderThreadActions}
             threads={archivedThreads}
+          />
+        )}
+        {resourceId && activeView === "settings" && (
+          <SettingsPanel
+            modelCatalog={modelCatalog}
+            modelSelection={modelSelection}
+            onModelSelectionChange={selectModel}
           />
         )}
         {activePlugin?.content}

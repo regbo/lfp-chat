@@ -4,6 +4,7 @@ import {
   CODEX_CHAT_AGENT_ID,
   DEFAULT_CHAT_AGENT_ID,
   MODEL_CONTEXT_KEY,
+  normalizeModelSelection,
   REASONING_CONTEXT_KEY,
   reasoningEfforts,
 } from "@/lib/model-catalog";
@@ -15,8 +16,13 @@ import {
 } from "@/lib/schedules";
 import { randomUUID } from "node:crypto";
 import { RequestContext } from "@mastra/core/request-context";
+import type { AgentSchedule, ScheduleResponse } from "@mastra/client-js";
 import { z } from "zod";
-import { parseScheduleInput } from "@/mastra/schedule-parser";
+import {
+  generateScheduleName,
+  parseScheduleInput,
+} from "@/mastra/schedule-parser";
+import { getModelCatalog } from "@/mastra/model-provider";
 
 export const runtime = "nodejs";
 
@@ -35,6 +41,36 @@ const createScheduleSchema = z.object({
   }).nullable().optional(),
 });
 
+function isAgentSchedule(schedule: ScheduleResponse): schedule is AgentSchedule {
+  return typeof schedule.agentId === "string";
+}
+
+async function nameUnlabeledSchedule(schedule: AgentSchedule) {
+  if (schedule.name?.trim()) return schedule;
+  const requestContext = new RequestContext();
+  const storedRequestContext = schedule.ifIdle?.streamOptions?.requestContext ?? {};
+  for (const [key, value] of Object.entries(storedRequestContext)) {
+    requestContext.set(key, value);
+  }
+  const name = await generateScheduleName(schedule.prompt, requestContext);
+  const updated = await mastraClient.updateSchedule(schedule.id, { name });
+  return isAgentSchedule(updated) ? updated : schedule;
+}
+
+function scheduleModelSelection(
+  schedule: AgentSchedule,
+  catalog: Awaited<ReturnType<typeof getModelCatalog>>,
+) {
+  const requestContext = schedule.ifIdle?.streamOptions?.requestContext ?? {};
+  return normalizeModelSelection(catalog, {
+    agentId: schedule.agentId,
+    modelId: requestContext[MODEL_CONTEXT_KEY] as string | undefined,
+    reasoningEffort: requestContext[REASONING_CONTEXT_KEY] as
+      | (typeof reasoningEfforts)[number]
+      | undefined,
+  });
+}
+
 export async function GET(request: Request) {
   const resourceId = new URL(request.url).searchParams.get("resourceId");
   if (!resourceId) {
@@ -45,15 +81,27 @@ export async function GET(request: Request) {
     const agentIds = serverConfig.codexAgentEnabled
       ? [DEFAULT_CHAT_AGENT_ID, CODEX_CHAT_AGENT_ID]
       : [DEFAULT_CHAT_AGENT_ID];
-    const results = await Promise.all(
-      agentIds.map((agentId) =>
-        mastraClient.listSchedules({ agentId, resourceId }),
+    const [modelCatalog, results] = await Promise.all([
+      getModelCatalog(),
+      Promise.all(
+        agentIds.map((agentId) =>
+          mastraClient.listSchedules({ agentId, resourceId }),
+        ),
       ),
+    ]);
+    const schedules = await Promise.all(
+      results
+        .flatMap((result) => result.schedules ?? [])
+        .filter(isAgentSchedule)
+        .map(nameUnlabeledSchedule),
     );
     return Response.json({
-      schedules: results
-        .flatMap((result) => result.schedules ?? [])
-        .sort((left, right) => left.nextFireAt - right.nextFireAt),
+      schedules: schedules.sort(
+        (left, right) => left.nextFireAt - right.nextFireAt,
+      ).map((schedule) => ({
+        ...schedule,
+        modelSelection: scheduleModelSelection(schedule, modelCatalog),
+      })),
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to load schedules.";
@@ -95,12 +143,17 @@ export async function POST(request: Request) {
       parserContext.set(MODEL_CONTEXT_KEY, parsed.data.modelSelection.modelId);
       parserContext.set(REASONING_CONTEXT_KEY, parsed.data.modelSelection.reasoningEffort);
     }
-    const parsedSchedule = await parseScheduleInput(
-      { schedule: recurrence, timezone: parsed.data.timezone },
-      parserContext,
-    );
+    const [parsedSchedule, scheduleName] = await Promise.all([
+      parseScheduleInput(
+        { schedule: recurrence, timezone: parsed.data.timezone },
+        parserContext,
+      ),
+      parsed.data.name
+        ? Promise.resolve(parsed.data.name)
+        : generateScheduleName(parsed.data.prompt, parserContext),
+    ]);
 
-    const title = `Scheduled: ${parsed.data.name || parsed.data.prompt.slice(0, 60)}`;
+    const title = `Scheduled: ${scheduleName}`;
     await mastraClient.createMemoryThread({
       agentId,
       resourceId: parsed.data.resourceId,
@@ -129,7 +182,7 @@ export async function POST(request: Request) {
       timezone: parsedSchedule.timezone,
       resourceId: parsed.data.resourceId,
       threadId,
-      name: parsed.data.name || undefined,
+      name: scheduleName,
       signalType: "system-reminder",
       ifActive: { behavior: "deliver" },
       ifIdle: {

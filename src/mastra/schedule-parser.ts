@@ -108,3 +108,19 @@ export function parseScheduleInput(
 ) {
   return parseSchedule(input, requestContext);
 }
+
+export async function generateScheduleName(
+  prompt: string,
+  requestContext: RequestContext,
+) {
+  const fallback = prompt.trim().replace(/\s+/g, " ").slice(0, 80) || "Scheduled job";
+  try {
+    const generated = await scheduleParserAgent.generateTitleFromUserMessage({
+      message: prompt,
+      requestContext,
+    });
+    return generated?.trim().slice(0, 80) || fallback;
+  } catch {
+    return fallback;
+  }
+}

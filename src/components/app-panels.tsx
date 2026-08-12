@@ -10,10 +10,24 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { MessageResponse } from "@/components/ai-elements/message";
 import { cn } from "@/lib/utils";
-import type { ModelSelection } from "@/lib/model-catalog";
+import {
+  DEFAULT_CHAT_AGENT_ID,
+  formatReasoningEffort,
+  type ModelCatalogResponse,
+  type ModelSelection,
+} from "@/lib/model-catalog";
 import type { ThreadSummary } from "@/lib/thread-state";
 import {
   toolCatalog,
@@ -58,6 +72,7 @@ type ScheduleSummary = {
   nextFireAt: number;
   lastFireAt?: number;
   threadId?: string;
+  modelSelection?: ModelSelection;
 };
 
 type ScheduleRun = {
@@ -72,7 +87,9 @@ type ScheduleRun = {
   completedAt?: number;
 };
 
-type ScheduleDraft = Pick<ScheduleSummary, "name" | "prompt" | "cron" | "timezone">;
+type ScheduleDraft = Pick<ScheduleSummary, "name" | "prompt" | "cron" | "timezone"> & {
+  modelSelection: ModelSelection | null;
+};
 
 function PanelShell({
   action,
@@ -160,13 +177,138 @@ function formatFireAt(value: number) {
   return new Date(milliseconds).toLocaleString();
 }
 
-function scheduleDraft(schedule: ScheduleSummary): ScheduleDraft {
+function scheduleDraft(
+  schedule: ScheduleSummary,
+  fallbackModelSelection: ModelSelection | null,
+): ScheduleDraft {
   return {
     name: schedule.name || "",
     prompt: schedule.prompt,
     cron: schedule.cron,
     timezone: schedule.timezone || "UTC",
+    modelSelection: schedule.modelSelection ?? fallbackModelSelection,
   };
+}
+
+function modelSelectionLabel(
+  catalog: ModelCatalogResponse | null,
+  selection: ModelSelection | null | undefined,
+) {
+  if (!catalog || !selection) return "Inherited model";
+  const agent = catalog.agents.find((candidate) => candidate.id === selection.agentId);
+  if (agent) return agent.label;
+  const model = catalog.models.find((candidate) => candidate.id === selection.modelId);
+  return [model?.label || selection.modelId, formatReasoningEffort(selection.reasoningEffort)]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+function ModelSelectionFields({
+  catalog,
+  modelLabel = "Job model",
+  onChange,
+  selection,
+}: {
+  catalog: ModelCatalogResponse | null;
+  modelLabel?: string;
+  onChange: (selection: ModelSelection) => void;
+  selection: ModelSelection | null;
+}) {
+  if (!catalog || !selection) return null;
+  const selectedModel = catalog.models.find(
+    (candidate) => candidate.id === selection.modelId,
+  );
+  const targetValue =
+    selection.agentId === DEFAULT_CHAT_AGENT_ID
+      ? `model:${selection.modelId}`
+      : `agent:${selection.agentId}`;
+
+  return (
+    <div className="grid gap-3 sm:grid-cols-2">
+      <div className="space-y-1.5">
+        <label className="chat-ui-text font-medium">{modelLabel}</label>
+        <Select
+          onValueChange={(value) => {
+            if (!value) return;
+            if (value.startsWith("agent:")) {
+              onChange({
+                agentId: value.slice(6),
+                modelId: selection.modelId,
+                reasoningEffort: null,
+              });
+              return;
+            }
+            const model = catalog.models.find(
+              (candidate) => candidate.id === value.slice(6),
+            );
+            if (!model) return;
+            onChange({
+              agentId: DEFAULT_CHAT_AGENT_ID,
+              modelId: model.id,
+              reasoningEffort: model.defaultReasoningEffort,
+            });
+          }}
+          value={targetValue}
+        >
+          <SelectTrigger aria-label="Job model" className="w-full">
+            <SelectValue>{modelSelectionLabel(catalog, selection)}</SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            {catalog.agents.length > 0 && (
+              <SelectGroup>
+                <SelectLabel>Agents</SelectLabel>
+                {catalog.agents.map((agent) => (
+                  <SelectItem key={agent.id} value={`agent:${agent.id}`}>
+                    {agent.label}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            )}
+            <SelectGroup>
+              <SelectLabel>Models</SelectLabel>
+              {catalog.models.map((model) => (
+                <SelectItem key={model.id} value={`model:${model.id}`}>
+                  {model.label}
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          </SelectContent>
+        </Select>
+      </div>
+      {selection.agentId === DEFAULT_CHAT_AGENT_ID &&
+        selectedModel &&
+        selectedModel.reasoningEfforts.length > 0 && (
+          <div className="space-y-1.5">
+            <label className="chat-ui-text font-medium">Reasoning</label>
+            <Select
+              onValueChange={(value) => {
+                if (!value) return;
+                onChange({
+                  ...selection,
+                  reasoningEffort: value as ModelSelection["reasoningEffort"],
+                });
+              }}
+              value={selection.reasoningEffort || selectedModel.defaultReasoningEffort || "none"}
+            >
+              <SelectTrigger aria-label="Job reasoning" className="w-full">
+                <SelectValue>
+                  {formatReasoningEffort(
+                    selection.reasoningEffort || selectedModel.defaultReasoningEffort,
+                  )}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {selectedModel.reasoningEfforts.map((effort) => (
+                  <SelectItem key={effort} value={effort}>
+                    {formatReasoningEffort(effort)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+    </div>
+  );
 }
 
 function runTone(outcome: ScheduleRun["outcome"]) {
@@ -181,12 +323,14 @@ function runTone(outcome: ScheduleRun["outcome"]) {
 
 export function SchedulesPanel({
   enabledToolIds,
+  modelCatalog,
   modelSelection,
   onConversationChange,
   onOpenConversation,
   resourceId,
 }: {
   enabledToolIds: SelectableToolId[];
+  modelCatalog: ModelCatalogResponse | null;
   modelSelection: ModelSelection | null;
   onConversationChange: () => void;
   onOpenConversation: (threadId: string) => void;
@@ -202,6 +346,7 @@ export function SchedulesPanel({
   const [prompt, setPrompt] = useState("");
   const [schedule, setSchedule] = useState("Every weekday at 9:00 AM");
   const [timezone, setTimezone] = useState(() => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
+  const [createModelSelection, setCreateModelSelection] = useState<ModelSelection | null>(modelSelection);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState<ScheduleDraft | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -254,7 +399,7 @@ export function SchedulesPanel({
     setCreateError("");
     setNotice("");
     try {
-      const response = await fetch("/api/schedules", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, prompt, schedule, timezone, resourceId, enabledToolIds, modelSelection }) });
+      const response = await fetch("/api/schedules", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, prompt, schedule, timezone, resourceId, enabledToolIds, modelSelection: createModelSelection ?? modelSelection }) });
       const data = (await response.json()) as { error?: string; existing?: boolean; schedule?: ScheduleSummary };
       if (!response.ok) throw new Error(data.error || "Unable to create schedule.");
       if (data.existing) {
@@ -315,6 +460,7 @@ export function SchedulesPanel({
           prompt: draft.prompt,
           schedule: draft.cron,
           timezone: draft.timezone,
+          modelSelection: draft.modelSelection,
         }),
       });
       const data = (await response.json()) as { error?: string };
@@ -342,7 +488,7 @@ export function SchedulesPanel({
   return (
     <PanelShell
       action={(
-        <Button className="shrink-0 rounded-full" onClick={() => { setCreateError(""); setCreateOpen(true); }}>
+        <Button className="shrink-0 rounded-full" onClick={() => { setCreateError(""); setCreateModelSelection(modelSelection); setCreateOpen(true); }}>
           <Plus className="size-4" /> New schedule
         </Button>
       )}
@@ -375,6 +521,11 @@ export function SchedulesPanel({
               <label className="chat-ui-text font-medium" htmlFor="new-schedule-timezone">Timezone</label>
               <Input id="new-schedule-timezone" onChange={(event) => setTimezone(event.target.value)} required value={timezone} />
             </div>
+            <ModelSelectionFields
+              catalog={modelCatalog}
+              onChange={setCreateModelSelection}
+              selection={createModelSelection}
+            />
             {createError && <p className="chat-ui-text rounded-xl bg-destructive/10 p-3 text-destructive">{createError}</p>}
             <DialogFooter className="mt-2">
               <Button disabled={busy} onClick={() => setCreateOpen(false)} type="button" variant="ghost">Cancel</Button>
@@ -393,7 +544,7 @@ export function SchedulesPanel({
               <div className="min-w-0 flex-1">
                 <p className="font-medium">{schedule.name || schedule.prompt}</p>
                 <p className="chat-ui-text mt-1 line-clamp-2 text-muted-foreground">{schedule.prompt}</p>
-                <p className="chat-meta-text mt-2 text-muted-foreground">{schedule.cron} · {schedule.timezone || "UTC"} · Next {formatFireAt(schedule.nextFireAt)}</p>
+                <p className="chat-meta-text mt-2 text-muted-foreground">{schedule.cron} · {schedule.timezone || "UTC"} · {modelSelectionLabel(modelCatalog, schedule.modelSelection)} · Next {formatFireAt(schedule.nextFireAt)}</p>
               </div>
               <span className={cn("chat-meta-text rounded-full px-2 py-1", schedule.status === "active" ? "bg-emerald-500/10 text-emerald-700" : "bg-muted text-muted-foreground")}>{schedule.status}</span>
             </div>
@@ -404,7 +555,7 @@ export function SchedulesPanel({
               <Button className="gap-1.5" disabled={busy} onClick={() => toggleHistory(schedule.id)} size="sm" variant="ghost">
                 <ChevronDown className={cn("size-4 transition-transform", expandedId === schedule.id && "rotate-180")} /> History
               </Button>
-              <Button aria-label="Edit schedule" disabled={busy} onClick={() => { setEditingId(schedule.id); setDraft(scheduleDraft(schedule)); }} size="icon-sm" variant="ghost"><Pencil /></Button>
+              <Button aria-label="Edit schedule" disabled={busy} onClick={() => { setEditingId(schedule.id); setDraft(scheduleDraft(schedule, modelSelection)); }} size="icon-sm" variant="ghost"><Pencil /></Button>
               <Button aria-label="Run now" disabled={busy} onClick={() => void act(schedule.id, "run")} size="icon-sm" variant="ghost"><Play /></Button>
               <Button aria-label={schedule.status === "active" ? "Pause" : "Resume"} disabled={busy} onClick={() => void act(schedule.id, schedule.status === "active" ? "pause" : "resume")} size="icon-sm" variant="ghost">{schedule.status === "active" ? <Pause /> : <Play />}</Button>
               <Button aria-label="Delete schedule" disabled={busy} onClick={() => void act(schedule.id, "delete")} size="icon-sm" variant="ghost"><Trash2 /></Button>
@@ -419,6 +570,11 @@ export function SchedulesPanel({
                   <p className="chat-meta-text text-muted-foreground">Use plain language or a standard cron expression.</p>
                 </div>
                 <Input aria-label="Schedule timezone" onChange={(event) => setDraft({ ...draft, timezone: event.target.value })} required value={draft.timezone} />
+                <ModelSelectionFields
+                  catalog={modelCatalog}
+                  onChange={(selection) => setDraft({ ...draft, modelSelection: selection })}
+                  selection={draft.modelSelection}
+                />
                 <div className="flex justify-end gap-2">
                   <Button disabled={busy} onClick={() => { setEditingId(null); setDraft(null); }} type="button" variant="ghost">Cancel</Button>
                   <Button disabled={busy} type="submit">Save changes</Button>
@@ -519,6 +675,38 @@ export function ToolsPanel({
         })}
       </div>
       <p className="chat-meta-text mt-4 text-muted-foreground">Code mode is disabled by default. When enabled, its Mastra workspace can read and modify the host filesystem and execute local commands.</p>
+    </PanelShell>
+  );
+}
+
+export function SettingsPanel({
+  modelCatalog,
+  modelSelection,
+  onModelSelectionChange,
+}: {
+  modelCatalog: ModelCatalogResponse | null;
+  modelSelection: ModelSelection | null;
+  onModelSelectionChange: (selection: ModelSelection) => void;
+}) {
+  return (
+    <PanelShell
+      title="Settings"
+      description="Choose defaults for new chats and scheduled jobs."
+    >
+      <div className="rounded-2xl border p-4">
+        <p className="chat-ui-emphasis">Default intelligence</p>
+        <p className="chat-ui-text mt-1 text-muted-foreground">
+          New schedules inherit this selection unless you choose another model for the job.
+        </p>
+        <div className="mt-4">
+          <ModelSelectionFields
+            catalog={modelCatalog}
+            modelLabel="Default model"
+            onChange={onModelSelectionChange}
+            selection={modelSelection}
+          />
+        </div>
+      </div>
     </PanelShell>
   );
 }

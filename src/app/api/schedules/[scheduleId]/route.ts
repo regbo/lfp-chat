@@ -2,6 +2,13 @@ import { mastraClient } from "@/lib/mastra-client";
 import { RequestContext } from "@mastra/core/request-context";
 import type { AgentSchedule, ScheduleResponse } from "@mastra/client-js";
 import {
+  CODEX_CHAT_AGENT_ID,
+  DEFAULT_CHAT_AGENT_ID,
+  MODEL_CONTEXT_KEY,
+  REASONING_CONTEXT_KEY,
+  reasoningEfforts,
+} from "@/lib/model-catalog";
+import {
   findCoveringSchedule,
   scheduleDedupeKey,
   SCHEDULE_TIMEZONE_CONTEXT_KEY,
@@ -24,6 +31,11 @@ const actionSchema = z.discriminatedUnion("action", [
     schedule: z.string().trim().min(1).max(300).optional(),
     cron: z.string().trim().min(1).max(100).optional(),
     timezone: z.string().trim().min(1).max(100),
+    modelSelection: z.object({
+      agentId: z.enum([DEFAULT_CHAT_AGENT_ID, CODEX_CHAT_AGENT_ID]),
+      modelId: z.string().min(1),
+      reasoningEffort: z.enum(reasoningEfforts).nullable(),
+    }).optional(),
   }),
 ]);
 
@@ -77,10 +89,32 @@ export async function PATCH(request: Request, context: RouteContext) {
           { status: 409 },
         );
       }
+      if (
+        parsed.data.modelSelection &&
+        parsed.data.modelSelection.agentId !== schedule.agentId
+      ) {
+        return Response.json(
+          { error: "A schedule’s agent cannot be changed after creation." },
+          { status: 400 },
+        );
+      }
       const storedRequestContext = schedule.ifIdle?.streamOptions?.requestContext ?? {};
       const parserContext = new RequestContext();
       for (const [key, value] of Object.entries(storedRequestContext)) {
         parserContext.set(key, value);
+      }
+      if (
+        parsed.data.modelSelection &&
+        schedule.agentId === DEFAULT_CHAT_AGENT_ID
+      ) {
+        parserContext.set(
+          MODEL_CONTEXT_KEY,
+          parsed.data.modelSelection.modelId,
+        );
+        parserContext.set(
+          REASONING_CONTEXT_KEY,
+          parsed.data.modelSelection.reasoningEffort,
+        );
       }
       const parsedSchedule = await parseScheduleInput(
         { schedule: recurrence, timezone: parsed.data.timezone },
@@ -98,6 +132,14 @@ export async function PATCH(request: Request, context: RouteContext) {
             requestContext: {
               ...schedule.ifIdle?.streamOptions?.requestContext,
               [SCHEDULE_TIMEZONE_CONTEXT_KEY]: parsedSchedule.timezone,
+              ...(parsed.data.modelSelection &&
+              schedule.agentId === DEFAULT_CHAT_AGENT_ID
+                ? {
+                    [MODEL_CONTEXT_KEY]: parsed.data.modelSelection.modelId,
+                    [REASONING_CONTEXT_KEY]:
+                      parsed.data.modelSelection.reasoningEffort,
+                  }
+                : {}),
             },
           },
         },

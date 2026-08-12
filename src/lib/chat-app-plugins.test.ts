@@ -24,4 +24,14 @@ describe("validateChatAppPlugins", () => {
     expect(() => validateChatAppPlugins([plugin("dashboard", " ")]))
       .toThrow('ChatApp plugin "dashboard" must have a label.');
   });
+
+  test("requires a unique non-reserved route", () => {
+    expect(() => validateChatAppPlugins([
+      { ...plugin("dashboard"), href: "/search" },
+    ])).toThrow('ChatApp plugin "dashboard" cannot use reserved route "/search".');
+    expect(() => validateChatAppPlugins([
+      { ...plugin("dashboard"), href: "/workspace" },
+      { ...plugin("todos"), href: "/workspace" },
+    ])).toThrow('ChatApp plugin route "/workspace" is registered more than once.');
+  });
 });

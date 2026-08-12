@@ -9,14 +9,22 @@ import {
   SCHEDULE_TIMEZONE_CONTEXT_KEY,
 } from "@/lib/schedules";
 import {
+  DEFAULT_CHAT_AGENT_ID,
   MODEL_CONTEXT_KEY,
+  mostPowerfulModelSelection,
+  normalizeModelSelection,
+  reasoningEfforts,
   REASONING_CONTEXT_KEY,
 } from "@/lib/model-catalog";
 import {
   normalizeEnabledToolIds,
   TOOLS_CONTEXT_KEY,
 } from "@/lib/tool-catalog";
-import { parseScheduleInput } from "@/mastra/schedule-parser";
+import {
+  generateScheduleName,
+  parseScheduleInput,
+} from "@/mastra/schedule-parser";
+import { getModelCatalog } from "@/mastra/model-provider";
 
 const scheduleOutputSchema = z.object({
   created: z.boolean(),
@@ -27,9 +35,9 @@ const scheduleOutputSchema = z.object({
 export const scheduleCreateTool = createTool({
   id: "schedule_create",
   description:
-    "Create recurring work for this user from a plain-language schedule or cron expression. If no time was specified, 09:00 is used in the user's timezone. This tool checks existing schedules for the same work before creating one, so never create a second schedule to change cadence; tell the user to edit the existing schedule instead.",
+    "Create recurring work for this user from a plain-language schedule or cron expression. The job inherits the invoking model and reasoning by default. Set modelPreference to most_powerful when the user asks for the strongest or most powerful thinking model. If no time was specified, 09:00 is used in the user's timezone. This tool checks existing schedules for the same work before creating one, so never create a second schedule to change cadence; tell the user to edit the existing schedule instead.",
   inputSchema: z.object({
-    name: z.string().trim().min(1).max(80),
+    name: z.string().trim().min(1).max(80).optional(),
     prompt: z.string().trim().min(1).max(8_000).describe(
       "The self-contained instruction the agent should execute on every run, excluding cadence wording.",
     ),
@@ -40,6 +48,15 @@ export const scheduleCreateTool = createTool({
       "Deprecated compatibility field for a cron expression. Prefer schedule.",
     ),
     timezone: z.string().trim().min(1).max(100).optional(),
+    modelPreference: z.enum(["inherit", "most_powerful"]).optional().describe(
+      "Use inherit unless the user asks for the most powerful or strongest thinking model.",
+    ),
+    modelId: z.string().trim().min(1).optional().describe(
+      "An explicit provider/model id when the user names a specific model.",
+    ),
+    reasoningEffort: z.enum(reasoningEfforts).optional().describe(
+      "An explicit reasoning effort requested for this scheduled job.",
+    ),
   }),
   outputSchema: scheduleOutputSchema,
   execute: async (input, context) => {
@@ -56,6 +73,24 @@ export const scheduleCreateTool = createTool({
       "UTC";
     const scheduleInput = input.schedule || input.cron;
     if (!scheduleInput) throw new Error("A plain-language schedule or cron expression is required.");
+    const modelCatalog = await getModelCatalog();
+    const inheritedModelSelection = normalizeModelSelection(modelCatalog, {
+      agentId: DEFAULT_CHAT_AGENT_ID,
+      modelId: context.requestContext?.get(MODEL_CONTEXT_KEY) as string | undefined,
+      reasoningEffort: context.requestContext?.get(REASONING_CONTEXT_KEY) as
+        | (typeof reasoningEfforts)[number]
+        | undefined,
+    });
+    const preferredModelSelection =
+      input.modelPreference === "most_powerful"
+        ? mostPowerfulModelSelection(modelCatalog)
+        : inheritedModelSelection;
+    const jobModelSelection = normalizeModelSelection(modelCatalog, {
+      ...preferredModelSelection,
+      modelId: input.modelId || preferredModelSelection.modelId,
+      reasoningEffort:
+        input.reasoningEffort ?? preferredModelSelection.reasoningEffort,
+    });
     const schedules = await mastra.schedules.list({ agentId, resourceId });
     const existing = findCoveringSchedule(schedules, {
       agentId,
@@ -69,10 +104,15 @@ export const scheduleCreateTool = createTool({
         schedule: existing as unknown as Record<string, unknown>,
       };
     }
-    const parsedSchedule = await parseScheduleInput(
-      { schedule: scheduleInput, timezone: requestedTimezone },
-      context.requestContext,
-    );
+    const [parsedSchedule, scheduleName] = await Promise.all([
+      parseScheduleInput(
+        { schedule: scheduleInput, timezone: requestedTimezone },
+        context.requestContext,
+      ),
+      input.name
+        ? Promise.resolve(input.name)
+        : generateScheduleName(input.prompt, context.requestContext),
+    ]);
     const { cron, timezone } = parsedSchedule;
 
     const agent = mastra.getAgentById(agentId);
@@ -83,7 +123,7 @@ export const scheduleCreateTool = createTool({
     await memory.createThread({
       resourceId,
       threadId,
-      title: `Scheduled: ${input.name}`,
+      title: `Scheduled: ${scheduleName}`,
       metadata: { schedule: true, createdBy: "schedule_create" },
     });
 
@@ -92,8 +132,8 @@ export const scheduleCreateTool = createTool({
     );
     const requestContext = scheduleRequestContext({
       enabledToolIds,
-      modelId: context.requestContext?.get(MODEL_CONTEXT_KEY) as string | undefined,
-      reasoningEffort: context.requestContext?.get(REASONING_CONTEXT_KEY) as string | null | undefined,
+      modelId: jobModelSelection.modelId,
+      reasoningEffort: jobModelSelection.reasoningEffort,
       timezone,
     });
 
@@ -105,7 +145,7 @@ export const scheduleCreateTool = createTool({
         prompt: input.prompt,
         resourceId,
         threadId,
-        name: input.name,
+        name: scheduleName,
         signalType: "system-reminder",
         ifActive: { behavior: "deliver" },
         ifIdle: { behavior: "wake", streamOptions: { requestContext } },
@@ -118,7 +158,7 @@ export const scheduleCreateTool = createTool({
       });
       return {
         created: true,
-        message: `Created ${input.name}: ${parsedSchedule.description} (${timezone}).`,
+        message: `Created ${scheduleName}: ${parsedSchedule.description} (${timezone}).`,
         schedule: schedule as unknown as Record<string, unknown>,
       };
     } catch (error) {

@@ -28,6 +28,7 @@ import { Dashboard } from "./dashboard";
 const plugins = [
   {
     id: "dashboard",
+    href: "/dashboard",
     label: "Dashboard",
     content: <Dashboard />,
   },
@@ -38,10 +39,16 @@ export default function ChatPage() {
 }
 ```
 
-An optional `icon` can be any React node. Plugin IDs must be non-empty and
-unique. Content owns its own data and state, so interactive plugins can use a
-Client Component while server-rendered elements can be passed through the same
-slot.
+An optional `icon` can be any React node. Plugin IDs and routes must be non-empty
+and unique. When `href` is omitted, the route defaults to `/${id}`. The host app
+should expose a matching route, while `ChatApp` keeps the shared shell mounted
+and displays the plugin content there. Content owns its own data and state, so
+interactive plugins can use a Client Component while server-rendered elements
+can be passed through the same slot.
+
+The included application gives every primary view a stable URL: `/search`,
+`/scheduled`, `/tools`, `/archived`, `/tasks`, and `/settings`. Conversations
+remain addressable at `/c/[threadId]`, and `/` always starts a new chat.
 
 Create a release with Bun, then push the generated commit and tag:
 
@@ -77,11 +84,15 @@ immediately; and expand its trigger history to show outcomes and saved assistant
 output. Those private job threads stay out of normal chat history and are opened
 from their schedule instead.
 
-Scheduled runs inherit the model and work tools selected when the schedule was
-created, but cannot recursively create schedules. They also receive a job-only
-memory recall tool backed by that schedule's thread. Tasks that need continuity
-or non-repeating output can inspect prior runs without reading another schedule
-or an ordinary conversation.
+An unnamed schedule gets a concise generated title using the same title path as
+ordinary chats. Scheduled runs inherit the requesting model, reasoning effort,
+and work tools unless the request or Scheduled UI selects another model. A
+request for the “most powerful thinking model” resolves to the strongest
+available reasoning model and its highest supported effort. Jobs cannot
+recursively create schedules. They also receive a job-only memory recall tool
+backed by that schedule's thread, so tasks that need continuity or non-repeating
+output can inspect prior runs without reading another schedule or an ordinary
+conversation.
 
 ## Run locally
 
