@@ -286,8 +286,24 @@
   }
 
   .sidebar-chat-link {
-    @apply flex min-h-8 min-w-0 items-center rounded-lg px-2 py-1 leading-5 transition-colors hover:bg-sidebar-accent;
+    @apply flex min-h-8 min-w-0 items-center rounded-lg px-2 py-1 leading-5;
     font-size: var(--text-ui);
+  }
+
+  .sidebar-chat-title {
+    --sidebar-title-fade: 1.25rem;
+    @apply block w-full min-w-0 overflow-hidden whitespace-nowrap;
+    mask-image: linear-gradient(
+      to right,
+      #000 0,
+      #000 calc(100% - var(--sidebar-title-fade)),
+      transparent 100%
+    );
+  }
+
+  .sidebar-chat-row:hover .sidebar-chat-title,
+  .sidebar-chat-row:focus-within .sidebar-chat-title {
+    --sidebar-title-fade: 2.75rem;
   }
 
   .sidebar-chat-link-active {
