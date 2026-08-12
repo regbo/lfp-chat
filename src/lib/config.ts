@@ -8,6 +8,21 @@ const DEFAULT_MODEL_PROVIDER = "openai";
 const DEFAULT_OPENAI_MODEL = "gpt-5.6-luna";
 const DEFAULT_CODEX_AGENT_MODE = "agent";
 
+function boundedInteger(
+  name: string,
+  fallback: number,
+  minimum: number,
+  maximum: number,
+) {
+  const raw = process.env[name]?.trim();
+  if (!raw) return fallback;
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value < minimum || value > maximum) {
+    throw new Error(`${name} must be an integer from ${minimum} to ${maximum}.`);
+  }
+  return value;
+}
+
 function secretValue(valueName: string, fileName: string) {
   const file = process.env[fileName]?.trim();
   if (file) {
@@ -62,8 +77,42 @@ export const serverConfig = {
     "FAMILY_CONTEXT_API_KEY",
     "FAMILY_CONTEXT_API_KEY_FILE",
   ),
+  vikunjaApiUrl: process.env.VIKUNJA_API_URL?.trim(),
+  vikunjaApiToken: secretValue(
+    "VIKUNJA_API_TOKEN",
+    "VIKUNJA_API_TOKEN_FILE",
+  ),
+  vikunjaProjectId: boundedInteger("VIKUNJA_PROJECT_ID", 1, 1, 2_147_483_647),
   familyGraphGroupId:
     process.env.FAMILY_GRAPH_GROUP_ID?.trim() || "family-home",
+  familyEmbeddingModel:
+    process.env.FAMILY_EMBEDDING_MODEL?.trim() || "text-embedding-3-small",
+  familyEmbeddingDimensions: boundedInteger(
+    "FAMILY_EMBEDDING_DIMENSIONS",
+    1_024,
+    1,
+    16_384,
+  ),
+  familyGraphTimeoutMs: boundedInteger(
+    "FAMILY_GRAPH_TIMEOUT_MS",
+    120_000,
+    1_000,
+    900_000,
+  ),
+  familySqlStatementTimeoutMs: boundedInteger(
+    "FAMILY_SQL_STATEMENT_TIMEOUT_MS",
+    60_000,
+    1_000,
+    300_000,
+  ),
+  familySqlConnectionTimeoutMs: boundedInteger(
+    "FAMILY_SQL_CONNECTION_TIMEOUT_MS",
+    15_000,
+    1_000,
+    60_000,
+  ),
+  agentMaxSteps: boundedInteger("MASTRA_AGENT_MAX_STEPS", 16, 1, 40),
+  openaiApiKey: secretValue("OPENAI_API_KEY", "OPENAI_API_KEY_FILE"),
   mastraHost: process.env.MASTRA_HOST?.trim() || "127.0.0.1",
   mastraApiUrl: process.env.MASTRA_API_URL ?? LOCAL_MASTRA_API_URL,
   modelProvider,

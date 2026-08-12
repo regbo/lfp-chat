@@ -135,6 +135,16 @@
   --code-block-inset: 0.25rem;
 }
 
+/* High-density desktop panels can make the compact default scale feel
+   undersized. Raising the root by one step keeps every rem-based token in
+   proportion without affecting mobile or standard-density displays. */
+@media (min-width: 1024px) and (min-resolution: 2dppx),
+  (min-width: 1024px) and (-webkit-min-device-pixel-ratio: 2) {
+  :root {
+    font-size: 106.25%;
+  }
+}
+
 .dark {
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);

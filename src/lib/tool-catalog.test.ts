@@ -1,0 +1,13 @@
+import { describe, expect, test } from "bun:test";
+
+import { migrateEnabledToolIds } from "./tool-catalog";
+
+describe("tool catalog migrations", () => {
+  test("enables scheduling once for selections saved before catalog v2", () => {
+    expect(migrateEnabledToolIds(["search"], 1)).toEqual(["search", "scheduling"]);
+  });
+
+  test("preserves an explicit v2 scheduling choice", () => {
+    expect(migrateEnabledToolIds(["search"], 2)).toEqual(["search"]);
+  });
+});

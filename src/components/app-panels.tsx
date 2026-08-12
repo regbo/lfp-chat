@@ -3,6 +3,7 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { MessageResponse } from "@/components/ai-elements/message";
 import { cn } from "@/lib/utils";
 import type { ModelSelection } from "@/lib/model-catalog";
 import type { ThreadSummary } from "@/lib/thread-state";
@@ -13,17 +14,21 @@ import {
 import {
   Calculator,
   Check,
+  ChevronDown,
   Clock3,
   Code2,
   Database,
   Globe2,
   ImageIcon,
   LoaderCircle,
+  ListTodo,
   Mail,
   MessageSquare,
   Paperclip,
   Pause,
+  Pencil,
   Play,
+  RefreshCw,
   Search,
   Share2,
   ShieldAlert,
@@ -35,14 +40,30 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 type ScheduleSummary = {
   id: string;
+  agentId: string;
   name?: string;
   prompt: string;
   cron: string;
   timezone?: string;
   status: "active" | "paused";
   nextFireAt: number;
+  lastFireAt?: number;
   threadId?: string;
 };
+
+type ScheduleRun = {
+  id?: string;
+  runId: string | null;
+  actualFireAt: number;
+  scheduledFireAt: number;
+  outcome: "published" | "succeeded" | "delivered" | "persisted" | "discarded" | "skipped" | "aborted" | "failed";
+  triggerKind?: "schedule-fire" | "queue-drain" | "manual";
+  error?: string;
+  output?: string;
+  completedAt?: number;
+};
+
+type ScheduleDraft = Pick<ScheduleSummary, "name" | "prompt" | "cron" | "timezone">;
 
 function PanelShell({ title, description, children }: { title: string; description: string; children: React.ReactNode }) {
   return (
@@ -115,6 +136,25 @@ function formatFireAt(value: number) {
   return new Date(milliseconds).toLocaleString();
 }
 
+function scheduleDraft(schedule: ScheduleSummary): ScheduleDraft {
+  return {
+    name: schedule.name || "",
+    prompt: schedule.prompt,
+    cron: schedule.cron,
+    timezone: schedule.timezone || "UTC",
+  };
+}
+
+function runTone(outcome: ScheduleRun["outcome"]) {
+  if (["succeeded", "delivered", "persisted"].includes(outcome)) {
+    return "bg-emerald-500/10 text-emerald-700";
+  }
+  if (["failed", "aborted"].includes(outcome)) {
+    return "bg-destructive/10 text-destructive";
+  }
+  return "bg-muted text-muted-foreground";
+}
+
 export function SchedulesPanel({
   enabledToolIds,
   modelSelection,
@@ -131,16 +171,50 @@ export function SchedulesPanel({
   const [schedules, setSchedules] = useState<ScheduleSummary[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [name, setName] = useState("");
   const [prompt, setPrompt] = useState("");
   const [cron, setCron] = useState("0 9 * * 1-5");
   const [timezone, setTimezone] = useState(() => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [draft, setDraft] = useState<ScheduleDraft | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [runState, setRunState] = useState<{
+    scheduleId: string;
+    loading: boolean;
+    runs: ScheduleRun[];
+    error?: string;
+  } | null>(null);
 
   const refresh = useCallback(async () => {
     const response = await fetch(`/api/schedules?resourceId=${encodeURIComponent(resourceId)}`);
     const data = (await response.json()) as { schedules?: ScheduleSummary[]; error?: string };
     if (!response.ok) throw new Error(data.error || "Unable to load schedules.");
     setSchedules(data.schedules || []);
+  }, [resourceId]);
+
+  const loadRuns = useCallback(async (scheduleId: string) => {
+    setRunState((current) => ({
+      scheduleId,
+      loading: true,
+      runs: current?.scheduleId === scheduleId ? current.runs : [],
+    }));
+    try {
+      const response = await fetch(
+        `/api/schedules/${encodeURIComponent(scheduleId)}/runs?resourceId=${encodeURIComponent(resourceId)}`,
+        { cache: "no-store" },
+      );
+      const data = (await response.json()) as { runs?: ScheduleRun[]; error?: string };
+      if (!response.ok) throw new Error(data.error || "Unable to load run history.");
+      setRunState({ scheduleId, loading: false, runs: data.runs || [] });
+    } catch (cause) {
+      setRunState({
+        scheduleId,
+        loading: false,
+        runs: [],
+        error: cause instanceof Error ? cause.message : "Unable to load run history.",
+      });
+    }
   }, [resourceId]);
 
   useEffect(() => {
@@ -152,12 +226,18 @@ export function SchedulesPanel({
     event.preventDefault();
     setBusy(true);
     setError("");
+    setNotice("");
     try {
       const response = await fetch("/api/schedules", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, prompt, cron, timezone, resourceId, enabledToolIds, modelSelection }) });
-      const data = (await response.json()) as { error?: string };
+      const data = (await response.json()) as { error?: string; existing?: boolean; schedule?: ScheduleSummary };
       if (!response.ok) throw new Error(data.error || "Unable to create schedule.");
-      setName("");
-      setPrompt("");
+      if (data.existing) {
+        setNotice(`“${data.schedule?.name || "Existing schedule"}” already covers this work. Edit that schedule instead.`);
+      } else {
+        setName("");
+        setPrompt("");
+        setNotice("Schedule created.");
+      }
       await refresh();
       onConversationChange();
     } catch (cause) {
@@ -168,21 +248,66 @@ export function SchedulesPanel({
   const act = async (scheduleId: string, action: "pause" | "resume" | "run" | "delete") => {
     setBusy(true);
     setError("");
+    setNotice("");
     try {
-      const response = await fetch(`/api/schedules/${encodeURIComponent(scheduleId)}`, action === "delete" ? { method: "DELETE" } : { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action }) });
-      const data = (await response.json()) as { error?: string };
+      if (action === "delete" && !window.confirm("Delete this schedule and its run conversation?")) return;
+      const response = await fetch(
+        `/api/schedules/${encodeURIComponent(scheduleId)}${action === "delete" ? `?resourceId=${encodeURIComponent(resourceId)}` : ""}`,
+        action === "delete"
+          ? { method: "DELETE" }
+          : { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, resourceId }) },
+      );
+      const data = (await response.json()) as { error?: string; result?: { claimId?: string } };
       if (!response.ok) throw new Error(data.error || "Unable to update schedule.");
       await refresh();
       if (action === "run") {
+        setNotice("Run started. History will update when it finishes.");
         window.setTimeout(onConversationChange, 1_500);
+        window.setTimeout(() => void loadRuns(scheduleId), 2_000);
+        window.setTimeout(() => void loadRuns(scheduleId), 7_000);
       }
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Unable to update schedule."); }
     finally { setBusy(false); }
   };
 
+  const save = async (event: FormEvent, scheduleId: string) => {
+    event.preventDefault();
+    if (!draft) return;
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const response = await fetch(`/api/schedules/${encodeURIComponent(scheduleId)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "update", resourceId, ...draft }),
+      });
+      const data = (await response.json()) as { error?: string };
+      if (!response.ok) throw new Error(data.error || "Unable to save schedule.");
+      setEditingId(null);
+      setDraft(null);
+      setNotice("Schedule updated.");
+      await refresh();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Unable to save schedule.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const toggleHistory = (scheduleId: string) => {
+    if (expandedId === scheduleId) {
+      setExpandedId(null);
+      return;
+    }
+    setExpandedId(scheduleId);
+    void loadRuns(scheduleId);
+  };
+
   return (
-    <PanelShell title="Scheduled" description="Run prompts on a cron schedule using Mastra’s persisted scheduler.">
+    <PanelShell title="Scheduled" description="Configure recurring agent work and inspect every run and output.">
       <form className="space-y-3 rounded-2xl border p-4" onSubmit={submit}>
+        <p className="chat-ui-emphasis">New schedule</p>
         <Input onChange={(event) => setName(event.target.value)} placeholder="Name (optional)" value={name} />
         <Textarea className="min-h-24" onChange={(event) => setPrompt(event.target.value)} placeholder="What should LFP Chat do?" required value={prompt} />
         <div className="grid gap-3 sm:grid-cols-2">
@@ -195,6 +320,7 @@ export function SchedulesPanel({
         </div>
       </form>
       {error && <p className="chat-ui-text mt-3 rounded-xl bg-destructive/10 p-3 text-destructive">{error}</p>}
+      {notice && <p className="chat-ui-text mt-3 rounded-xl bg-muted p-3 text-foreground">{notice}</p>}
       <div className="mt-6 space-y-3">
         {schedules.map((schedule) => (
           <div className="rounded-2xl border p-4" key={schedule.id}>
@@ -211,10 +337,57 @@ export function SchedulesPanel({
               {schedule.threadId && (
                 <Button className="mr-auto gap-1.5" disabled={busy} onClick={() => onOpenConversation(schedule.threadId!)} size="sm" variant="ghost"><MessageSquare className="size-4" /> Open conversation</Button>
               )}
+              <Button className="gap-1.5" disabled={busy} onClick={() => toggleHistory(schedule.id)} size="sm" variant="ghost">
+                <ChevronDown className={cn("size-4 transition-transform", expandedId === schedule.id && "rotate-180")} /> History
+              </Button>
+              <Button aria-label="Edit schedule" disabled={busy} onClick={() => { setEditingId(schedule.id); setDraft(scheduleDraft(schedule)); }} size="icon-sm" variant="ghost"><Pencil /></Button>
               <Button aria-label="Run now" disabled={busy} onClick={() => void act(schedule.id, "run")} size="icon-sm" variant="ghost"><Play /></Button>
               <Button aria-label={schedule.status === "active" ? "Pause" : "Resume"} disabled={busy} onClick={() => void act(schedule.id, schedule.status === "active" ? "pause" : "resume")} size="icon-sm" variant="ghost">{schedule.status === "active" ? <Pause /> : <Play />}</Button>
               <Button aria-label="Delete schedule" disabled={busy} onClick={() => void act(schedule.id, "delete")} size="icon-sm" variant="ghost"><Trash2 /></Button>
             </div>
+            {editingId === schedule.id && draft && (
+              <form className="mt-4 space-y-3 border-t pt-4" onSubmit={(event) => void save(event, schedule.id)}>
+                <Input aria-label="Schedule name" onChange={(event) => setDraft({ ...draft, name: event.target.value })} required value={draft.name} />
+                <Textarea aria-label="Schedule prompt" className="min-h-24" onChange={(event) => setDraft({ ...draft, prompt: event.target.value })} required value={draft.prompt} />
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Input aria-label="Schedule cron expression" onChange={(event) => setDraft({ ...draft, cron: event.target.value })} required value={draft.cron} />
+                  <Input aria-label="Schedule timezone" onChange={(event) => setDraft({ ...draft, timezone: event.target.value })} required value={draft.timezone} />
+                </div>
+                <div className="flex justify-end gap-2">
+                  <Button disabled={busy} onClick={() => { setEditingId(null); setDraft(null); }} type="button" variant="ghost">Cancel</Button>
+                  <Button disabled={busy} type="submit">Save changes</Button>
+                </div>
+              </form>
+            )}
+            {expandedId === schedule.id && (
+              <div className="mt-4 border-t pt-4">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="chat-ui-emphasis">Run history</p>
+                  <Button aria-label="Refresh run history" disabled={runState?.loading} onClick={() => void loadRuns(schedule.id)} size="icon-sm" variant="ghost">
+                    <RefreshCw className={cn(runState?.loading && "animate-spin")} />
+                  </Button>
+                </div>
+                {runState?.scheduleId === schedule.id && runState.error && (
+                  <p className="chat-ui-text mt-3 text-destructive">{runState.error}</p>
+                )}
+                {runState?.scheduleId === schedule.id && !runState.loading && runState.runs.length === 0 && (
+                  <p className="chat-ui-text py-6 text-center text-muted-foreground">No runs yet.</p>
+                )}
+                <div className="mt-2 space-y-2">
+                  {runState?.scheduleId === schedule.id && runState.runs.map((run) => (
+                    <div className="rounded-xl bg-muted/45 p-3" key={run.id || `${run.runId}-${run.actualFireAt}`}>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className={cn("chat-meta-text rounded-full px-2 py-1", runTone(run.outcome))}>{run.outcome}</span>
+                        <span className="chat-meta-text text-muted-foreground">{run.triggerKind === "manual" ? "Manual run" : "Scheduled run"} · {formatFireAt(run.actualFireAt)}</span>
+                      </div>
+                      {run.output && <MessageResponse className="chat-message-content mt-3 text-foreground">{run.output}</MessageResponse>}
+                      {run.error && <p className="chat-ui-text mt-2 text-destructive">{run.error}</p>}
+                      {!run.output && !run.error && <p className="chat-ui-text mt-2 text-muted-foreground">No saved output for this run.</p>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         ))}
         {schedules.length === 0 && <p className="chat-ui-text py-8 text-center text-muted-foreground">No schedules yet.</p>}
@@ -227,10 +400,13 @@ const toolIcons: Record<SelectableToolId, LucideIcon> = {
   search: Search,
   calculator: Calculator,
   monty: Code2,
-  family_sql: Database,
+  family_database: Database,
+  family_search: Search,
   family_graph: Share2,
   family_email: Mail,
   family_attachment: Paperclip,
+  family_tasks: ListTodo,
+  scheduling: Clock3,
   web_search: Globe2,
   code_interpreter: Code2,
   image_generation: ImageIcon,

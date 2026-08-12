@@ -1,4 +1,4 @@
-import { ChatApp } from "@/components/chat-app";
+import { HomeChatApp } from "@/components/home-chat-app";
 
 export default async function ConversationPage({
   params,
@@ -6,5 +6,5 @@ export default async function ConversationPage({
   params: Promise<{ threadId: string }>;
 }) {
   const { threadId } = await params;
-  return <ChatApp initialThreadId={threadId} />;
+  return <HomeChatApp initialThreadId={threadId} />;
 }

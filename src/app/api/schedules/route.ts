@@ -3,11 +3,14 @@ import { serverConfig } from "@/lib/config";
 import {
   CODEX_CHAT_AGENT_ID,
   DEFAULT_CHAT_AGENT_ID,
-  MODEL_CONTEXT_KEY,
-  REASONING_CONTEXT_KEY,
   reasoningEfforts,
 } from "@/lib/model-catalog";
-import { normalizeEnabledToolIds, TOOLS_CONTEXT_KEY } from "@/lib/tool-catalog";
+import { normalizeEnabledToolIds } from "@/lib/tool-catalog";
+import {
+  findCoveringSchedule,
+  scheduleDedupeKey,
+  scheduleRequestContext,
+} from "@/lib/schedules";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 
@@ -65,6 +68,19 @@ export async function POST(request: Request) {
   try {
     const agentId =
       parsed.data.modelSelection?.agentId ?? DEFAULT_CHAT_AGENT_ID;
+    const existingSchedules = await mastraClient.listSchedules({
+      agentId,
+      resourceId: parsed.data.resourceId,
+    });
+    const existing = findCoveringSchedule(existingSchedules.schedules, {
+      agentId,
+      prompt: parsed.data.prompt,
+      resourceId: parsed.data.resourceId,
+    });
+    if (existing) {
+      return Response.json({ schedule: existing, existing: true });
+    }
+
     const title = `Scheduled: ${parsed.data.name || parsed.data.prompt.slice(0, 60)}`;
     await mastraClient.createMemoryThread({
       agentId,
@@ -75,17 +91,18 @@ export async function POST(request: Request) {
     });
     threadCreated = true;
     const enabledToolIds = normalizeEnabledToolIds(parsed.data.enabledToolIds);
-    const requestContext: Record<string, unknown> = {
-      [TOOLS_CONTEXT_KEY]: enabledToolIds,
-    };
-    if (
-      parsed.data.modelSelection &&
-      agentId === DEFAULT_CHAT_AGENT_ID
-    ) {
-      requestContext[MODEL_CONTEXT_KEY] = parsed.data.modelSelection.modelId;
-      requestContext[REASONING_CONTEXT_KEY] =
-        parsed.data.modelSelection.reasoningEffort;
-    }
+    const requestContext = scheduleRequestContext({
+      enabledToolIds,
+      modelId:
+        parsed.data.modelSelection && agentId === DEFAULT_CHAT_AGENT_ID
+          ? parsed.data.modelSelection.modelId
+          : undefined,
+      reasoningEffort:
+        parsed.data.modelSelection && agentId === DEFAULT_CHAT_AGENT_ID
+          ? parsed.data.modelSelection.reasoningEffort
+          : undefined,
+      timezone: parsed.data.timezone,
+    });
     const schedule = await mastraClient.createSchedule({
       agentId,
       prompt: parsed.data.prompt,
@@ -100,7 +117,16 @@ export async function POST(request: Request) {
         behavior: "wake",
         streamOptions: { requestContext },
       },
-      metadata: { conversationThreadId: threadId, agentId },
+      metadata: {
+        conversationThreadId: threadId,
+        agentId,
+        createdBy: "schedules_ui",
+        dedupeKey: scheduleDedupeKey({
+          agentId,
+          prompt: parsed.data.prompt,
+          resourceId: parsed.data.resourceId,
+        }),
+      },
     });
     return Response.json({ schedule }, { status: 201 });
   } catch (error) {

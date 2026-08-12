@@ -6,7 +6,10 @@
 - `src/lib/tool-output.ts` — centralized head/tail truncation for tool values before they enter the visible transcript or model history.
 - `src/lib/model-catalog.ts` — model selection, reasoning-effort normalization, and request-context keys.
 - `src/lib/tool-catalog.ts` — selectable tool definitions, defaults, and request-context keys.
+- `src/lib/schedules.ts` — shared schedule deduplication, timezone context, and safe scheduled-run request-context construction.
+- `src/lib/vikunja.ts` — centralized server-only household task client used by chat tools and the Tasks menu.
 - `src/mastra/tools.ts` — safe built-in tools, including read-only family SQL and Graphiti search with bounded outputs and timeouts.
+- `src/mastra/schedule-tools.ts` — agent-facing list/create scheduling tools with per-resource duplicate prevention and dedicated output threads.
 - `src/lib/thread-state.ts` — thread metadata helpers for pinning and archiving.
 - `src/lib/citations.ts` — citation-marker cleanup and formatting for rendered assistant text.
 - `src/lib/mastra-client.ts` — server-only Mastra client used by Next route handlers for memory and thread operations.

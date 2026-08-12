@@ -1,4 +1,5 @@
 export const TOOLS_CONTEXT_KEY = "lfp.tools";
+export const TOOL_CATALOG_VERSION = 2;
 
 export const toolCatalog = [
   {
@@ -20,9 +21,15 @@ export const toolCatalog = [
     defaultEnabled: true,
   },
   {
-    id: "family_sql",
-    title: "Family SQL",
-    description: "Generate and run read-only SQL over ingested family context.",
+    id: "family_database",
+    title: "Family Database",
+    description: "Search and summarize structured family records safely.",
+    defaultEnabled: true,
+  },
+  {
+    id: "family_search",
+    title: "Family search",
+    description: "Hybrid PostgreSQL vector and full-text search across email and attachments.",
     defaultEnabled: true,
   },
   {
@@ -41,6 +48,18 @@ export const toolCatalog = [
     id: "family_attachment",
     title: "Family attachment",
     description: "Retrieve attachment text, labels, metadata, or original bytes.",
+    defaultEnabled: true,
+  },
+  {
+    id: "family_tasks",
+    title: "Family tasks",
+    description: "Create, assign, update, and review shared household tasks.",
+    defaultEnabled: true,
+  },
+  {
+    id: "scheduling",
+    title: "Scheduling",
+    description: "Create and inspect recurring agent work from chat.",
     defaultEnabled: true,
   },
   {
@@ -82,10 +101,23 @@ export function normalizeEnabledToolIds(value: unknown): SelectableToolId[] {
   if (!Array.isArray(value)) return [...defaultEnabledToolIds];
   return Array.from(
     new Set(
-      value.filter(
+      value.map((id) => (id === "family_sql" ? "family_database" : id)).filter(
         (id): id is SelectableToolId =>
           typeof id === "string" && selectableToolIds.has(id),
       ),
     ),
   );
+}
+
+export function migrateEnabledToolIds(
+  value: unknown,
+  storedCatalogVersion: number,
+): SelectableToolId[] {
+  const normalized = normalizeEnabledToolIds(value);
+  if (storedCatalogVersion >= TOOL_CATALOG_VERSION) return normalized;
+
+  // Scheduling was introduced in catalog v2 and should be available once to
+  // people whose saved v1 selection predates the capability. They can still
+  // disable it normally after this one-time migration.
+  return Array.from(new Set([...normalized, "scheduling" as const]));
 }

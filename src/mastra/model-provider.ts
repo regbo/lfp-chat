@@ -105,7 +105,7 @@ export function resolveRuntimeOptions(requestContext?: RequestContext) {
   );
 
   return {
-    maxSteps: 8,
+    maxSteps: serverConfig.agentMaxSteps,
     providerOptions:
       model?.provider === "openai" && selection.reasoningEffort
         ? {

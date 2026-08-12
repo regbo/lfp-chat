@@ -1,5 +1,5 @@
-import { ChatApp } from "@regbo/lfp-chat";
+import { HomeChatApp } from "@/components/home-chat-app";
 
 export default function Home() {
-  return <ChatApp />;
+  return <HomeChatApp />;
 }

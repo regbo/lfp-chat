@@ -87,6 +87,7 @@ import {
 } from "@/lib/model-catalog";
 import { cn } from "@/lib/utils";
 import { truncateToolValue } from "@/lib/tool-output";
+import { SCHEDULE_TIMEZONE_CONTEXT_KEY } from "@/lib/schedules";
 import {
   isThreadArchived,
   isThreadPinned,
@@ -94,7 +95,8 @@ import {
 } from "@/lib/thread-state";
 import {
   defaultEnabledToolIds,
-  normalizeEnabledToolIds,
+  migrateEnabledToolIds,
+  TOOL_CATALOG_VERSION,
   TOOLS_CONTEXT_KEY,
   type SelectableToolId,
 } from "@/lib/tool-catalog";
@@ -310,10 +312,25 @@ function MessageAttachments({ files }: { files: FileUIPart[] }) {
   );
 }
 
+function readableError(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (value instanceof Error) return value.message;
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    if (typeof record.message === "string") return record.message;
+    if (typeof record.error === "string") return record.error;
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return "An unexpected error occurred.";
+    }
+  }
+  return String(value ?? "An unexpected error occurred.");
+}
+
 function getErrorMessage(error: Error) {
   try {
-    const parsed = JSON.parse(error.message) as { error?: string };
-    return parsed.error ?? error.message;
+    return readableError(JSON.parse(error.message));
   } catch {
     return error.message;
   }
@@ -716,6 +733,8 @@ function ChatSession({
     try {
       const requestContext = {
         [TOOLS_CONTEXT_KEY]: enabledToolIds,
+        [SCHEDULE_TIMEZONE_CONTEXT_KEY]:
+          Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
         ...(modelSelection?.agentId === DEFAULT_CHAT_AGENT_ID &&
         modelSelection.modelId
           ? {
@@ -785,13 +804,13 @@ function ChatSession({
               toolParts.set(toolCallId, {
                 ...previous,
                 state: "output-error",
-                errorText: String(payload.error ?? "Tool failed."),
+                errorText: readableError(payload.error ?? payload.message ?? "Tool failed."),
               } as UIMessage["parts"][number]);
               upsertAssistant();
               break;
             }
             case "error":
-              throw new Error(String(payload.error ?? payload.message ?? "Chat failed."));
+              throw new Error(readableError(payload.error ?? payload.message ?? "Chat failed."));
           }
         },
       });
@@ -1213,7 +1232,18 @@ export function ChatApp({ initialThreadId, plugins = [] }: ChatAppProps) {
     const timer = window.setTimeout(() => {
       try {
         const stored = window.localStorage.getItem("lfp-chat-enabled-tools");
-        if (stored) setEnabledToolIds(normalizeEnabledToolIds(JSON.parse(stored)));
+        if (stored) {
+          const storedVersion = Number(
+            window.localStorage.getItem("lfp-chat-tool-catalog-version") || 1,
+          );
+          const migrated = migrateEnabledToolIds(JSON.parse(stored), storedVersion);
+          setEnabledToolIds(migrated);
+          window.localStorage.setItem("lfp-chat-enabled-tools", JSON.stringify(migrated));
+          window.localStorage.setItem(
+            "lfp-chat-tool-catalog-version",
+            String(TOOL_CATALOG_VERSION),
+          );
+        }
       } catch {
         // Restricted browsers use the centralized defaults for this session.
       }
@@ -1230,6 +1260,10 @@ export function ChatApp({ initialThreadId, plugins = [] }: ChatAppProps) {
         window.localStorage.setItem(
           "lfp-chat-enabled-tools",
           JSON.stringify(next),
+        );
+        window.localStorage.setItem(
+          "lfp-chat-tool-catalog-version",
+          String(TOOL_CATALOG_VERSION),
         );
       } catch {
         // The selection still applies until this browser session ends.

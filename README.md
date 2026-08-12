@@ -63,6 +63,20 @@ Tags must use semantic versions such as `v0.2.0`. The GitHub Actions workflow va
 - Caddy as the single loopback/ZeroTier entrypoint
 - Docker Compose for a local PostgreSQL service
 
+## Recurring agent work
+
+Scheduling is available both from chat and from the **Scheduled** menu. A request
+such as “create a summary of school announcements every Tuesday” is translated
+to a timezone-aware Mastra cron schedule. Creation checks the current user's
+existing schedules first and returns the covering schedule instead of creating
+a duplicate.
+
+Each schedule has its own persisted memory thread. The Scheduled menu can edit
+its name, prompt, cron expression, and timezone; pause or resume it; run it
+immediately; and expand its trigger history to show outcomes and saved assistant
+output. Scheduled runs inherit the model and work tools selected when the
+schedule was created, but cannot recursively create schedules.
+
 ## Run locally
 
 Requirements: Bun, Docker, and Node.js 22.13 or newer.

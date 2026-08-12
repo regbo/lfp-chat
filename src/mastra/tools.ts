@@ -6,6 +6,11 @@ import { z } from "zod";
 
 import { serverConfig } from "@/lib/config";
 import { truncateToolText, truncateToolValue } from "@/lib/tool-output";
+import {
+  createFamilyTask,
+  listFamilyTasks,
+  updateFamilyTask,
+} from "@/lib/vikunja";
 
 const globalForMonty = globalThis as typeof globalThis & {
   lfpMontyPool?: Promise<Monty>;
@@ -151,13 +156,13 @@ function getFamilySqlPool() {
     connectionString: serverConfig.familyDatabaseUrl,
     max: 3,
     idleTimeoutMillis: 30_000,
-    connectionTimeoutMillis: 5_000,
+    connectionTimeoutMillis: serverConfig.familySqlConnectionTimeoutMs,
   }));
 }
 
-export const familySqlTool = createTool({
-  id: "family_sql",
-  description: `Run one read-only PostgreSQL SELECT generated for a family-context question.
+export const familyDatabaseTool = createTool({
+  id: "family_database",
+  description: `Look up structured family records using one generated read-only database query.
 Available public tables: documents (ingest_id, family_id, source, external_id, title, body_text, metadata JSONB, labels JSONB, occurred_at, ingested_at, processed_at), attachments (attachment_id, ingest_id, filename, content_type, size, extracted_text, labels JSONB, metadata JSONB, processed_at), deadlines (title, due_at, evidence, confidence, status), source_cursors, processing_events (source, stage, status, detail JSONB, created_at), and graph_outbox (attempts, delivered_at, last_error). Use JSONB operators for labels or metadata. Always select only the columns needed and add a LIMIT.`,
   inputSchema: z.object({
     sql: z
@@ -181,7 +186,9 @@ Available public tables: documents (ingest_id, family_id, source, external_id, t
     const client = await getFamilySqlPool().connect();
     try {
       await client.query("BEGIN READ ONLY");
-      await client.query("SET LOCAL statement_timeout = '5s'");
+      await client.query(
+        `SET LOCAL statement_timeout = '${serverConfig.familySqlStatementTimeoutMs}ms'`,
+      );
       const result = await client.query<Record<string, unknown>>(sql);
       const rows = result.rows.slice(0, 100).map((row) =>
         truncateToolValue(row) as Record<string, unknown>,
@@ -202,10 +209,120 @@ Available public tables: documents (ingest_id, family_id, source, external_id, t
   },
 });
 
+async function embedFamilyQuery(query: string) {
+  if (!serverConfig.openaiApiKey) {
+    throw new Error("OpenAI is not configured for family search embeddings.");
+  }
+  const response = await fetch("https://api.openai.com/v1/embeddings", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${serverConfig.openaiApiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: serverConfig.familyEmbeddingModel,
+      input: query,
+      dimensions: serverConfig.familyEmbeddingDimensions,
+    }),
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!response.ok) {
+    throw new Error(`OpenAI embedding query failed with HTTP ${response.status}.`);
+  }
+  const payload = (await response.json()) as {
+    data?: Array<{ embedding?: number[] }>;
+  };
+  const embedding = payload.data?.[0]?.embedding;
+  if (
+    !embedding ||
+    embedding.length !== serverConfig.familyEmbeddingDimensions
+  ) {
+    throw new Error("Embedding query returned an invalid vector.");
+  }
+  return `[${embedding.join(",")}]`;
+}
+
+export const familySearchTool = createTool({
+  id: "family_search",
+  description:
+    "Hybrid PostgreSQL search over email bodies and attachment text. Combines pgvector semantic similarity with PostgreSQL full-text ranking and returns source UUIDs for exact retrieval.",
+  inputSchema: z.object({
+    query: z.string().min(1).max(2_000),
+    limit: z.number().int().min(1).max(25).default(10),
+  }),
+  outputSchema: z.object({
+    query: z.string(),
+    results: z.array(z.record(z.string(), z.unknown())),
+  }),
+  execute: async ({ query, limit }) => {
+    const vector = await embedFamilyQuery(query);
+    const sql = `
+      WITH search_query AS (
+        SELECT websearch_to_tsquery('english', $1) AS terms, $2::vector AS embedding
+      ), candidates AS (
+        SELECT 'document' AS kind, d.ingest_id::text AS item_id,
+               d.ingest_id::text AS ingest_id, d.title, d.body_text AS content,
+               d.labels, d.occurred_at, 1 - (d.embedding <=> q.embedding) AS vector_score,
+               0::real AS text_score
+        FROM documents d CROSS JOIN search_query q
+        WHERE d.embedding IS NOT NULL
+        ORDER BY d.embedding <=> q.embedding LIMIT 50
+      ), document_text AS (
+        SELECT 'document' AS kind, d.ingest_id::text AS item_id,
+               d.ingest_id::text AS ingest_id, d.title, d.body_text AS content,
+               d.labels, d.occurred_at, 0::double precision AS vector_score,
+               ts_rank_cd(d.search_tsv, q.terms) AS text_score
+        FROM documents d CROSS JOIN search_query q
+        WHERE d.search_tsv @@ q.terms
+        ORDER BY text_score DESC LIMIT 50
+      ), attachment_vector AS (
+        SELECT 'attachment' AS kind, a.attachment_id::text AS item_id,
+               a.ingest_id::text AS ingest_id, a.filename AS title,
+               a.extracted_text AS content, a.labels, d.occurred_at,
+               1 - (a.embedding <=> q.embedding) AS vector_score, 0::real AS text_score
+        FROM attachments a JOIN documents d USING (ingest_id) CROSS JOIN search_query q
+        WHERE a.embedding IS NOT NULL
+        ORDER BY a.embedding <=> q.embedding LIMIT 50
+      ), attachment_text AS (
+        SELECT 'attachment' AS kind, a.attachment_id::text AS item_id,
+               a.ingest_id::text AS ingest_id, a.filename AS title,
+               a.extracted_text AS content, a.labels, d.occurred_at,
+               0::double precision AS vector_score,
+               ts_rank_cd(a.search_tsv, q.terms) AS text_score
+        FROM attachments a JOIN documents d USING (ingest_id) CROSS JOIN search_query q
+        WHERE a.search_tsv @@ q.terms
+        ORDER BY text_score DESC LIMIT 50
+      ), combined AS (
+        SELECT * FROM candidates UNION ALL SELECT * FROM document_text
+        UNION ALL SELECT * FROM attachment_vector UNION ALL SELECT * FROM attachment_text
+      )
+      SELECT kind, item_id, ingest_id, title, left(content, 1200) AS snippet,
+             labels, occurred_at,
+             round((max(vector_score) * 0.7 + least(max(text_score), 1) * 0.3)::numeric, 6) AS score,
+             round(max(vector_score)::numeric, 6) AS vector_score,
+             round(max(text_score)::numeric, 6) AS text_score
+      FROM combined
+      GROUP BY kind, item_id, ingest_id, title, content, labels, occurred_at
+      ORDER BY score DESC
+      LIMIT $3`;
+    const result = await getFamilySqlPool().query<Record<string, unknown>>(sql, [
+      query,
+      vector,
+      limit,
+    ]);
+    return {
+      query,
+      results: result.rows.map((row) =>
+        truncateToolValue(row) as Record<string, unknown>,
+      ),
+    };
+  },
+});
+
 export const familyGraphTool = createTool({
   id: "family_graph",
   description:
-    "Search Graphiti's temporal family knowledge graph for entities, relationships, and facts derived from ingested family context. Use alongside family_sql when both structured records and semantic relationships can help.",
+    "Search Graphiti's temporal family knowledge graph for entities, relationships, and facts derived from ingested family context. Use alongside family_database when both structured records and semantic relationships can help.",
   inputSchema: z.object({
     query: z.string().min(1).max(2_000),
     maxFacts: z.number().int().min(1).max(25).default(10),
@@ -213,14 +330,16 @@ export const familyGraphTool = createTool({
   outputSchema: z.object({
     query: z.string(),
     facts: z.array(z.record(z.string(), z.unknown())),
+    warning: z.string().optional(),
   }),
   execute: async ({ query, maxFacts }) => {
     if (!serverConfig.graphitiApiUrl) {
       throw new Error("GRAPHITI_API_URL is not configured.");
     }
-    const response = await fetch(
-      new URL("/search", serverConfig.graphitiApiUrl),
-      {
+    try {
+      const response = await fetch(
+        new URL("/search", serverConfig.graphitiApiUrl),
+        {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -228,25 +347,42 @@ export const familyGraphTool = createTool({
           query,
           max_facts: maxFacts,
         }),
-        signal: AbortSignal.timeout(15_000),
-      },
-    );
-    if (!response.ok) {
-      throw new Error(`Graphiti search failed with HTTP ${response.status}.`);
+          signal: AbortSignal.timeout(serverConfig.familyGraphTimeoutMs),
+        },
+      );
+      if (!response.ok) {
+        return {
+          query,
+          facts: [],
+          warning: `Family graph search is temporarily unavailable (HTTP ${response.status}).`,
+        };
+      }
+      const payload = (await response.json()) as {
+        facts?: Array<Record<string, unknown>>;
+      };
+      return { query, facts: payload.facts ?? [] };
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : "unknown error";
+      return {
+        query,
+        facts: [],
+        warning: `Family graph search is temporarily unavailable: ${reason}`,
+      };
     }
-    const payload = (await response.json()) as {
-      facts?: Array<Record<string, unknown>>;
-    };
-    return { query, facts: payload.facts ?? [] };
   },
 });
 
-async function familyContextRequest(path: string) {
+async function familyContextRequest(path: string, init: RequestInit = {}) {
   if (!serverConfig.familyContextApiUrl || !serverConfig.familyContextApiKey) {
     throw new Error("The family context retrieval API is not configured.");
   }
   const response = await fetch(new URL(path, serverConfig.familyContextApiUrl), {
-    headers: { "X-LFP-Context-Key": serverConfig.familyContextApiKey },
+    ...init,
+    headers: {
+      "X-LFP-Context-Key": serverConfig.familyContextApiKey,
+      "Content-Type": "application/json",
+      ...init.headers,
+    },
     signal: AbortSignal.timeout(300_000),
   });
   if (!response.ok) {
@@ -307,5 +443,148 @@ export const familyAttachmentTool = createTool({
       };
     }
     return truncateToolValue(await response.json()) as Record<string, unknown>;
+  },
+});
+
+export const familyTaskListTool = createTool({
+  id: "family_task_list",
+  description:
+    "List shared household tasks, including due dates and assignees. Use this before answering questions about the family todo list.",
+  inputSchema: z.object({ includeDone: z.boolean().default(false) }),
+  outputSchema: z.object({ tasks: z.array(z.record(z.string(), z.unknown())) }),
+  execute: async ({ includeDone }) => ({
+    tasks: (await listFamilyTasks(includeDone)).map(
+      (task) => truncateToolValue(task) as Record<string, unknown>,
+    ),
+  }),
+});
+
+export const familyTaskCreateTool = createTool({
+  id: "family_task_create",
+  description:
+    "Create a shared household task. An assignee may be a Vikunja username, full name, or exact email. A person must sign in to Family Tasks once before assignment.",
+  inputSchema: z.object({
+    title: z.string().min(1).max(500),
+    description: z.string().max(20_000).optional(),
+    dueDate: z.iso.datetime({ offset: true }).optional(),
+    priority: z.number().int().min(0).max(5).optional(),
+    assignee: z.string().min(1).max(250).optional(),
+  }),
+  outputSchema: z.record(z.string(), z.unknown()),
+  execute: async (input) =>
+    truncateToolValue(await createFamilyTask(input)) as Record<string, unknown>,
+});
+
+export const familyTaskUpdateTool = createTool({
+  id: "family_task_update",
+  description:
+    "Update a household task by numeric task ID, including completing or reopening it.",
+  inputSchema: z.object({
+    taskId: z.number().int().positive(),
+    title: z.string().min(1).max(500).optional(),
+    description: z.string().max(20_000).optional(),
+    dueDate: z.iso.datetime({ offset: true }).optional(),
+    priority: z.number().int().min(0).max(5).optional(),
+    done: z.boolean().optional(),
+  }),
+  outputSchema: z.record(z.string(), z.unknown()),
+  execute: async ({ taskId, ...update }) =>
+    truncateToolValue(await updateFamilyTask(taskId, update)) as Record<
+      string,
+      unknown
+    >,
+});
+
+const automationFieldSchema = z.object({
+  name: z.string().regex(/^[a-z][a-z0-9_]{0,62}$/),
+  description: z.string().min(1).max(500),
+  valueType: z
+    .enum(["text", "number", "date", "datetime", "boolean", "currency", "identifier"])
+    .default("text"),
+  multiple: z.boolean().default(false),
+});
+
+export const familyAutomationUpsertTool = createTool({
+  id: "family_automation_upsert",
+  description:
+    "Create or amend a persistent ingestion automation. Use this when the user says things like 'every time a school requirement is found, update my todo list'. The extraction directive teaches the context stage what to find; the action rule creates or updates the task through Kestra.",
+  inputSchema: z.object({
+    name: z.string().regex(/^[a-z][a-z0-9_-]{0,62}$/),
+    description: z.string().min(1).max(500),
+    recordKind: z.string().regex(/^[a-z][a-z0-9_]{0,62}$/),
+    extractionInstruction: z.string().min(1).max(4000),
+    fields: z.array(automationFieldSchema).max(64).default([]),
+    appliesToSources: z.array(z.string()).max(32).default([]),
+    appliesToLabels: z.array(z.string()).max(32).default([]),
+    assignee: z.string().min(1).max(250).optional(),
+    priority: z.number().int().min(0).max(5).default(2),
+    titlePrefix: z.string().max(100).default(""),
+  }),
+  outputSchema: z.object({
+    directive: z.record(z.string(), z.unknown()),
+    rule: z.record(z.string(), z.unknown()),
+  }),
+  execute: async (input) => {
+    const directiveResponse = await familyContextRequest(
+      `/v1/extraction-directives/${encodeURIComponent(input.name)}`,
+      {
+        method: "PUT",
+        body: JSON.stringify({
+          description: input.description,
+          instruction: input.extractionInstruction,
+          record_kind: input.recordKind,
+          applies_to_sources: input.appliesToSources,
+          applies_to_labels: input.appliesToLabels,
+          fields: input.fields.map((field) => ({
+            name: field.name,
+            description: field.description,
+            value_type: field.valueType,
+            multiple: field.multiple,
+          })),
+          enabled: true,
+        }),
+      },
+    );
+    const ruleResponse = await familyContextRequest(
+      `/v1/automation-rules/${encodeURIComponent(input.name)}`,
+      {
+        method: "PUT",
+        body: JSON.stringify({
+          description: input.description,
+          record_kinds: [input.recordKind],
+          action_type: "vikunja_task_upsert",
+          action_config: {
+            ...(input.assignee ? { assignee: input.assignee } : {}),
+            priority: input.priority,
+            title_prefix: input.titlePrefix,
+          },
+          enabled: true,
+        }),
+      },
+    );
+    return {
+      directive: (await directiveResponse.json()) as Record<string, unknown>,
+      rule: (await ruleResponse.json()) as Record<string, unknown>,
+    };
+  },
+});
+
+export const familyAutomationListTool = createTool({
+  id: "family_automation_list",
+  description: "List the persistent extraction directives and downstream automation rules.",
+  inputSchema: z.object({}),
+  outputSchema: z.object({
+    directives: z.array(z.record(z.string(), z.unknown())),
+    rules: z.array(z.record(z.string(), z.unknown())),
+  }),
+  execute: async () => {
+    const [directives, rules] = await Promise.all([
+      familyContextRequest("/v1/extraction-directives"),
+      familyContextRequest("/v1/automation-rules"),
+    ]);
+    return {
+      directives: (await directives.json()) as Array<Record<string, unknown>>,
+      rules: (await rules.json()) as Array<Record<string, unknown>>,
+    };
   },
 });
