@@ -5,6 +5,7 @@ import { Pool } from "pg";
 import { z } from "zod";
 
 import { serverConfig } from "@/lib/config";
+import { familyContextRequest } from "@/lib/family-context-api";
 import { truncateToolText, truncateToolValue } from "@/lib/tool-output";
 import {
   createTask,
@@ -376,25 +377,6 @@ export const familyGraphTool = createTool({
     }
   },
 });
-
-async function familyContextRequest(path: string, init: RequestInit = {}) {
-  if (!serverConfig.familyContextApiUrl || !serverConfig.familyContextApiKey) {
-    throw new Error("The family context retrieval API is not configured.");
-  }
-  const response = await fetch(new URL(path, serverConfig.familyContextApiUrl), {
-    ...init,
-    headers: {
-      "X-LFP-Context-Key": serverConfig.familyContextApiKey,
-      "Content-Type": "application/json",
-      ...init.headers,
-    },
-    signal: AbortSignal.timeout(300_000),
-  });
-  if (!response.ok) {
-    throw new Error(`Family context request failed with HTTP ${response.status}.`);
-  }
-  return response;
-}
 
 export const familyEmailTool = createTool({
   id: "family_email",

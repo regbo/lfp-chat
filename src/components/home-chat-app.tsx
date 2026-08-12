@@ -3,6 +3,7 @@
 import { Database, ListTodo, Mail, Paperclip, Search, Share2 } from "lucide-react";
 
 import { ChatApp } from "@/components/chat-app";
+import { GmailSettings } from "@/components/gmail-settings";
 import { TasksPanel } from "@/components/tasks-panel";
 
 const mods = [{
@@ -16,6 +17,7 @@ const mods = [{
     content: <TasksPanel />,
   },
   ],
+  settings: <GmailSettings />,
   tools: [
     { id: "family_database", title: "Family database", description: "Search and summarize structured family records safely.", icon: <Database />, defaultEnabled: true },
     { id: "family_search", title: "Family search", description: "Search email and attachments using semantic and full-text retrieval.", icon: <Search />, defaultEnabled: true },
