@@ -9,6 +9,14 @@ RUN bun install --frozen-lockfile
 
 FROM dependencies AS build
 COPY . .
+ARG DEPENDENCY_REFRESH=false
+ARG DEPENDENCY_REFRESH_TOKEN=locked
+# A refreshed deployment deliberately crosses the 0.x minor boundary for the
+# reusable chat package, then refreshes all other dependencies within their ranges.
+RUN if [ "$DEPENDENCY_REFRESH" = "true" ]; then \
+      echo "Refreshing dependencies for $DEPENDENCY_REFRESH_TOKEN" && \
+      bun update @regbo/lfp-chat --latest && bun update; \
+    fi
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN bun run build
 
