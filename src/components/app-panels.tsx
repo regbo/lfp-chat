@@ -1,6 +1,14 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { MessageResponse } from "@/components/ai-elements/message";
@@ -28,6 +36,7 @@ import {
   Pause,
   Pencil,
   Play,
+  Plus,
   RefreshCw,
   Search,
   Share2,
@@ -65,12 +74,27 @@ type ScheduleRun = {
 
 type ScheduleDraft = Pick<ScheduleSummary, "name" | "prompt" | "cron" | "timezone">;
 
-function PanelShell({ title, description, children }: { title: string; description: string; children: React.ReactNode }) {
+function PanelShell({
+  action,
+  title,
+  description,
+  children,
+}: {
+  action?: React.ReactNode;
+  title: string;
+  description: string;
+  children: React.ReactNode;
+}) {
   return (
     <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-12 pt-8 md:px-10">
       <div className="mx-auto w-full max-w-3xl">
-        <h1 className="chat-display-text">{title}</h1>
-        <p className="chat-ui-text mt-1 text-muted-foreground">{description}</p>
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <h1 className="chat-display-text">{title}</h1>
+            <p className="chat-ui-text mt-1 text-muted-foreground">{description}</p>
+          </div>
+          {action}
+        </div>
         <div className="mt-7">{children}</div>
       </div>
     </div>
@@ -171,10 +195,12 @@ export function SchedulesPanel({
   const [schedules, setSchedules] = useState<ScheduleSummary[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [createError, setCreateError] = useState("");
   const [notice, setNotice] = useState("");
+  const [createOpen, setCreateOpen] = useState(false);
   const [name, setName] = useState("");
   const [prompt, setPrompt] = useState("");
-  const [cron, setCron] = useState("0 9 * * 1-5");
+  const [schedule, setSchedule] = useState("Every weekday at 9:00 AM");
   const [timezone, setTimezone] = useState(() => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState<ScheduleDraft | null>(null);
@@ -225,10 +251,10 @@ export function SchedulesPanel({
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     setBusy(true);
-    setError("");
+    setCreateError("");
     setNotice("");
     try {
-      const response = await fetch("/api/schedules", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, prompt, cron, timezone, resourceId, enabledToolIds, modelSelection }) });
+      const response = await fetch("/api/schedules", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, prompt, schedule, timezone, resourceId, enabledToolIds, modelSelection }) });
       const data = (await response.json()) as { error?: string; existing?: boolean; schedule?: ScheduleSummary };
       if (!response.ok) throw new Error(data.error || "Unable to create schedule.");
       if (data.existing) {
@@ -236,12 +262,14 @@ export function SchedulesPanel({
       } else {
         setName("");
         setPrompt("");
+        setSchedule("Every weekday at 9:00 AM");
         setNotice("Schedule created.");
       }
+      setCreateOpen(false);
       await refresh();
       onConversationChange();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Unable to create schedule.");
+      setCreateError(cause instanceof Error ? cause.message : "Unable to create schedule.");
     } finally { setBusy(false); }
   };
 
@@ -280,7 +308,14 @@ export function SchedulesPanel({
       const response = await fetch(`/api/schedules/${encodeURIComponent(scheduleId)}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "update", resourceId, ...draft }),
+        body: JSON.stringify({
+          action: "update",
+          resourceId,
+          name: draft.name,
+          prompt: draft.prompt,
+          schedule: draft.cron,
+          timezone: draft.timezone,
+        }),
       });
       const data = (await response.json()) as { error?: string };
       if (!response.ok) throw new Error(data.error || "Unable to save schedule.");
@@ -305,20 +340,49 @@ export function SchedulesPanel({
   };
 
   return (
-    <PanelShell title="Scheduled" description="Configure recurring agent work and inspect every run and output.">
-      <form className="space-y-3 rounded-2xl border p-4" onSubmit={submit}>
-        <p className="chat-ui-emphasis">New schedule</p>
-        <Input onChange={(event) => setName(event.target.value)} placeholder="Name (optional)" value={name} />
-        <Textarea className="min-h-24" onChange={(event) => setPrompt(event.target.value)} placeholder="What should LFP Chat do?" required value={prompt} />
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Input aria-label="Cron expression" onChange={(event) => setCron(event.target.value)} required value={cron} />
-          <Input aria-label="Timezone" onChange={(event) => setTimezone(event.target.value)} required value={timezone} />
-        </div>
-        <div className="flex items-center justify-between gap-3">
-          <p className="chat-meta-text text-muted-foreground">Cron: minute hour day month weekday</p>
-          <Button className="rounded-full" disabled={busy} type="submit">{busy && <LoaderCircle className="animate-spin" />} Create schedule</Button>
-        </div>
-      </form>
+    <PanelShell
+      action={(
+        <Button className="shrink-0 rounded-full" onClick={() => { setCreateError(""); setCreateOpen(true); }}>
+          <Plus className="size-4" /> New schedule
+        </Button>
+      )}
+      title="Scheduled"
+      description="Configure recurring agent work and inspect every run and output."
+    >
+      <Dialog onOpenChange={setCreateOpen} open={createOpen}>
+        <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-2xl">
+          <form className="space-y-4" onSubmit={submit}>
+            <DialogHeader>
+              <DialogTitle>New schedule</DialogTitle>
+              <DialogDescription>Describe the recurring job, then choose when it should run.</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3">
+              <Input aria-label="Schedule name" onChange={(event) => setName(event.target.value)} placeholder="Name (optional)" value={name} />
+              <Textarea aria-label="Schedule prompt" className="min-h-24" onChange={(event) => setPrompt(event.target.value)} placeholder="What should LFP Chat do?" required value={prompt} />
+            </div>
+            <div className="space-y-1.5">
+              <label className="chat-ui-text font-medium" htmlFor="new-schedule-cadence">Schedule</label>
+              <Input
+                id="new-schedule-cadence"
+                onChange={(event) => setSchedule(event.target.value)}
+                placeholder="Every Tuesday at 9 AM or 0 9 * * 2"
+                required
+                value={schedule}
+              />
+              <p className="chat-meta-text text-muted-foreground">Use plain language or a standard cron expression.</p>
+            </div>
+            <div className="space-y-1.5">
+              <label className="chat-ui-text font-medium" htmlFor="new-schedule-timezone">Timezone</label>
+              <Input id="new-schedule-timezone" onChange={(event) => setTimezone(event.target.value)} required value={timezone} />
+            </div>
+            {createError && <p className="chat-ui-text rounded-xl bg-destructive/10 p-3 text-destructive">{createError}</p>}
+            <DialogFooter className="mt-2">
+              <Button disabled={busy} onClick={() => setCreateOpen(false)} type="button" variant="ghost">Cancel</Button>
+              <Button disabled={busy} type="submit">{busy && <LoaderCircle className="animate-spin" />} Create schedule</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
       {error && <p className="chat-ui-text mt-3 rounded-xl bg-destructive/10 p-3 text-destructive">{error}</p>}
       {notice && <p className="chat-ui-text mt-3 rounded-xl bg-muted p-3 text-foreground">{notice}</p>}
       <div className="mt-6 space-y-3">
@@ -349,10 +413,12 @@ export function SchedulesPanel({
               <form className="mt-4 space-y-3 border-t pt-4" onSubmit={(event) => void save(event, schedule.id)}>
                 <Input aria-label="Schedule name" onChange={(event) => setDraft({ ...draft, name: event.target.value })} required value={draft.name} />
                 <Textarea aria-label="Schedule prompt" className="min-h-24" onChange={(event) => setDraft({ ...draft, prompt: event.target.value })} required value={draft.prompt} />
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <Input aria-label="Schedule cron expression" onChange={(event) => setDraft({ ...draft, cron: event.target.value })} required value={draft.cron} />
-                  <Input aria-label="Schedule timezone" onChange={(event) => setDraft({ ...draft, timezone: event.target.value })} required value={draft.timezone} />
+                <div className="space-y-1.5">
+                  <label className="chat-ui-text font-medium" htmlFor={`schedule-cadence-${schedule.id}`}>Schedule</label>
+                  <Input id={`schedule-cadence-${schedule.id}`} onChange={(event) => setDraft({ ...draft, cron: event.target.value })} placeholder="Every Tuesday at 9 AM or 0 9 * * 2" required value={draft.cron} />
+                  <p className="chat-meta-text text-muted-foreground">Use plain language or a standard cron expression.</p>
                 </div>
+                <Input aria-label="Schedule timezone" onChange={(event) => setDraft({ ...draft, timezone: event.target.value })} required value={draft.timezone} />
                 <div className="flex justify-end gap-2">
                   <Button disabled={busy} onClick={() => { setEditingId(null); setDraft(null); }} type="button" variant="ghost">Cancel</Button>
                   <Button disabled={busy} type="submit">Save changes</Button>

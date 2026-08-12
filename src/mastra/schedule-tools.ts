@@ -16,6 +16,7 @@ import {
   normalizeEnabledToolIds,
   TOOLS_CONTEXT_KEY,
 } from "@/lib/tool-catalog";
+import { parseScheduleInput } from "@/mastra/schedule-parser";
 
 const scheduleOutputSchema = z.object({
   created: z.boolean(),
@@ -26,14 +27,17 @@ const scheduleOutputSchema = z.object({
 export const scheduleCreateTool = createTool({
   id: "schedule_create",
   description:
-    "Create recurring work for this user. Translate natural recurrence into a five-part cron expression. If no time was specified, use 09:00 in the user's timezone. This tool checks existing schedules for the same work before creating one, so never create a second schedule to change cadence; tell the user to edit the existing schedule instead.",
+    "Create recurring work for this user from a plain-language schedule or cron expression. If no time was specified, 09:00 is used in the user's timezone. This tool checks existing schedules for the same work before creating one, so never create a second schedule to change cadence; tell the user to edit the existing schedule instead.",
   inputSchema: z.object({
     name: z.string().trim().min(1).max(80),
     prompt: z.string().trim().min(1).max(8_000).describe(
       "The self-contained instruction the agent should execute on every run, excluding cadence wording.",
     ),
-    cron: z.string().trim().min(1).max(100).describe(
-      "A five-part cron expression, for example 0 9 * * 2 for Tuesdays at 09:00.",
+    schedule: z.string().trim().min(1).max(300).optional().describe(
+      "A natural recurrence such as every Tuesday at 9 AM, or a cron expression.",
+    ),
+    cron: z.string().trim().min(1).max(100).optional().describe(
+      "Deprecated compatibility field for a cron expression. Prefer schedule.",
     ),
     timezone: z.string().trim().min(1).max(100).optional(),
   }),
@@ -46,10 +50,12 @@ export const scheduleCreateTool = createTool({
       throw new Error("Scheduling requires an agent run with a memory resource.");
     }
 
-    const timezone =
+    const requestedTimezone =
       input.timezone ||
       (context.requestContext?.get(SCHEDULE_TIMEZONE_CONTEXT_KEY) as string | undefined) ||
       "UTC";
+    const scheduleInput = input.schedule || input.cron;
+    if (!scheduleInput) throw new Error("A plain-language schedule or cron expression is required.");
     const schedules = await mastra.schedules.list({ agentId, resourceId });
     const existing = findCoveringSchedule(schedules, {
       agentId,
@@ -63,6 +69,11 @@ export const scheduleCreateTool = createTool({
         schedule: existing as unknown as Record<string, unknown>,
       };
     }
+    const parsedSchedule = await parseScheduleInput(
+      { schedule: scheduleInput, timezone: requestedTimezone },
+      context.requestContext,
+    );
+    const { cron, timezone } = parsedSchedule;
 
     const agent = mastra.getAgentById(agentId);
     const memory = await agent.getMemory({ requestContext: context.requestContext });
@@ -89,7 +100,7 @@ export const scheduleCreateTool = createTool({
     try {
       const schedule = await mastra.schedules.create({
         agentId,
-        cron: input.cron,
+        cron,
         timezone,
         prompt: input.prompt,
         resourceId,
@@ -107,7 +118,7 @@ export const scheduleCreateTool = createTool({
       });
       return {
         created: true,
-        message: `Created ${input.name} on ${input.cron} (${timezone}).`,
+        message: `Created ${input.name}: ${parsedSchedule.description} (${timezone}).`,
         schedule: schedule as unknown as Record<string, unknown>,
       };
     } catch (error) {

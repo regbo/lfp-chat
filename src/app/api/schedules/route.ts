@@ -3,6 +3,8 @@ import { serverConfig } from "@/lib/config";
 import {
   CODEX_CHAT_AGENT_ID,
   DEFAULT_CHAT_AGENT_ID,
+  MODEL_CONTEXT_KEY,
+  REASONING_CONTEXT_KEY,
   reasoningEfforts,
 } from "@/lib/model-catalog";
 import { normalizeEnabledToolIds } from "@/lib/tool-catalog";
@@ -12,14 +14,17 @@ import {
   scheduleRequestContext,
 } from "@/lib/schedules";
 import { randomUUID } from "node:crypto";
+import { RequestContext } from "@mastra/core/request-context";
 import { z } from "zod";
+import { parseScheduleInput } from "@/mastra/schedule-parser";
 
 export const runtime = "nodejs";
 
 const createScheduleSchema = z.object({
   name: z.string().trim().max(80).optional(),
   prompt: z.string().trim().min(1).max(8_000),
-  cron: z.string().trim().min(1).max(100),
+  schedule: z.string().trim().min(1).max(300).optional(),
+  cron: z.string().trim().min(1).max(100).optional(),
   timezone: z.string().trim().min(1).max(100),
   resourceId: z.string().min(1),
   enabledToolIds: z.array(z.string()).optional(),
@@ -81,6 +86,20 @@ export async function POST(request: Request) {
       return Response.json({ schedule: existing, existing: true });
     }
 
+    const recurrence = parsed.data.schedule || parsed.data.cron;
+    if (!recurrence) {
+      return Response.json({ error: "A plain-language schedule or cron expression is required." }, { status: 400 });
+    }
+    const parserContext = new RequestContext();
+    if (parsed.data.modelSelection && agentId === DEFAULT_CHAT_AGENT_ID) {
+      parserContext.set(MODEL_CONTEXT_KEY, parsed.data.modelSelection.modelId);
+      parserContext.set(REASONING_CONTEXT_KEY, parsed.data.modelSelection.reasoningEffort);
+    }
+    const parsedSchedule = await parseScheduleInput(
+      { schedule: recurrence, timezone: parsed.data.timezone },
+      parserContext,
+    );
+
     const title = `Scheduled: ${parsed.data.name || parsed.data.prompt.slice(0, 60)}`;
     await mastraClient.createMemoryThread({
       agentId,
@@ -101,13 +120,13 @@ export async function POST(request: Request) {
         parsed.data.modelSelection && agentId === DEFAULT_CHAT_AGENT_ID
           ? parsed.data.modelSelection.reasoningEffort
           : undefined,
-      timezone: parsed.data.timezone,
+      timezone: parsedSchedule.timezone,
     });
     const schedule = await mastraClient.createSchedule({
       agentId,
       prompt: parsed.data.prompt,
-      cron: parsed.data.cron,
-      timezone: parsed.data.timezone,
+      cron: parsedSchedule.cron,
+      timezone: parsedSchedule.timezone,
       resourceId: parsed.data.resourceId,
       threadId,
       name: parsed.data.name || undefined,

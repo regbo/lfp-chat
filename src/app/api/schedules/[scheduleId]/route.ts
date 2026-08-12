@@ -1,4 +1,5 @@
 import { mastraClient } from "@/lib/mastra-client";
+import { RequestContext } from "@mastra/core/request-context";
 import type { AgentSchedule, ScheduleResponse } from "@mastra/client-js";
 import {
   findCoveringSchedule,
@@ -6,6 +7,7 @@ import {
   SCHEDULE_TIMEZONE_CONTEXT_KEY,
 } from "@/lib/schedules";
 import { z } from "zod";
+import { parseScheduleInput } from "@/mastra/schedule-parser";
 
 export const runtime = "nodejs";
 
@@ -19,7 +21,8 @@ const actionSchema = z.discriminatedUnion("action", [
     resourceId: z.string().min(1),
     name: z.string().trim().min(1).max(80),
     prompt: z.string().trim().min(1).max(8_000),
-    cron: z.string().trim().min(1).max(100),
+    schedule: z.string().trim().min(1).max(300).optional(),
+    cron: z.string().trim().min(1).max(100).optional(),
     timezone: z.string().trim().min(1).max(100),
   }),
 ]);
@@ -51,6 +54,10 @@ export async function PATCH(request: Request, context: RouteContext) {
   try {
     const schedule = await getOwnedSchedule(scheduleId, parsed.data.resourceId);
     if (parsed.data.action === "update") {
+      const recurrence = parsed.data.schedule || parsed.data.cron;
+      if (!recurrence) {
+        return Response.json({ error: "A plain-language schedule or cron expression is required." }, { status: 400 });
+      }
       const listed = await mastraClient.listSchedules({
         agentId: schedule.agentId,
         resourceId: parsed.data.resourceId,
@@ -70,18 +77,27 @@ export async function PATCH(request: Request, context: RouteContext) {
           { status: 409 },
         );
       }
+      const storedRequestContext = schedule.ifIdle?.streamOptions?.requestContext ?? {};
+      const parserContext = new RequestContext();
+      for (const [key, value] of Object.entries(storedRequestContext)) {
+        parserContext.set(key, value);
+      }
+      const parsedSchedule = await parseScheduleInput(
+        { schedule: recurrence, timezone: parsed.data.timezone },
+        parserContext,
+      );
       const result = await mastraClient.updateSchedule(scheduleId, {
         name: parsed.data.name,
         prompt: parsed.data.prompt,
-        cron: parsed.data.cron,
-        timezone: parsed.data.timezone,
+        cron: parsedSchedule.cron,
+        timezone: parsedSchedule.timezone,
         ifIdle: {
           ...schedule.ifIdle,
           streamOptions: {
             ...schedule.ifIdle?.streamOptions,
             requestContext: {
               ...schedule.ifIdle?.streamOptions?.requestContext,
-              [SCHEDULE_TIMEZONE_CONTEXT_KEY]: parsed.data.timezone,
+              [SCHEDULE_TIMEZONE_CONTEXT_KEY]: parsedSchedule.timezone,
             },
           },
         },

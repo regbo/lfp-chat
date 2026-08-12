@@ -14,6 +14,12 @@ import {
   type ModelSelection,
 } from "@/lib/model-catalog";
 
+// Next.js routes do not pass through the standalone server bootstrap, so make
+// file-backed OpenAI credentials available to Mastra's model router here too.
+if (!process.env.OPENAI_API_KEY && serverConfig.openaiApiKey) {
+  process.env.OPENAI_API_KEY = serverConfig.openaiApiKey;
+}
+
 let cachedModelCatalog = createModelCatalog(
   serverConfig.modelProvider,
   serverConfig.modelId,
