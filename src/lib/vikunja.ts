@@ -189,14 +189,20 @@ export async function listTasks(input: {
       ...(input.allLists ? [] : [`project = ${projectId}`]),
       ...(input.includeDone ? [] : ["done = false"]),
     ];
-  const query = new URLSearchParams({
-    ...(filters.length ? { filter: filters.join(" && ") } : {}),
-    ...(input.search ? { s: input.search } : {}),
-    sort_by: input.search ? "relevance" : "due_date",
-    order_by: "asc",
-    per_page: "100",
-  });
-  const tasks = (await request<VikunjaTask[]>(`api/v1/tasks?${query}`)).map(task);
+  const tasks: Task[] = [];
+  for (let page = 1; page <= 100; page += 1) {
+    const query = new URLSearchParams({
+      ...(filters.length ? { filter: filters.join(" && ") } : {}),
+      ...(input.search ? { s: input.search } : {}),
+      sort_by: input.search ? "relevance" : "due_date",
+      order_by: "asc",
+      per_page: "100",
+      page: String(page),
+    });
+    const batch = await request<VikunjaTask[]>(`api/v1/tasks?${query}`);
+    tasks.push(...batch.map(task));
+    if (batch.length < 100) break;
+  }
   return input.search
     ? tasks.filter((item) =>
         (input.allLists || item.listId === projectId) &&

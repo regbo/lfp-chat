@@ -7,6 +7,7 @@ import {
   updateTask,
 } from "@/lib/vikunja";
 import { cleanTaskTitle } from "@/lib/task-metadata";
+import { searchTasks } from "@/lib/task-search";
 
 const linkSchema = z.object({
   label: z.string().trim().min(1).max(120),
@@ -56,13 +57,13 @@ export async function GET(request: Request) {
         ...(parsedListId.success ? { listId: parsedListId.data } : {}),
         includeDone: searchParams.get("includeDone") === "true",
         allLists,
-        ...(search.data ? { search: search.data } : {}),
       });
     return Response.json({
-      tasks: tags.data.length
-        ? tasks.filter((task) => tags.data.every((tag) =>
-            cleanTaskTitle(task.title, task.tags).tags.some((candidate) =>
-              candidate.toLocaleLowerCase() === tag.toLocaleLowerCase())))
+      tasks: search.data || tags.data.length
+        ? await searchTasks(tasks.map((task) => {
+            const cleaned = cleanTaskTitle(task.title, task.tags);
+            return { ...task, title: cleaned.title, tags: cleaned.tags };
+          }), { query: search.data, tags: tags.data })
         : tasks,
     });
   } catch (error) {

@@ -138,6 +138,7 @@ export function TasksPanel() {
   const [lists, setLists] = useState<TaskList[]>([]);
   const [selectedListId, setSelectedListId] = useState<number | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [searchableTasks, setSearchableTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -163,7 +164,7 @@ export function TasksPanel() {
   const visibleTasks = filteringTasks ? filteredTasks : tasks;
   const availableTaskTags = useMemo(() => {
     const counts = new Map<string, { label: string; count: number }>();
-    for (const task of tasks) {
+    for (const task of searchableTasks) {
       for (const tag of cleanTaskTitle(task.title, task.tags).tags) {
         const key = tag.toLocaleLowerCase();
         const current = counts.get(key);
@@ -171,13 +172,22 @@ export function TasksPanel() {
       }
     }
     return Array.from(counts.values()).sort((left, right) => right.count - left.count || left.label.localeCompare(right.label));
-  }, [tasks]);
+  }, [searchableTasks]);
+  const listNames = useMemo(() => new Map(lists.map((list) => [list.id, list.name])), [lists]);
 
   const loadTasks = useCallback(async (listId: number) => {
     const response = await fetch(`/api/tasks?listId=${listId}`, { cache: "no-store" });
     const payload = await responseJson<{ tasks?: Task[] }>(response, "Could not load tasks.");
     const nextTasks = payload.tasks ?? [];
     setTasks(nextTasks);
+    return nextTasks;
+  }, []);
+
+  const loadSearchableTasks = useCallback(async () => {
+    const response = await fetch("/api/tasks?allLists=true", { cache: "no-store" });
+    const payload = await responseJson<{ tasks?: Task[] }>(response, "Could not load searchable tasks.");
+    const nextTasks = payload.tasks ?? [];
+    setSearchableTasks(nextTasks);
     return nextTasks;
   }, []);
 
@@ -206,7 +216,10 @@ export function TasksPanel() {
           const searchParams = new URLSearchParams(window.location.search);
           const linkedListId = Number(searchParams.get("list")) || undefined;
           const linkedTaskId = Number(searchParams.get("task")) || undefined;
-          const result = await loadLists(linkedListId);
+          const [result] = await Promise.all([
+            loadLists(linkedListId),
+            loadSearchableTasks(),
+          ]);
           const linkedTask = linkedTaskId
             ? result.tasks.find((task) => task.id === linkedTaskId)
             : undefined;
@@ -227,7 +240,7 @@ export function TasksPanel() {
     if (!selectedListId || !filteringTasks) return;
     const controller = new AbortController();
     const timer = window.setTimeout(() => {
-      const params = new URLSearchParams({ listId: String(selectedListId) });
+      const params = new URLSearchParams({ allLists: "true" });
       if (normalizedTaskQuery) params.set("search", normalizedTaskQuery);
       for (const tag of selectedTaskTags) params.append("tag", tag);
       setTaskSearchLoading(true);
@@ -245,7 +258,7 @@ export function TasksPanel() {
         .finally(() => { if (!controller.signal.aborted) setTaskSearchLoading(false); });
     }, 220);
     return () => { window.clearTimeout(timer); controller.abort(); };
-  }, [filteringTasks, normalizedTaskQuery, selectedListId, selectedTaskTags, tasks]);
+  }, [filteringTasks, normalizedTaskQuery, selectedListId, selectedTaskTags, searchableTasks]);
 
   async function selectList(listId: number) {
     setSelectedListId(listId);
@@ -311,6 +324,7 @@ export function TasksPanel() {
       await responseJson(response, "Could not delete task list.");
       setSelectedListId(null);
       await loadLists();
+      await loadSearchableTasks();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not delete task list.");
     } finally { setSaving(false); }
@@ -357,6 +371,7 @@ export function TasksPanel() {
       setActiveTask(null);
       if (Number(draft.listId) !== selectedListId) await selectList(Number(draft.listId));
       else if (selectedListId) await loadTasks(selectedListId);
+      await loadSearchableTasks();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not save task.");
     } finally { setSaving(false); }
@@ -364,6 +379,7 @@ export function TasksPanel() {
 
   async function setDone(task: Task) {
     setTasks((current) => current.filter((item) => item.id !== task.id));
+    setSearchableTasks((current) => current.filter((item) => item.id !== task.id));
     setFilteredTasks((current) => current.filter((item) => item.id !== task.id));
     try {
       const response = await fetch("/api/tasks", {
@@ -374,6 +390,7 @@ export function TasksPanel() {
       await responseJson(response, "Could not update task.");
     } catch (cause) {
       if (selectedListId) await loadTasks(selectedListId).catch(() => undefined);
+      await loadSearchableTasks().catch(() => undefined);
       setError(cause instanceof Error ? cause.message : "Could not update task.");
     }
   }
@@ -391,6 +408,7 @@ export function TasksPanel() {
       setTaskDialog(null);
       setActiveTask(null);
       if (selectedListId) await loadTasks(selectedListId);
+      await loadSearchableTasks();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not delete task.");
     } finally { setSaving(false); }
@@ -476,7 +494,7 @@ export function TasksPanel() {
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
                     <h2 className="text-xl font-semibold tracking-tight" id="selected-task-list">{selectedList.name}</h2>
-                    {!loading && <span className="chat-meta-text text-muted-foreground">{filteringTasks ? (taskSearchLoading ? "Searching…" : `${visibleTasks.length} of ${tasks.length}`) : `${tasks.length} open`}</span>}
+                    {!loading && <span className="chat-meta-text text-muted-foreground">{filteringTasks ? (taskSearchLoading ? "Searching…" : `${visibleTasks.length} results`) : `${tasks.length} open`}</span>}
                   </div>
                   {selectedList.description && <p className="chat-ui-text mt-1 max-w-2xl text-muted-foreground">{selectedList.description}</p>}
                 </div>
@@ -490,12 +508,12 @@ export function TasksPanel() {
               </div>
             )}
 
-            {selectedList && !loading && tasks.length > 0 && (
+            {selectedList && !loading && searchableTasks.length > 0 && (
               <div className="mb-4 space-y-3">
                 <div className="relative">
                   <Search aria-hidden="true" className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
-                    aria-label={`Search ${selectedList.name} tasks`}
+                    aria-label="Search tasks across all lists"
                     autoComplete="off"
                     className="h-11 rounded-xl pl-10 pr-20"
                     name="task-search"
@@ -503,7 +521,7 @@ export function TasksPanel() {
                       setTaskQuery(event.target.value);
                       setTaskSearchLoading(Boolean(event.target.value.trim() || selectedTaskTags.length));
                     }}
-                    placeholder="Search this list…"
+                    placeholder="Search all lists…"
                     value={taskQuery}
                   />
                   <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center">
@@ -512,7 +530,7 @@ export function TasksPanel() {
                   </div>
                 </div>
                 {availableTaskTags.length > 0 && (
-                  <div aria-label="Filter this list by tag" className="flex flex-wrap gap-2">
+                  <div aria-label="Filter tasks across all lists by tag" className="flex flex-wrap gap-2">
                     {availableTaskTags.slice(0, 10).map(({ label, count }) => {
                       const active = selectedTaskTags.some((tag) => tag.toLocaleLowerCase() === label.toLocaleLowerCase());
                       return <button aria-pressed={active} className={cn("task-search-tag", active && "task-search-tag-active")} key={label} onClick={() => toggleTaskTag(label)} type="button">#{label}<span>{count}</span>{active && <X aria-hidden="true" />}</button>;
@@ -527,10 +545,10 @@ export function TasksPanel() {
               <div className="chat-ui-text flex items-center justify-center gap-2 py-20 text-muted-foreground"><Spinner /> Loading tasks…</div>
             ) : !selectedList ? (
               <div className="task-empty"><ListTodo /><p>No lists yet</p><Button onClick={openNewList}><Plus /> Create a list</Button></div>
-            ) : tasks.length === 0 ? (
-              <button className="task-empty w-full" onClick={openNewTask} type="button"><CheckCircle2 /><p>Everything is handled</p><span>Add a task when something comes up.</span></button>
             ) : filteringTasks && !taskSearchLoading && visibleTasks.length === 0 ? (
               <div className="task-empty"><Search /><p>No matching tasks</p><Button onClick={clearTaskFilters} variant="outline">Clear search</Button></div>
+            ) : tasks.length === 0 && !filteringTasks ? (
+              <button className="task-empty w-full" onClick={openNewTask} type="button"><CheckCircle2 /><p>Everything is handled</p><span>Add a task when something comes up.</span></button>
             ) : (
               <ul aria-busy={taskSearchLoading} aria-live="polite" className="task-stack">
                 {visibleTasks.map((task) => {
@@ -545,6 +563,7 @@ export function TasksPanel() {
                         {task.description && <p className="chat-meta-text mt-1 line-clamp-2 text-muted-foreground">{task.description}</p>}
                         <div className="chat-meta-text mt-2 flex flex-wrap items-center gap-2 text-muted-foreground">
                           {cleaned.tags.map((tag) => <span className="task-tag" key={tag}>#{tag}</span>)}
+                          {filteringTasks && <span className="task-chip"><Folder />{listNames.get(task.listId) ?? "Task list"}</span>}
                           {priority.value !== "0" && <span className="task-chip"><PriorityMark value={task.priority} />{priority.label}</span>}
                           {due && <span className={cn("task-chip", due.overdue && "task-chip-overdue")}><CalendarDays />{due.label}</span>}
                           {!!task.links?.length && <span className="task-chip"><Link2 />{task.links.length}</span>}
