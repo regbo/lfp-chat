@@ -139,6 +139,13 @@ is only the backward-compatible default when a list is not specified.
 Assignment and other deployment-specific task fields are intentionally absent;
 a host can register its own `/tasks` `ChatAppPlugin` when it needs those fields.
 
+Mastra task creation is idempotent for agents and scheduled jobs. Before a
+write, jobs inspect existing open work and reconcile substantially equivalent
+tasks. The tool layer also blocks normalized title duplicates in the same list,
+matching source-link duplicates across lists, and normalized duplicate list
+names. It returns the existing record with `created: false` so a job can update
+it instead. Completed tasks remain eligible for intentional recurrence.
+
 ## Run locally
 
 Requirements: Bun, Docker, and Node.js 22.13 or newer.

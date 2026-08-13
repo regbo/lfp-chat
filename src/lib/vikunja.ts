@@ -1,4 +1,10 @@
 import { serverConfig } from "@/lib/config";
+import {
+  findDuplicateOpenTask,
+  findDuplicateTaskList,
+  normalizeTaskIdentity,
+  taskCreationLockKey,
+} from "@/lib/task-dedupe";
 import type { Task, TaskLink, TaskList } from "@/lib/tasks";
 
 const linksMarker = /\n?<!-- lfp-chat:task-links (\[[\s\S]*?\]) -->\s*$/;
@@ -48,6 +54,30 @@ type VikunjaTask = {
   created?: string;
   updated?: string;
 };
+
+const globalForTaskCreation = globalThis as typeof globalThis & {
+  lfpTaskCreationLocks?: Map<string, Promise<void>>;
+};
+
+const taskCreationLocks =
+  (globalForTaskCreation.lfpTaskCreationLocks ??= new Map<string, Promise<void>>());
+
+async function serializeCreation<T>(key: string, action: () => Promise<T>) {
+  const previous = taskCreationLocks.get(key) ?? Promise.resolve();
+  let release = () => {};
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const queued = previous.then(() => gate);
+  taskCreationLocks.set(key, queued);
+  await previous;
+  try {
+    return await action();
+  } finally {
+    release();
+    if (taskCreationLocks.get(key) === queued) taskCreationLocks.delete(key);
+  }
+}
 
 function configuration() {
   if (!serverConfig.vikunjaApiUrl || !serverConfig.vikunjaApiToken) {
@@ -139,6 +169,18 @@ export async function createTaskList(input: {
   return taskList(project);
 }
 
+export async function createTaskListIfMissing(input: {
+  name: string;
+  description?: string;
+}) {
+  const lockKey = `list:${normalizeTaskIdentity(input.name)}`;
+  return serializeCreation(lockKey, async () => {
+    const existing = findDuplicateTaskList(await listTaskLists(), input.name);
+    if (existing) return { created: false as const, list: existing };
+    return { created: true as const, list: await createTaskList(input) };
+  });
+}
+
 export async function updateTaskList(
   listId: number,
   update: { name?: string; description?: string },
@@ -199,6 +241,37 @@ export async function createTask(input: {
     }),
   });
   return task(await request<VikunjaTask>(`api/v1/tasks/${createdTask.id}`));
+}
+
+export async function createTaskIfMissing(input: {
+  listId?: number;
+  title: string;
+  description?: string;
+  dueDate?: string | null;
+  priority?: number;
+  links?: TaskLink[];
+}) {
+  const listId = input.listId ?? configuration().projectId;
+  return serializeCreation(
+    `task:${taskCreationLockKey({ listId, title: input.title, links: input.links })}`,
+    async () => {
+      const duplicate = findDuplicateOpenTask(
+        await listTasks({ allLists: true, includeDone: false }),
+        { listId, title: input.title, links: input.links },
+      );
+      if (duplicate) {
+        return {
+          created: false as const,
+          duplicateReason: duplicate.reason,
+          task: duplicate.task,
+        };
+      }
+      return {
+        created: true as const,
+        task: await createTask({ ...input, listId }),
+      };
+    },
+  );
 }
 
 export async function updateTask(

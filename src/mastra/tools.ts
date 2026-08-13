@@ -8,8 +8,8 @@ import { serverConfig } from "@/lib/config";
 import { familyContextRequest } from "@/lib/family-context-api";
 import { truncateToolText, truncateToolValue } from "@/lib/tool-output";
 import {
-  createTask,
-  createTaskList,
+  createTaskIfMissing,
+  createTaskListIfMissing,
   deleteTask,
   deleteTaskList,
   listTaskLists,
@@ -467,14 +467,15 @@ export const taskListListsTool = createTool({
 
 export const taskListCreateTool = createTool({
   id: "task_list_create",
-  description: "Create a named task list.",
+  description:
+    "Idempotently create a named task list. A normalized name match returns the existing list with created=false instead of creating a duplicate.",
   inputSchema: z.object({
     name: z.string().trim().min(1).max(250),
     description: z.string().max(20_000).optional(),
   }),
   outputSchema: z.record(z.string(), z.unknown()),
   execute: async (input) =>
-    truncateToolValue(await createTaskList(input)) as Record<string, unknown>,
+    truncateToolValue(await createTaskListIfMissing(input)) as Record<string, unknown>,
 });
 
 export const taskListUpdateTool = createTool({
@@ -507,7 +508,8 @@ export const taskListDeleteTool = createTool({
 
 export const taskCreateTool = createTool({
   id: "task_create",
-  description: "Create a task in a chosen task list.",
+  description:
+    "Idempotently create an open task in a chosen task list. Before writing, this checks for a normalized title match in that list and for a matching source URL across all lists. A match returns the existing task with created=false; update it instead of trying another title.",
   inputSchema: z.object({
     listId: z.number().int().positive().optional().describe(
       "The destination list ID. Omit to use the configured default list.",
@@ -525,7 +527,7 @@ export const taskCreateTool = createTool({
   }),
   outputSchema: z.record(z.string(), z.unknown()),
   execute: async (input) =>
-    truncateToolValue(await createTask(input)) as Record<string, unknown>,
+    truncateToolValue(await createTaskIfMissing(input)) as Record<string, unknown>,
 });
 
 export const taskUpdateTool = createTool({
