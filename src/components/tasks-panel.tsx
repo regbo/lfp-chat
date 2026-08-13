@@ -393,12 +393,12 @@ export function TasksPanel() {
             </div>
           </nav>
 
-          <main className="mt-6 min-w-0 md:mt-0">
+          <section aria-labelledby={selectedList ? "selected-task-list" : undefined} className="mt-6 min-w-0 md:mt-0">
             {selectedList && (
               <div className="flex min-h-11 items-start justify-between gap-3 pb-4">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                    <h2 className="text-xl font-semibold tracking-tight">{selectedList.name}</h2>
+                    <h2 className="text-xl font-semibold tracking-tight" id="selected-task-list">{selectedList.name}</h2>
                     {!loading && <span className="chat-meta-text text-muted-foreground">{tasks.length} open</span>}
                   </div>
                   {selectedList.description && <p className="chat-ui-text mt-1 max-w-2xl text-muted-foreground">{selectedList.description}</p>}
@@ -443,7 +443,7 @@ export function TasksPanel() {
                 })}
               </ul>
             )}
-          </main>
+          </section>
         </div>
       </div>
 
