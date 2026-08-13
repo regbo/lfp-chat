@@ -114,7 +114,7 @@ export const serverConfig = {
   ),
   familyGraphTimeoutMs: boundedInteger(
     "FAMILY_GRAPH_TIMEOUT_MS",
-    120_000,
+    8_000,
     1_000,
     900_000,
   ),
