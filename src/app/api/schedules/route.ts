@@ -23,6 +23,7 @@ import {
   parseScheduleInput,
 } from "@/mastra/schedule-parser";
 import { getModelCatalog } from "@/mastra/model-provider";
+import { resolveUserScope } from "@/lib/user-scope";
 
 export const runtime = "nodejs";
 
@@ -73,10 +74,10 @@ function scheduleModelSelection(
 }
 
 export async function GET(request: Request) {
-  const resourceId = new URL(request.url).searchParams.get("resourceId");
-  if (!resourceId) {
-    return Response.json({ error: "resourceId is required." }, { status: 400 });
-  }
+  const claimedResourceId = new URL(request.url).searchParams.get("resourceId");
+  const resolved = await resolveUserScope(request.headers, claimedResourceId);
+  if (!resolved.ok) return resolved.response;
+  const { resourceId } = resolved.scope;
 
   try {
     const agentIds = serverConfig.codexAgentEnabled
@@ -116,6 +117,9 @@ export async function POST(request: Request) {
   if (!parsed.success) {
     return Response.json({ error: parsed.error.issues[0]?.message ?? "Invalid schedule." }, { status: 400 });
   }
+  const resolved = await resolveUserScope(request.headers, parsed.data.resourceId);
+  if (!resolved.ok) return resolved.response;
+  const resourceId = resolved.scope.resourceId;
 
   const threadId = `schedule-${randomUUID()}`;
   let threadCreated = false;
@@ -125,12 +129,12 @@ export async function POST(request: Request) {
       parsed.data.modelSelection?.agentId ?? DEFAULT_CHAT_AGENT_ID;
     const existingSchedules = await mastraClient.listSchedules({
       agentId,
-      resourceId: parsed.data.resourceId,
+      resourceId,
     });
     const existing = findCoveringSchedule(existingSchedules.schedules, {
       agentId,
       prompt: parsed.data.prompt,
-      resourceId: parsed.data.resourceId,
+      resourceId,
     });
     if (existing) {
       return Response.json({ schedule: existing, existing: true });
@@ -158,7 +162,7 @@ export async function POST(request: Request) {
     const title = `Scheduled: ${scheduleName}`;
     await mastraClient.createMemoryThread({
       agentId,
-      resourceId: parsed.data.resourceId,
+      resourceId,
       threadId,
       title,
       metadata: { schedule: true },
@@ -182,7 +186,7 @@ export async function POST(request: Request) {
       prompt: parsed.data.prompt,
       cron: parsedSchedule.cron,
       timezone: parsedSchedule.timezone,
-      resourceId: parsed.data.resourceId,
+      resourceId,
       threadId,
       name: scheduleName,
       signalType: "system-reminder",
@@ -198,7 +202,7 @@ export async function POST(request: Request) {
         dedupeKey: scheduleDedupeKey({
           agentId,
           prompt: parsed.data.prompt,
-          resourceId: parsed.data.resourceId,
+          resourceId,
         }),
       },
     });

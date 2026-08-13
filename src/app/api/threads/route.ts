@@ -1,13 +1,14 @@
 import { mastraClient } from "@/lib/mastra-client";
 import { isScheduledThread } from "@/lib/thread-state";
+import { resolveUserScope } from "@/lib/user-scope";
 
 export const runtime = "nodejs";
 
 export async function GET(request: Request) {
-  const resourceId = new URL(request.url).searchParams.get("resourceId");
-  if (!resourceId) {
-    return Response.json({ error: "resourceId is required." }, { status: 400 });
-  }
+  const claimedResourceId = new URL(request.url).searchParams.get("resourceId");
+  const resolved = await resolveUserScope(request.headers, claimedResourceId);
+  if (!resolved.ok) return resolved.response;
+  const { resourceId } = resolved.scope;
 
   try {
     const result = await mastraClient.listMemoryThreads({

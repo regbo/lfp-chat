@@ -100,6 +100,21 @@ Tags must use semantic versions such as `v0.2.0`. The GitHub Actions workflow va
 - Caddy as the single loopback/ZeroTier entrypoint
 - Docker Compose for a local PostgreSQL service
 
+### User-scoped memory
+
+Chat memory, schedules, active-run steering, and push subscriptions use a
+server-resolved user scope. `USER_SCOPE_MODE=local` retains a browser-local ID
+for development. Behind a trusted identity-aware reverse proxy, use
+`USER_SCOPE_MODE=header` and select its immutable user identifier with
+`USER_SCOPE_HEADER` (Authentik defaults to `x-authentik-uid`). Optional name and
+email headers populate the account label without becoming storage keys.
+
+`USER_SCOPE_MODE=jwt` verifies the token from `USER_SCOPE_JWT_HEADER` against
+`USER_SCOPE_JWT_JWKS_URL` and `USER_SCOPE_JWT_ISSUER`; an audience can be
+required with `USER_SCOPE_JWT_AUDIENCE`. The configured subject claim defaults
+to `sub`. Header mode assumes the app port is only reachable through the trusted
+proxy that authenticates and replaces those headers.
+
 ## Recurring agent work
 
 Scheduling is available both from chat and from the **Scheduled** menu. A request

@@ -15,6 +15,7 @@ import {
 } from "@/lib/schedules";
 import { z } from "zod";
 import { parseScheduleInput } from "@/mastra/schedule-parser";
+import { resolveUserScope } from "@/lib/user-scope";
 
 export const runtime = "nodejs";
 
@@ -61,10 +62,13 @@ export async function PATCH(request: Request, context: RouteContext) {
       { status: 400 },
     );
   }
+  const resolved = await resolveUserScope(request.headers, parsed.data.resourceId);
+  if (!resolved.ok) return resolved.response;
+  const resourceId = resolved.scope.resourceId;
   const { scheduleId } = await context.params;
 
   try {
-    const schedule = await getOwnedSchedule(scheduleId, parsed.data.resourceId);
+    const schedule = await getOwnedSchedule(scheduleId, resourceId);
     if (parsed.data.action === "update") {
       const recurrence = parsed.data.schedule || parsed.data.cron;
       if (!recurrence) {
@@ -72,14 +76,14 @@ export async function PATCH(request: Request, context: RouteContext) {
       }
       const listed = await mastraClient.listSchedules({
         agentId: schedule.agentId,
-        resourceId: parsed.data.resourceId,
+        resourceId,
       });
       const existing = findCoveringSchedule(
         listed.schedules,
         {
           agentId: schedule.agentId,
           prompt: parsed.data.prompt,
-          resourceId: parsed.data.resourceId,
+          resourceId,
         },
         schedule.id,
       );
@@ -148,7 +152,7 @@ export async function PATCH(request: Request, context: RouteContext) {
           dedupeKey: scheduleDedupeKey({
             agentId: schedule.agentId,
             prompt: parsed.data.prompt,
-            resourceId: parsed.data.resourceId,
+            resourceId,
           }),
         },
       });
@@ -170,10 +174,10 @@ export async function PATCH(request: Request, context: RouteContext) {
 
 export async function DELETE(request: Request, context: RouteContext) {
   const { scheduleId } = await context.params;
-  const resourceId = new URL(request.url).searchParams.get("resourceId");
-  if (!resourceId) {
-    return Response.json({ error: "resourceId is required." }, { status: 400 });
-  }
+  const claimedResourceId = new URL(request.url).searchParams.get("resourceId");
+  const resolved = await resolveUserScope(request.headers, claimedResourceId);
+  if (!resolved.ok) return resolved.response;
+  const { resourceId } = resolved.scope;
   try {
     const schedule = await getOwnedSchedule(scheduleId, resourceId);
     const result = await mastraClient.deleteSchedule(scheduleId);

@@ -2,6 +2,7 @@ import { toAISdkMessages } from "@mastra/ai-sdk/ui";
 import { z } from "zod";
 
 import { mastraClient } from "@/lib/mastra-client";
+import { resolveUserScope } from "@/lib/user-scope";
 
 export const runtime = "nodejs";
 
@@ -22,10 +23,10 @@ export async function GET(
   request: Request,
   { params }: { params: Promise<{ threadId: string }> },
 ) {
-  const resourceId = new URL(request.url).searchParams.get("resourceId");
-  if (!resourceId) {
-    return Response.json({ error: "resourceId is required." }, { status: 400 });
-  }
+  const claimedResourceId = new URL(request.url).searchParams.get("resourceId");
+  const resolved = await resolveUserScope(request.headers, claimedResourceId);
+  if (!resolved.ok) return resolved.response;
+  const { resourceId } = resolved.scope;
 
   try {
     const { threadId } = await params;
@@ -70,10 +71,10 @@ export async function DELETE(
 ) {
   try {
     const { threadId } = await params;
-    const resourceId = new URL(request.url).searchParams.get("resourceId");
-    if (!resourceId) {
-      return Response.json({ error: "resourceId is required." }, { status: 400 });
-    }
+    const claimedResourceId = new URL(request.url).searchParams.get("resourceId");
+    const resolved = await resolveUserScope(request.headers, claimedResourceId);
+    if (!resolved.ok) return resolved.response;
+    const { resourceId } = resolved.scope;
     const thread = mastraClient.getMemoryThread({ threadId, agentId: "chatAgent" });
     const details = await thread.get();
     if (details.resourceId !== resourceId) {
@@ -99,11 +100,15 @@ export async function PATCH(
     );
   }
 
+  const resolved = await resolveUserScope(request.headers, parsed.data.resourceId);
+  if (!resolved.ok) return resolved.response;
+  const resourceId = resolved.scope.resourceId;
+
   try {
     const { threadId } = await params;
     const thread = mastraClient.getMemoryThread({ threadId, agentId: "chatAgent" });
     const details = await thread.get();
-    if (details.resourceId !== parsed.data.resourceId) {
+    if (details.resourceId !== resourceId) {
       return Response.json({ error: "Chat not found." }, { status: 404 });
     }
 
@@ -115,7 +120,7 @@ export async function PATCH(
     }
 
     const updated = await thread.update({
-      resourceId: parsed.data.resourceId,
+      resourceId,
       title: parsed.data.title || details.title || "New chat",
       metadata,
     });

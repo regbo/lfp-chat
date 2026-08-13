@@ -1217,9 +1217,15 @@ export type ChatAppProps = {
   plugins?: readonly ChatAppPlugin[];
   /** App-wide contributions for routes, settings, and host-implemented tools. */
   mods?: readonly ChatAppMod[];
+  /** Server-authenticated identity used to scope memory and scheduled work. */
+  user?: {
+    resourceId: string;
+    displayName: string;
+    email?: string;
+  };
 };
 
-export function ChatApp({ mods = [], plugins = [] }: ChatAppProps) {
+export function ChatApp({ mods = [], plugins = [], user }: ChatAppProps) {
   const pathname = usePathname();
   const registeredMods = useMemo(() => validateChatAppMods(mods), [mods]);
   const registeredPlugins = useMemo(
@@ -1250,7 +1256,7 @@ export function ChatApp({ mods = [], plugins = [] }: ChatAppProps) {
     () => viewFromPathname(pathname, registeredPlugins),
     [pathname, registeredPlugins],
   );
-  const [resourceId, setResourceId] = useState("");
+  const [resourceId, setResourceId] = useState(user?.resourceId ?? "");
   const [threadId, setThreadId] = useState(() => initialThreadId || makeId());
   const [sessionSeeds, setSessionSeeds] = useState<Map<string, UIMessage[]>>(
     () => new Map(initialThreadId ? [] : [[threadId, []]]),
@@ -1403,9 +1409,10 @@ export function ChatApp({ mods = [], plugins = [] }: ChatAppProps) {
   );
 
   useEffect(() => {
+    if (user?.resourceId) return;
     const timer = window.setTimeout(() => setResourceId(getOrCreateResourceId()), 0);
     return () => window.clearTimeout(timer);
-  }, []);
+  }, [user?.resourceId]);
 
   useEffect(() => {
     const captureInstallPrompt = (event: Event) => {
@@ -1741,8 +1748,8 @@ export function ChatApp({ mods = [], plugins = [] }: ChatAppProps) {
       <div className="mt-1.5 flex items-center gap-2.5 rounded-xl p-1.5 hover:bg-sidebar-accent">
         <span className="chat-meta-text grid size-7 place-items-center rounded-full bg-foreground font-semibold text-background">R</span>
         <div className="min-w-0 flex-1">
-          <p className="chat-ui-text truncate font-medium">Local user</p>
-          <p className="chat-meta-text truncate text-muted-foreground">Postgres memory</p>
+          <p className="chat-ui-text truncate font-medium">{user?.displayName || "Local user"}</p>
+          <p className="chat-meta-text truncate text-muted-foreground">{user?.email || "Postgres memory"}</p>
         </div>
       </div>
     </aside>

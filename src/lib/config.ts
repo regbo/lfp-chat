@@ -7,6 +7,7 @@ const LOCAL_MASTRA_API_URL = "http://localhost:4111";
 const DEFAULT_MODEL_PROVIDER = "openai";
 const DEFAULT_OPENAI_MODEL = "gpt-5.6-luna";
 const DEFAULT_CODEX_AGENT_MODE = "agent";
+const DEFAULT_USER_SCOPE_MODE = "local";
 
 function boundedInteger(
   name: string,
@@ -65,6 +66,23 @@ if (!modelName) {
   throw new Error(
     `MODEL_NAME is required when MODEL_PROVIDER is ${modelProvider}.`,
   );
+}
+
+const userScopeMode =
+  process.env.USER_SCOPE_MODE?.trim().toLowerCase() || DEFAULT_USER_SCOPE_MODE;
+
+if (!["local", "header", "jwt"].includes(userScopeMode)) {
+  throw new Error(
+    `Invalid USER_SCOPE_MODE: ${userScopeMode}. Use local, header, or jwt.`,
+  );
+}
+
+if (userScopeMode === "jwt") {
+  for (const name of ["USER_SCOPE_JWT_JWKS_URL", "USER_SCOPE_JWT_ISSUER"]) {
+    if (!process.env[name]?.trim()) {
+      throw new Error(`${name} is required when USER_SCOPE_MODE is jwt.`);
+    }
+  }
 }
 
 export const publicConfig = {
@@ -144,4 +162,20 @@ export const serverConfig = {
     process.env.CODEX_WORKSPACE_PATH?.trim() || process.cwd(),
   codexAcpCommand: process.env.CODEX_ACP_COMMAND?.trim(),
   webOrigin: process.env.WEB_ORIGIN ?? "http://localhost:3000",
+  userScope: {
+    mode: userScopeMode as "local" | "header" | "jwt",
+    header: process.env.USER_SCOPE_HEADER?.trim() || "x-authentik-uid",
+    nameHeader:
+      process.env.USER_SCOPE_NAME_HEADER?.trim() || "x-authentik-name",
+    emailHeader:
+      process.env.USER_SCOPE_EMAIL_HEADER?.trim() || "x-authentik-email",
+    jwtHeader:
+      process.env.USER_SCOPE_JWT_HEADER?.trim() || "authorization",
+    jwtClaim: process.env.USER_SCOPE_JWT_CLAIM?.trim() || "sub",
+    jwtNameClaim: process.env.USER_SCOPE_JWT_NAME_CLAIM?.trim() || "name",
+    jwtEmailClaim: process.env.USER_SCOPE_JWT_EMAIL_CLAIM?.trim() || "email",
+    jwtJwksUrl: process.env.USER_SCOPE_JWT_JWKS_URL?.trim(),
+    jwtIssuer: process.env.USER_SCOPE_JWT_ISSUER?.trim(),
+    jwtAudience: process.env.USER_SCOPE_JWT_AUDIENCE?.trim(),
+  },
 } as const;

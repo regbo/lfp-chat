@@ -5,6 +5,7 @@ import {
   removePushSubscription,
   savePushSubscription,
 } from "@/lib/push-notifications";
+import { resolveUserScope } from "@/lib/user-scope";
 
 const subscriptionSchema = z.object({
   endpoint: z.url(),
@@ -21,8 +22,10 @@ export async function POST(request: Request) {
     subscription: subscriptionSchema,
   }).safeParse(await request.json());
   if (!parsed.success) return Response.json({ error: parsed.error.message }, { status: 400 });
+  const resolved = await resolveUserScope(request.headers, parsed.data.resourceId);
+  if (!resolved.ok) return resolved.response;
   try {
-    await savePushSubscription(parsed.data.resourceId, parsed.data.subscription);
+    await savePushSubscription(resolved.scope.resourceId, parsed.data.subscription);
     return Response.json({ subscribed: true });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "Could not enable notifications." }, { status: 503 });
@@ -30,8 +33,13 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  const parsed = z.object({ endpoint: z.url() }).safeParse(await request.json());
+  const parsed = z.object({
+    endpoint: z.url(),
+    resourceId: z.string().min(1),
+  }).safeParse(await request.json());
   if (!parsed.success) return Response.json({ error: parsed.error.message }, { status: 400 });
-  await removePushSubscription(parsed.data.endpoint);
+  const resolved = await resolveUserScope(request.headers, parsed.data.resourceId);
+  if (!resolved.ok) return resolved.response;
+  await removePushSubscription(parsed.data.endpoint, resolved.scope.resourceId);
   return new Response(null, { status: 204 });
 }

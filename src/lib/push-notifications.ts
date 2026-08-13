@@ -73,9 +73,14 @@ export async function savePushSubscription(
   );
 }
 
-export async function removePushSubscription(endpoint: string) {
+export async function removePushSubscription(endpoint: string, resourceId?: string) {
   await ready();
-  await pool().query("DELETE FROM lfp_push_subscriptions WHERE endpoint = $1", [endpoint]);
+  await pool().query(
+    resourceId
+      ? "DELETE FROM lfp_push_subscriptions WHERE endpoint = $1 AND resource_id = $2"
+      : "DELETE FROM lfp_push_subscriptions WHERE endpoint = $1",
+    resourceId ? [endpoint, resourceId] : [endpoint],
+  );
 }
 
 export async function notifyResource(

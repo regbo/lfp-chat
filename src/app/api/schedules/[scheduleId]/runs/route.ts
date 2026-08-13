@@ -1,6 +1,7 @@
 import { mastraClient } from "@/lib/mastra-client";
 import { truncateToolText } from "@/lib/tool-output";
 import type { AgentSchedule, ScheduleResponse } from "@mastra/client-js";
+import { resolveUserScope } from "@/lib/user-scope";
 
 export const runtime = "nodejs";
 
@@ -21,10 +22,10 @@ function messageText(message: {
 }
 
 export async function GET(request: Request, context: RouteContext) {
-  const resourceId = new URL(request.url).searchParams.get("resourceId");
-  if (!resourceId) {
-    return Response.json({ error: "resourceId is required." }, { status: 400 });
-  }
+  const claimedResourceId = new URL(request.url).searchParams.get("resourceId");
+  const resolved = await resolveUserScope(request.headers, claimedResourceId);
+  if (!resolved.ok) return resolved.response;
+  const { resourceId } = resolved.scope;
 
   try {
     const { scheduleId } = await context.params;

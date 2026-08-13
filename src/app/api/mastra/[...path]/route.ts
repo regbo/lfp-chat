@@ -1,4 +1,5 @@
 import { serverConfig } from "@/lib/config";
+import { resolveUserScope } from "@/lib/user-scope";
 
 export const runtime = "nodejs";
 
@@ -14,12 +15,49 @@ async function proxy(
   );
   const headers = new Headers(request.headers);
   headers.delete("host");
+  let body: BodyInit | null | undefined;
+  let claimedResourceId = sourceUrl.searchParams.get("resourceId");
+  if (request.method !== "GET" && request.method !== "HEAD") {
+    if (request.headers.get("content-type")?.includes("application/json")) {
+      let payload: Record<string, unknown>;
+      try {
+        payload = await request.json() as Record<string, unknown>;
+      } catch {
+        return Response.json({ error: "Invalid JSON request body." }, { status: 400 });
+      }
+      const memory = payload.memory;
+      if (memory && typeof memory === "object") {
+        const resource = (memory as Record<string, unknown>).resource;
+        if (typeof resource === "string") claimedResourceId = resource;
+      }
+      if (!claimedResourceId && typeof payload.resourceId === "string") {
+        claimedResourceId = payload.resourceId;
+      }
+      const resolved = await resolveUserScope(request.headers, claimedResourceId);
+      if (!resolved.ok) return resolved.response;
+      if (memory && typeof memory === "object") {
+        payload.memory = {
+          ...(memory as Record<string, unknown>),
+          resource: resolved.scope.resourceId,
+        };
+      }
+      if ("resourceId" in payload) payload.resourceId = resolved.scope.resourceId;
+      body = JSON.stringify(payload);
+    } else {
+      const resolved = await resolveUserScope(request.headers, claimedResourceId);
+      if (!resolved.ok) return resolved.response;
+      body = request.body;
+    }
+  } else {
+    const resolved = await resolveUserScope(request.headers, claimedResourceId);
+    if (!resolved.ok) return resolved.response;
+  }
   const init: RequestInit & { duplex?: "half" } = {
     method: request.method,
     headers,
   };
   if (request.method !== "GET" && request.method !== "HEAD") {
-    init.body = request.body;
+    init.body = body;
     init.duplex = "half";
   }
 

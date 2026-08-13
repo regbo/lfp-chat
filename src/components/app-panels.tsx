@@ -875,7 +875,7 @@ export function SettingsPanel({
         await fetch("/api/push", {
           method: "DELETE",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ endpoint: existing.endpoint }),
+          body: JSON.stringify({ endpoint: existing.endpoint, resourceId }),
         });
         await existing.unsubscribe();
         setNotificationState("off");

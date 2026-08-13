@@ -5,6 +5,7 @@ import { Database, ListTodo, Mail, Paperclip, Search, Share2 } from "lucide-reac
 import { ChatApp } from "@/components/chat-app";
 import { GmailSettings } from "@/components/gmail-settings";
 import { TasksPanel } from "@/components/tasks-panel";
+import type { UserScope } from "@/lib/user-scope";
 
 const mods = [{
   id: "home",
@@ -28,6 +29,6 @@ const mods = [{
   ],
 }] as const;
 
-export function HomeChatApp() {
-  return <ChatApp mods={mods} />;
+export function HomeChatApp({ user }: { user?: UserScope }) {
+  return <ChatApp mods={mods} user={user} />;
 }

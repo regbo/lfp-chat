@@ -1,6 +1,7 @@
 import { mastraClient } from "@/lib/mastra-client";
 import { after } from "next/server";
 import { z } from "zod";
+import { resolveUserScope } from "@/lib/user-scope";
 
 export const runtime = "nodejs";
 
@@ -24,8 +25,11 @@ export async function POST(request: Request, context: RouteContext) {
   if (!parsed.success) {
     return Response.json({ error: parsed.error.issues[0]?.message ?? "Invalid steer." }, { status: 400 });
   }
+  const resolved = await resolveUserScope(request.headers, parsed.data.resourceId);
+  if (!resolved.ok) return resolved.response;
   const { threadId } = await context.params;
-  const { resourceId, runId, text, files } = parsed.data;
+  const { runId, text, files } = parsed.data;
+  const { resourceId } = resolved.scope;
   const contents = [
     ...(text.trim() ? [{ type: "text" as const, text: text.trim() }] : []),
     ...files.map((file) => ({
