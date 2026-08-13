@@ -156,7 +156,9 @@ export function TasksPanel() {
   const loadTasks = useCallback(async (listId: number) => {
     const response = await fetch(`/api/tasks?listId=${listId}`, { cache: "no-store" });
     const payload = await responseJson<{ tasks?: Task[] }>(response, "Could not load tasks.");
-    setTasks(payload.tasks ?? []);
+    const nextTasks = payload.tasks ?? [];
+    setTasks(nextTasks);
+    return nextTasks;
   }, []);
 
   const loadLists = useCallback(async (preferredId?: number) => {
@@ -171,15 +173,25 @@ export function TasksPanel() {
       nextLists[0]?.id ||
       null;
     setSelectedListId(nextId);
-    if (nextId) await loadTasks(nextId);
-    else setTasks([]);
+    const nextTasks = nextId ? await loadTasks(nextId) : [];
+    if (!nextId) setTasks([]);
+    return { listId: nextId, tasks: nextTasks };
   }, [loadTasks, selectedListId]);
 
   useEffect(() => {
     let active = true;
     void (async () => {
       try {
-        if (active) await loadLists();
+        if (active) {
+          const searchParams = new URLSearchParams(window.location.search);
+          const linkedListId = Number(searchParams.get("list")) || undefined;
+          const linkedTaskId = Number(searchParams.get("task")) || undefined;
+          const result = await loadLists(linkedListId);
+          const linkedTask = linkedTaskId
+            ? result.tasks.find((task) => task.id === linkedTaskId)
+            : undefined;
+          if (linkedTask) openTask(linkedTask);
+        }
       } catch (cause) {
         if (active) setError(cause instanceof Error ? cause.message : "Could not load tasks.");
       } finally {

@@ -180,19 +180,28 @@ export async function listTasks(input: {
   listId?: number;
   includeDone?: boolean;
   allLists?: boolean;
+  search?: string;
 } = {}) {
   const projectId = input.listId ?? configuration().projectId;
-  const filters = [
-    ...(input.allLists ? [] : [`project = ${projectId}`]),
-    ...(input.includeDone ? [] : ["done = false"]),
-  ];
+  // Vikunja v1 does not allow `s` and `filter` together. Search broadly in
+  // Vikunja, then apply list/completion constraints to the decoded results.
+  const filters = input.search ? [] : [
+      ...(input.allLists ? [] : [`project = ${projectId}`]),
+      ...(input.includeDone ? [] : ["done = false"]),
+    ];
   const query = new URLSearchParams({
     ...(filters.length ? { filter: filters.join(" && ") } : {}),
-    sort_by: "due_date",
+    ...(input.search ? { s: input.search } : {}),
+    sort_by: input.search ? "relevance" : "due_date",
     order_by: "asc",
     per_page: "100",
   });
-  return (await request<VikunjaTask[]>(`api/v1/tasks?${query}`)).map(task);
+  const tasks = (await request<VikunjaTask[]>(`api/v1/tasks?${query}`)).map(task);
+  return input.search
+    ? tasks.filter((item) =>
+        (input.allLists || item.listId === projectId) &&
+        (input.includeDone || !item.done))
+    : tasks;
 }
 
 export async function createTask(input: {

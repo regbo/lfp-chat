@@ -6,6 +6,7 @@ import {
   listTasks,
   updateTask,
 } from "@/lib/vikunja";
+import { cleanTaskTitle } from "@/lib/task-metadata";
 
 const linkSchema = z.object({
   label: z.string().trim().min(1).max(120),
@@ -39,6 +40,11 @@ const updateSchema = z.object({
 export async function GET(request: Request) {
   try {
     const searchParams = new URL(request.url).searchParams;
+    const search = z.string().trim().max(200).safeParse(searchParams.get("search") ?? "");
+    const tags = z.array(z.string().trim().min(1).max(32)).max(12).safeParse(searchParams.getAll("tag"));
+    if (!search.success || !tags.success) {
+      return Response.json({ error: "Invalid task search." }, { status: 400 });
+    }
     const parsedListId = z.coerce.number().int().positive().safeParse(
       searchParams.get("listId"),
     );
@@ -46,12 +52,18 @@ export async function GET(request: Request) {
     if (!allLists && !parsedListId.success) {
       return Response.json({ error: "listId is required." }, { status: 400 });
     }
-    return Response.json({
-      tasks: await listTasks({
+    const tasks = await listTasks({
         ...(parsedListId.success ? { listId: parsedListId.data } : {}),
         includeDone: searchParams.get("includeDone") === "true",
         allLists,
-      }),
+        ...(search.data ? { search: search.data } : {}),
+      });
+    return Response.json({
+      tasks: tags.data.length
+        ? tasks.filter((task) => tags.data.every((tag) =>
+            cleanTaskTitle(task.title, task.tags).tags.some((candidate) =>
+              candidate.toLocaleLowerCase() === tag.toLocaleLowerCase())))
+        : tasks,
     });
   } catch (error) {
     return Response.json(

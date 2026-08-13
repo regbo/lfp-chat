@@ -583,6 +583,18 @@
   .task-tag-removable:hover { background: color-mix(in srgb, var(--task-low) 18%, transparent); }
   .task-tag-removable svg { width: 0.75rem; height: 0.75rem; }
 
+  .task-search-tag {
+    @apply inline-flex min-h-7 items-center gap-1.5 rounded-full border bg-background px-2.5 text-muted-foreground transition-colors hover:border-foreground/25 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring;
+    font-size: var(--text-meta);
+  }
+  .task-search-tag > span { font-variant-numeric: tabular-nums; opacity: 0.65; }
+  .task-search-tag > svg { width: 0.75rem; height: 0.75rem; }
+  .task-search-tag-active {
+    color: var(--task-low);
+    border-color: color-mix(in srgb, var(--task-low) 35%, transparent);
+    background: color-mix(in srgb, var(--task-low) 11%, transparent);
+  }
+
   .task-priority-mark {
     display: inline-block;
     width: 0.55rem;
@@ -668,6 +680,7 @@
   padding: 0;
   gap: 0;
   overflow: hidden;
+  animation: none !important;
 }
 
 [data-slot="dialog-header"].task-editor-header {
@@ -687,12 +700,14 @@
 
 @media (min-width: 640px) {
   [data-slot="dialog-content"].task-editor {
-    inset: 50% auto auto 50%;
+    inset: auto;
+    top: 50%;
+    left: 50%;
     width: 100%;
     max-width: 42rem;
-    height: auto;
-    max-height: min(48rem, calc(100dvh - 2rem));
-    transform: translate(-50%, -50%);
+    height: min(48rem, calc(100dvh - 2rem));
+    max-height: calc(100dvh - 2rem);
+    transform: translate(-50%, -50%) !important;
     border-radius: 1rem;
   }
 

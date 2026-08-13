@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -22,6 +24,8 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { MessageResponse } from "@/components/ai-elements/message";
 import { cn } from "@/lib/utils";
+import { cleanTaskTitle } from "@/lib/task-metadata";
+import type { Task, TaskList } from "@/lib/tasks";
 import {
   DEFAULT_CHAT_AGENT_ID,
   formatReasoningEffort,
@@ -45,6 +49,7 @@ import {
   Globe2,
   ImageIcon,
   LoaderCircle,
+  ListTodo,
   MessageSquare,
   Pause,
   Pencil,
@@ -55,6 +60,7 @@ import {
   ShieldAlert,
   Terminal,
   Trash2,
+  X,
   type LucideIcon,
 } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
@@ -147,24 +153,134 @@ export function ArchivedPanel({
 
 export function SearchPanel({ threads, onOpen }: { threads: ThreadSummary[]; onOpen: (id: string) => void }) {
   const [query, setQuery] = useState("");
-  const results = useMemo(
-    () => threads.filter((thread) => (thread.title || "New chat").toLowerCase().includes(query.toLowerCase())),
-    [query, threads],
+  const [allTasks, setAllTasks] = useState<Task[]>([]);
+  const [taskResults, setTaskResults] = useState<Task[]>([]);
+  const [taskLists, setTaskLists] = useState<TaskList[]>([]);
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [taskSearchLoading, setTaskSearchLoading] = useState(false);
+  const [taskSearchError, setTaskSearchError] = useState("");
+
+  const typedTags = useMemo(
+    () => Array.from(query.matchAll(/(?:^|\s)#([^\s#]+)/g), (match) => match[1]!).filter(Boolean),
+    [query],
   );
+  const textQuery = useMemo(() => query.replace(/(?:^|\s)#[^\s#]+/g, " ").trim(), [query]);
+  const activeTags = useMemo(
+    () => Array.from(new Map([...selectedTags, ...typedTags].map((tag) => [tag.toLocaleLowerCase(), tag])).values()),
+    [selectedTags, typedTags],
+  );
+  const conversationResults = useMemo(
+    () => threads.filter((thread) => (thread.title || "New chat").toLocaleLowerCase().includes(textQuery.toLocaleLowerCase())),
+    [textQuery, threads],
+  );
+  const availableTags = useMemo(() => {
+    const counts = new Map<string, { label: string; count: number }>();
+    for (const task of allTasks) {
+      for (const tag of cleanTaskTitle(task.title, task.tags).tags) {
+        const key = tag.toLocaleLowerCase();
+        const current = counts.get(key);
+        counts.set(key, { label: current?.label ?? tag, count: (current?.count ?? 0) + 1 });
+      }
+    }
+    return Array.from(counts.values()).sort((left, right) => right.count - left.count || left.label.localeCompare(right.label));
+  }, [allTasks]);
+  const listNames = useMemo(() => new Map(taskLists.map((list) => [list.id, list.name])), [taskLists]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void Promise.all([
+      fetch("/api/tasks?allLists=true", { cache: "no-store", signal: controller.signal }),
+      fetch("/api/task-lists", { cache: "no-store", signal: controller.signal }),
+    ]).then(async ([tasksResponse, listsResponse]) => {
+      if (!tasksResponse.ok || !listsResponse.ok) throw new Error("Could not load searchable tasks.");
+      const [tasksPayload, listsPayload] = await Promise.all([
+        tasksResponse.json() as Promise<{ tasks?: Task[] }>,
+        listsResponse.json() as Promise<{ lists?: TaskList[] }>,
+      ]);
+      setAllTasks(tasksPayload.tasks ?? []);
+      setTaskLists(listsPayload.lists ?? []);
+    }).catch((cause) => {
+      if (cause instanceof DOMException && cause.name === "AbortError") return;
+      setTaskSearchError(cause instanceof Error ? cause.message : "Could not load searchable tasks.");
+    });
+    return () => controller.abort();
+  }, []);
+
+  useEffect(() => {
+    if (!textQuery && activeTags.length === 0) {
+      return;
+    }
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      const params = new URLSearchParams({ allLists: "true" });
+      if (textQuery) params.set("search", textQuery);
+      for (const tag of activeTags) params.append("tag", tag);
+      setTaskSearchLoading(true);
+      setTaskSearchError("");
+      void fetch(`/api/tasks?${params}`, { cache: "no-store", signal: controller.signal })
+        .then(async (response) => {
+          const payload = await response.json() as { tasks?: Task[]; error?: string };
+          if (!response.ok) throw new Error(payload.error || "Could not search tasks.");
+          setTaskResults(payload.tasks ?? []);
+        })
+        .catch((cause) => {
+          if (cause instanceof DOMException && cause.name === "AbortError") return;
+          setTaskSearchError(cause instanceof Error ? cause.message : "Could not search tasks.");
+        })
+        .finally(() => { if (!controller.signal.aborted) setTaskSearchLoading(false); });
+    }, 220);
+    return () => { window.clearTimeout(timer); controller.abort(); };
+  }, [activeTags, textQuery]);
+
+  function toggleTag(tag: string) {
+    setSelectedTags((current) => current.some((item) => item.toLocaleLowerCase() === tag.toLocaleLowerCase())
+      ? current.filter((item) => item.toLocaleLowerCase() !== tag.toLocaleLowerCase())
+      : [...current, tag]);
+  }
+
+  const searching = Boolean(textQuery || activeTags.length);
+  const visibleTaskResults = searching ? taskResults : [];
   return (
-    <PanelShell title="Search chats" description="Find a conversation stored in Postgres memory.">
+    <PanelShell title="Search" description="Find conversations and tasks, or narrow tasks with #tags.">
       <div className="relative">
-        <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-        <Input autoFocus className="h-11 rounded-xl pl-10" onChange={(event) => setQuery(event.target.value)} placeholder="Search by title" value={query} />
+        <Search aria-hidden="true" className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+        <Input aria-label="Search conversations and tasks" autoComplete="off" className="h-11 rounded-xl pl-10" name="universal-search" onChange={(event) => setQuery(event.target.value)} placeholder="Search titles, notes, or #tags…" value={query} />
       </div>
-      <div className="mt-4 space-y-1">
-        {results.map((thread) => (
-          <button className="w-full rounded-xl px-3 py-3 text-left hover:bg-muted" key={thread.id} onClick={() => onOpen(thread.id)} type="button">
-            <p className="chat-ui-text truncate font-medium">{thread.title || "New chat"}</p>
-            <p className="chat-meta-text mt-0.5 text-muted-foreground">{thread.updatedAt ? new Date(thread.updatedAt).toLocaleString() : "Saved conversation"}</p>
-          </button>
-        ))}
-        {results.length === 0 && <p className="chat-ui-text py-10 text-center text-muted-foreground">No matching chats.</p>}
+      {availableTags.length > 0 && <div aria-label="Filter tasks by tag" className="mt-3 flex flex-wrap gap-2">{availableTags.slice(0, 10).map(({ label, count }) => {
+        const active = activeTags.some((tag) => tag.toLocaleLowerCase() === label.toLocaleLowerCase());
+        return <button aria-pressed={active} className={cn("task-search-tag", active && "task-search-tag-active")} key={label} onClick={() => toggleTag(label)} type="button">#{label}<span>{count}</span>{active && <X aria-hidden="true" />}</button>;
+      })}</div>}
+
+      <div className="mt-7 grid gap-8 lg:grid-cols-2">
+        <section aria-labelledby="search-conversations-heading">
+          <div className="flex items-center gap-2"><MessageSquare aria-hidden="true" className="size-4 text-muted-foreground" /><h2 className="chat-ui-emphasis" id="search-conversations-heading">Conversations</h2><span className="chat-meta-text text-muted-foreground">{conversationResults.length}</span></div>
+          <div className="mt-2 space-y-1">
+            {conversationResults.map((thread) => (
+              <button className="w-full rounded-xl px-3 py-3 text-left hover:bg-muted" key={thread.id} onClick={() => onOpen(thread.id)} type="button">
+                <p className="chat-ui-text truncate font-medium">{thread.title || "New chat"}</p>
+                <p className="chat-meta-text mt-0.5 text-muted-foreground">{thread.updatedAt ? new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(thread.updatedAt)) : "Saved conversation"}</p>
+              </button>
+            ))}
+            {conversationResults.length === 0 && <p className="chat-ui-text py-8 text-center text-muted-foreground">No matching conversations.</p>}
+          </div>
+        </section>
+
+        <section aria-labelledby="search-tasks-heading">
+          <div className="flex items-center gap-2"><ListTodo aria-hidden="true" className="size-4 text-muted-foreground" /><h2 className="chat-ui-emphasis" id="search-tasks-heading">Tasks</h2>{searching && !taskSearchLoading && <span className="chat-meta-text text-muted-foreground">{visibleTaskResults.length}</span>}{searching && taskSearchLoading && <LoaderCircle aria-label="Searching tasks" className="size-3.5 animate-spin text-muted-foreground" />}</div>
+          <div className="mt-2 space-y-1" aria-live="polite">
+            {visibleTaskResults.map((task) => {
+              const cleaned = cleanTaskTitle(task.title, task.tags);
+              return <Link className="block rounded-xl px-3 py-3 hover:bg-muted" href={{ pathname: "/tasks", query: { list: task.listId, task: task.id } }} key={task.id}>
+                <p className="chat-ui-text break-words font-medium">{cleaned.title}</p>
+                {task.description && <p className="chat-meta-text mt-1 line-clamp-2 text-muted-foreground">{task.description}</p>}
+                <div className="chat-meta-text mt-2 flex flex-wrap items-center gap-2 text-muted-foreground"><span>{listNames.get(task.listId) ?? "Task list"}</span>{cleaned.tags.map((tag) => <span className="task-tag" key={tag}>#{tag}</span>)}</div>
+              </Link>;
+            })}
+            {!searching && <p className="chat-ui-text py-8 text-center text-muted-foreground">Search task titles and notes, or choose a tag.</p>}
+            {searching && !taskSearchLoading && visibleTaskResults.length === 0 && !taskSearchError && <p className="chat-ui-text py-8 text-center text-muted-foreground">No matching tasks.</p>}
+            {taskSearchError && <p className="chat-ui-text py-6 text-center text-destructive" role="alert">{taskSearchError}</p>}
+          </div>
+        </section>
       </div>
     </PanelShell>
   );
