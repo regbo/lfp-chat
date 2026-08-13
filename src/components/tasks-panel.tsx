@@ -13,6 +13,7 @@ import {
   MoreHorizontal,
   Pencil,
   Plus,
+  Search,
   Trash2,
   X,
 } from "lucide-react";
@@ -147,11 +148,30 @@ export function TasksPanel() {
   const [activeTask, setActiveTask] = useState<Task | null>(null);
   const [draft, setDraft] = useState<TaskDraft | null>(null);
   const [tagInput, setTagInput] = useState("");
+  const [taskQuery, setTaskQuery] = useState("");
+  const [selectedTaskTags, setSelectedTaskTags] = useState<string[]>([]);
+  const [filteredTasks, setFilteredTasks] = useState<Task[]>([]);
+  const [taskSearchLoading, setTaskSearchLoading] = useState(false);
+  const [taskSearchError, setTaskSearchError] = useState("");
 
   const selectedList = useMemo(
     () => lists.find((list) => list.id === selectedListId) ?? null,
     [lists, selectedListId],
   );
+  const normalizedTaskQuery = taskQuery.trim();
+  const filteringTasks = Boolean(normalizedTaskQuery || selectedTaskTags.length);
+  const visibleTasks = filteringTasks ? filteredTasks : tasks;
+  const availableTaskTags = useMemo(() => {
+    const counts = new Map<string, { label: string; count: number }>();
+    for (const task of tasks) {
+      for (const tag of cleanTaskTitle(task.title, task.tags).tags) {
+        const key = tag.toLocaleLowerCase();
+        const current = counts.get(key);
+        counts.set(key, { label: current?.label ?? tag, count: (current?.count ?? 0) + 1 });
+      }
+    }
+    return Array.from(counts.values()).sort((left, right) => right.count - left.count || left.label.localeCompare(right.label));
+  }, [tasks]);
 
   const loadTasks = useCallback(async (listId: number) => {
     const response = await fetch(`/api/tasks?listId=${listId}`, { cache: "no-store" });
@@ -203,8 +223,37 @@ export function TasksPanel() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    if (!selectedListId || !filteringTasks) return;
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      const params = new URLSearchParams({ listId: String(selectedListId) });
+      if (normalizedTaskQuery) params.set("search", normalizedTaskQuery);
+      for (const tag of selectedTaskTags) params.append("tag", tag);
+      setTaskSearchLoading(true);
+      setTaskSearchError("");
+      void fetch(`/api/tasks?${params}`, { cache: "no-store", signal: controller.signal })
+        .then(async (response) => {
+          const payload = await response.json() as { tasks?: Task[]; error?: string };
+          if (!response.ok) throw new Error(payload.error || "Could not search tasks.");
+          setFilteredTasks(payload.tasks ?? []);
+        })
+        .catch((cause) => {
+          if (cause instanceof DOMException && cause.name === "AbortError") return;
+          setTaskSearchError(cause instanceof Error ? cause.message : "Could not search tasks.");
+        })
+        .finally(() => { if (!controller.signal.aborted) setTaskSearchLoading(false); });
+    }, 220);
+    return () => { window.clearTimeout(timer); controller.abort(); };
+  }, [filteringTasks, normalizedTaskQuery, selectedListId, selectedTaskTags, tasks]);
+
   async function selectList(listId: number) {
     setSelectedListId(listId);
+    setTaskQuery("");
+    setSelectedTaskTags([]);
+    setFilteredTasks([]);
+    setTaskSearchLoading(false);
+    setTaskSearchError("");
     setLoading(true);
     setError("");
     try { await loadTasks(listId); }
@@ -315,6 +364,7 @@ export function TasksPanel() {
 
   async function setDone(task: Task) {
     setTasks((current) => current.filter((item) => item.id !== task.id));
+    setFilteredTasks((current) => current.filter((item) => item.id !== task.id));
     try {
       const response = await fetch("/api/tasks", {
         method: "PATCH",
@@ -355,6 +405,21 @@ export function TasksPanel() {
     if (!tag || draft.tags.length >= 12 || draft.tags.some((item) => item.toLowerCase() === tag.toLowerCase())) return;
     setDraft({ ...draft, tags: [...draft.tags, tag] });
     setTagInput("");
+  }
+
+  function toggleTaskTag(tag: string) {
+    setTaskSearchLoading(true);
+    setSelectedTaskTags((current) => current.some((item) => item.toLocaleLowerCase() === tag.toLocaleLowerCase())
+      ? current.filter((item) => item.toLocaleLowerCase() !== tag.toLocaleLowerCase())
+      : [...current, tag]);
+  }
+
+  function clearTaskFilters() {
+    setTaskQuery("");
+    setSelectedTaskTags([]);
+    setFilteredTasks([]);
+    setTaskSearchLoading(false);
+    setTaskSearchError("");
   }
 
   return (
@@ -411,7 +476,7 @@ export function TasksPanel() {
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
                     <h2 className="text-xl font-semibold tracking-tight" id="selected-task-list">{selectedList.name}</h2>
-                    {!loading && <span className="chat-meta-text text-muted-foreground">{tasks.length} open</span>}
+                    {!loading && <span className="chat-meta-text text-muted-foreground">{filteringTasks ? (taskSearchLoading ? "Searching…" : `${visibleTasks.length} of ${tasks.length}`) : `${tasks.length} open`}</span>}
                   </div>
                   {selectedList.description && <p className="chat-ui-text mt-1 max-w-2xl text-muted-foreground">{selectedList.description}</p>}
                 </div>
@@ -425,15 +490,50 @@ export function TasksPanel() {
               </div>
             )}
 
+            {selectedList && !loading && tasks.length > 0 && (
+              <div className="mb-4 space-y-3">
+                <div className="relative">
+                  <Search aria-hidden="true" className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    aria-label={`Search ${selectedList.name} tasks`}
+                    autoComplete="off"
+                    className="h-11 rounded-xl pl-10 pr-20"
+                    name="task-search"
+                    onChange={(event) => {
+                      setTaskQuery(event.target.value);
+                      setTaskSearchLoading(Boolean(event.target.value.trim() || selectedTaskTags.length));
+                    }}
+                    placeholder="Search this list…"
+                    value={taskQuery}
+                  />
+                  <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center">
+                    {taskSearchLoading && filteringTasks && <Spinner aria-label="Searching tasks" className="mr-1 size-4" />}
+                    {filteringTasks && <Button aria-label="Clear task search and filters" onClick={clearTaskFilters} size="icon-xs" type="button" variant="ghost"><X /></Button>}
+                  </div>
+                </div>
+                {availableTaskTags.length > 0 && (
+                  <div aria-label="Filter this list by tag" className="flex flex-wrap gap-2">
+                    {availableTaskTags.slice(0, 10).map(({ label, count }) => {
+                      const active = selectedTaskTags.some((tag) => tag.toLocaleLowerCase() === label.toLocaleLowerCase());
+                      return <button aria-pressed={active} className={cn("task-search-tag", active && "task-search-tag-active")} key={label} onClick={() => toggleTaskTag(label)} type="button">#{label}<span>{count}</span>{active && <X aria-hidden="true" />}</button>;
+                    })}
+                  </div>
+                )}
+                {taskSearchError && <p className="chat-meta-text text-destructive" role="alert">{taskSearchError}</p>}
+              </div>
+            )}
+
             {loading ? (
               <div className="chat-ui-text flex items-center justify-center gap-2 py-20 text-muted-foreground"><Spinner /> Loading tasks…</div>
             ) : !selectedList ? (
               <div className="task-empty"><ListTodo /><p>No lists yet</p><Button onClick={openNewList}><Plus /> Create a list</Button></div>
             ) : tasks.length === 0 ? (
               <button className="task-empty w-full" onClick={openNewTask} type="button"><CheckCircle2 /><p>Everything is handled</p><span>Add a task when something comes up.</span></button>
+            ) : filteringTasks && !taskSearchLoading && visibleTasks.length === 0 ? (
+              <div className="task-empty"><Search /><p>No matching tasks</p><Button onClick={clearTaskFilters} variant="outline">Clear search</Button></div>
             ) : (
-              <ul className="task-stack">
-                {tasks.map((task) => {
+              <ul aria-busy={taskSearchLoading} aria-live="polite" className="task-stack">
+                {visibleTasks.map((task) => {
                   const priority = priorityFor(task.priority);
                   const due = dueState(task.dueDate);
                   const cleaned = cleanTaskTitle(task.title, task.tags);
