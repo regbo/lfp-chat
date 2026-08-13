@@ -134,6 +134,11 @@
   --menu-item-padding-inline: 0.5rem;
   --menu-item-gap: 0.5rem;
   --badge-height: 1.25rem;
+  --task-canvas: #fbfaf7;
+  --task-low: #2f6f5e;
+  --task-medium: #a16207;
+  --task-high: #d75b28;
+  --task-critical: #c82f45;
   --markdown-block-gap: 0.75rem;
   --inline-code-size: 0.92em;
   --inline-code-padding-block: 0.0625rem;
@@ -186,6 +191,11 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
+  --task-canvas: #181818;
+  --task-low: #63a895;
+  --task-medium: #d7a83d;
+  --task-high: #ed8253;
+  --task-critical: #ee7182;
 }
 
 @layer base {
@@ -489,6 +499,213 @@
     padding-inline: 0.5rem;
     font-size: var(--text-meta);
   }
+
+  .task-page {
+    background:
+      radial-gradient(circle at 92% 3%, color-mix(in srgb, var(--task-medium) 8%, transparent), transparent 17rem),
+      linear-gradient(to bottom, color-mix(in srgb, var(--task-canvas) 72%, var(--background)), var(--background) 28rem);
+  }
+
+  .task-eyebrow,
+  .task-section-title,
+  .task-field-label {
+    font-size: var(--text-meta);
+    line-height: var(--leading-meta);
+    font-weight: var(--weight-strong);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted-foreground);
+  }
+
+  .task-field-label {
+    display: block;
+    margin-bottom: 0.375rem;
+    letter-spacing: 0.035em;
+  }
+
+  .task-list-button {
+    @apply flex min-h-9 w-full items-center gap-2 rounded-lg px-2.5 text-left text-muted-foreground transition-colors hover:bg-muted/70 hover:text-foreground;
+    font-size: var(--text-ui);
+  }
+
+  .task-list-button-active {
+    @apply bg-foreground text-background shadow-sm hover:bg-foreground hover:text-background;
+  }
+
+  .task-list-button-active svg:last-child {
+    opacity: 0.65;
+  }
+
+  .task-stack {
+    @apply overflow-hidden rounded-2xl border bg-background shadow-[0_14px_40px_-36px_rgb(0_0_0/55%)];
+  }
+
+  .task-row {
+    position: relative;
+    display: flex;
+    min-width: 0;
+    gap: 0.25rem;
+    border-bottom: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+  }
+
+  .task-row:last-child { border-bottom: 0; }
+  .task-row::before {
+    content: "";
+    width: 0.2rem;
+    flex: none;
+    background: transparent;
+  }
+  .task-row[data-priority="low"]::before { background: var(--task-low); }
+  .task-row[data-priority="medium"]::before { background: var(--task-medium); }
+  .task-row[data-priority="high"]::before,
+  .task-row[data-priority="urgent"]::before { background: var(--task-high); }
+  .task-row[data-priority="critical"]::before { background: var(--task-critical); }
+  .task-row:hover { background: color-mix(in srgb, var(--muted) 46%, transparent); }
+
+  .task-complete {
+    @apply mt-2.5 grid size-9 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-background hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring;
+  }
+  .task-complete svg { width: 1rem; height: 1rem; }
+
+  .task-chip {
+    @apply inline-flex items-center gap-1 rounded-full bg-muted/75 px-2 py-1;
+  }
+  .task-chip svg { width: 0.75rem; height: 0.75rem; }
+  .task-chip-overdue { color: var(--task-critical); }
+
+  .task-tag {
+    @apply inline-flex items-center gap-1 rounded-md px-2 py-1;
+    color: var(--task-low);
+    background: color-mix(in srgb, var(--task-low) 11%, transparent);
+    font-weight: var(--weight-emphasis);
+  }
+  .task-tag-removable { cursor: pointer; }
+  .task-tag-removable:hover { background: color-mix(in srgb, var(--task-low) 18%, transparent); }
+  .task-tag-removable svg { width: 0.75rem; height: 0.75rem; }
+
+  .task-priority-mark {
+    display: inline-block;
+    width: 0.55rem;
+    height: 0.55rem;
+    flex: none;
+    border-radius: 999px;
+    background: var(--border);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--foreground) 12%, transparent);
+  }
+  .task-priority-mark[data-tone="low"] { background: var(--task-low); }
+  .task-priority-mark[data-tone="medium"] { background: var(--task-medium); }
+  .task-priority-mark[data-tone="high"],
+  .task-priority-mark[data-tone="urgent"] { background: var(--task-high); }
+  .task-priority-mark[data-tone="critical"] { background: var(--task-critical); }
+
+  .task-empty {
+    @apply flex min-h-56 flex-col items-center justify-center gap-2 rounded-2xl border border-dashed bg-background/65 px-6 text-center text-muted-foreground;
+    font-size: var(--text-ui);
+  }
+  .task-empty > svg { width: 1.5rem; height: 1.5rem; }
+  .task-empty p { color: var(--foreground); font-weight: var(--weight-emphasis); }
+
+  .task-editor {
+    @apply inset-x-0 bottom-0 top-auto left-0 z-50 h-[min(92dvh,52rem)] w-full max-w-none translate-x-0 translate-y-0 gap-0 overflow-hidden rounded-b-none rounded-t-2xl p-0 sm:top-1/2 sm:left-1/2 sm:h-auto sm:max-h-[min(48rem,calc(100dvh-2rem))] sm:max-w-2xl sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-2xl;
+  }
+
+  .task-editor-form {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    height: 100%;
+    min-height: 0;
+  }
+
+  .task-editor-header {
+    @apply flex-row items-start justify-between gap-4 border-b px-5 py-4 sm:px-6;
+  }
+
+  .task-editor-body {
+    @apply min-h-0 space-y-6 overflow-y-auto overscroll-contain px-5 py-5 sm:px-6;
+    scrollbar-gutter: stable;
+  }
+
+  .task-editor-section {
+    @apply space-y-4 border-t pt-5;
+  }
+
+  .task-editor-control,
+  .task-title-input {
+    min-height: 2.75rem;
+  }
+
+  .task-title-input {
+    font-size: var(--text-ui-emphasis);
+    font-weight: var(--weight-emphasis);
+  }
+
+  .task-link-row {
+    @apply grid grid-cols-[minmax(0,.72fr)_minmax(0,1.28fr)_auto] gap-2;
+  }
+
+  .task-editor-footer {
+    @apply m-0 flex-row items-center gap-2 rounded-none border-t bg-background px-5 pt-3 sm:justify-end sm:px-6;
+    padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+  }
+}
+
+@media (max-width: 639px) {
+  .task-link-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .task-link-row > :nth-child(2) { grid-column: 1 / -1; grid-row: 2; }
+  .task-editor-footer [data-slot="button"] { min-height: 2.75rem; }
+}
+
+/* Dialog primitives ship positioning and footer utilities in Tailwind's later
+   utilities layer. These unlayered rules are the task editor's layout contract:
+   the shell stays fixed while only the middle region scrolls. */
+[data-slot="dialog-content"].task-editor {
+  inset: auto 0 0;
+  width: 100%;
+  max-width: none;
+  height: min(92dvh, 52rem);
+  transform: none;
+  border-radius: 1rem 1rem 0 0;
+  padding: 0;
+  gap: 0;
+  overflow: hidden;
+}
+
+[data-slot="dialog-header"].task-editor-header {
+  flex-direction: row;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+[data-slot="dialog-footer"].task-editor-footer {
+  margin: 0;
+  flex-direction: row;
+  align-items: center;
+  border-radius: 0;
+  background: var(--background);
+  padding: 0.75rem 1.25rem max(0.75rem, env(safe-area-inset-bottom));
+}
+
+@media (min-width: 640px) {
+  [data-slot="dialog-content"].task-editor {
+    inset: 50% auto auto 50%;
+    width: 100%;
+    max-width: 42rem;
+    height: auto;
+    max-height: min(48rem, calc(100dvh - 2rem));
+    transform: translate(-50%, -50%);
+    border-radius: 1rem;
+  }
+
+  [data-slot="dialog-footer"].task-editor-footer {
+    justify-content: flex-end;
+    padding-inline: 1.5rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .task-row,
+  .task-list-button,
+  .task-complete { transition: none; }
 }
 
 /* AI Elements ships fixed input heights in Tailwind's later utilities layer.

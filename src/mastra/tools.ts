@@ -508,7 +508,7 @@ export const taskListDeleteTool = createTool({
 export const taskCreateTool = createTool({
   id: "task_create",
   description:
-    "Idempotently create an open task in a chosen task list. Before writing, this checks for a normalized title match in that list and for a matching source URL across all lists. A match returns the existing task with created=false; update it instead of trying another title.",
+    "Idempotently create an open task in a chosen task list. Use tags for categories such as School instead of prefixing the title (write 'Submit permission slip' with tag 'School', never 'School: Submit permission slip'). Before writing, this checks for a normalized title match in that list and for a matching source URL across all lists. A match returns the existing task with created=false; update it instead of trying another title.",
   inputSchema: z.object({
     listId: z.number().int().positive().optional().describe(
       "The destination list ID. Omit to use the configured default list.",
@@ -522,6 +522,9 @@ export const taskCreateTool = createTool({
       url: z.url().max(2_000),
     })).max(20).optional().describe(
       "Source emails, documents, or other URLs that should remain attached to the task.",
+    ),
+    tags: z.array(z.string().trim().min(1).max(32)).max(12).optional().describe(
+      "Short human-readable categories. Use these instead of category prefixes in the title.",
     ),
   }),
   outputSchema: z.record(z.string(), z.unknown()),
@@ -547,6 +550,7 @@ export const taskUpdateTool = createTool({
       label: z.string().trim().min(1).max(120),
       url: z.url().max(2_000),
     })).max(20).optional(),
+    tags: z.array(z.string().trim().min(1).max(32)).max(12).optional(),
   }),
   outputSchema: z.record(z.string(), z.unknown()),
   execute: async ({ taskId, ...update }) =>

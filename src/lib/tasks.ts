@@ -22,6 +22,7 @@ export type Task = {
   dueDate?: string;
   priority?: number;
   links?: TaskLink[];
+  tags?: string[];
   createdAt?: string;
   updatedAt?: string;
 };

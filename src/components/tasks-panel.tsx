@@ -3,15 +3,20 @@
 import {
   CalendarDays,
   Check,
+  CheckCircle2,
+  ChevronRight,
   Circle,
+  ExternalLink,
   Folder,
   Link2,
+  ListTodo,
   MoreHorizontal,
   Pencil,
   Plus,
   Trash2,
+  X,
 } from "lucide-react";
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { type FormEvent, type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -39,6 +44,7 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
+import { cleanTaskTitle } from "@/lib/task-metadata";
 import type { Task, TaskLink, TaskList } from "@/lib/tasks";
 
 type TaskDraft = {
@@ -48,7 +54,21 @@ type TaskDraft = {
   priority: string;
   listId: string;
   links: TaskLink[];
+  tags: string[];
 };
+
+const priorities = [
+  { value: "0", label: "No priority", tone: "none" },
+  { value: "1", label: "Low", tone: "low" },
+  { value: "2", label: "Medium", tone: "medium" },
+  { value: "3", label: "High", tone: "high" },
+  { value: "4", label: "Urgent", tone: "urgent" },
+  { value: "5", label: "Critical", tone: "critical" },
+] as const;
+
+function priorityFor(value?: number | string) {
+  return priorities.find((priority) => priority.value === String(value ?? 0)) ?? priorities[0];
+}
 
 const emptyTaskDraft = (listId: number): TaskDraft => ({
   title: "",
@@ -57,12 +77,14 @@ const emptyTaskDraft = (listId: number): TaskDraft => ({
   priority: "0",
   listId: String(listId),
   links: [],
+  tags: [],
 });
 
 function taskDraft(task: Task): TaskDraft {
   const date = task.dueDate ? new Date(task.dueDate) : null;
+  const cleaned = cleanTaskTitle(task.title, task.tags);
   return {
-    title: task.title,
+    title: cleaned.title,
     description: task.description ?? "",
     dueDate: date && !Number.isNaN(date.getTime())
       ? new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
@@ -72,6 +94,7 @@ function taskDraft(task: Task): TaskDraft {
     priority: String(task.priority ?? 0),
     listId: String(task.listId),
     links: task.links ?? [],
+    tags: cleaned.tags,
   };
 }
 
@@ -83,14 +106,31 @@ async function responseJson<T>(response: Response, fallback: string) {
   return payload as T;
 }
 
-function formatDate(value?: string) {
+function formatDate(value?: string, includeTime = true) {
   if (!value) return null;
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return null;
   return new Intl.DateTimeFormat(undefined, {
     dateStyle: "medium",
-    timeStyle: "short",
+    ...(includeTime ? { timeStyle: "short" as const } : {}),
   }).format(date);
+}
+
+function dueState(value?: string) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  const overdue = date.getTime() < Date.now();
+  return { label: `${overdue ? "Overdue · " : ""}${formatDate(value, false)}`, overdue };
+}
+
+function FieldLabel({ htmlFor, children }: { htmlFor: string; children: ReactNode }) {
+  return <label className="task-field-label" htmlFor={htmlFor}>{children}</label>;
+}
+
+function PriorityMark({ value }: { value?: number | string }) {
+  const priority = priorityFor(value);
+  return <span aria-hidden="true" className="task-priority-mark" data-tone={priority.tone} />;
 }
 
 export function TasksPanel() {
@@ -106,6 +146,7 @@ export function TasksPanel() {
   const [taskDialog, setTaskDialog] = useState<"create" | "edit" | null>(null);
   const [activeTask, setActiveTask] = useState<Task | null>(null);
   const [draft, setDraft] = useState<TaskDraft | null>(null);
+  const [tagInput, setTagInput] = useState("");
 
   const selectedList = useMemo(
     () => lists.find((list) => list.id === selectedListId) ?? null,
@@ -120,10 +161,7 @@ export function TasksPanel() {
 
   const loadLists = useCallback(async (preferredId?: number) => {
     const response = await fetch("/api/task-lists", { cache: "no-store" });
-    const payload = await responseJson<{
-      lists?: TaskList[];
-      defaultListId?: number;
-    }>(response, "Could not load task lists.");
+    const payload = await responseJson<{ lists?: TaskList[]; defaultListId?: number }>(response, "Could not load task lists.");
     const nextLists = payload.lists ?? [];
     setLists(nextLists);
     const nextId =
@@ -221,12 +259,14 @@ export function TasksPanel() {
     if (!selectedListId) return;
     setActiveTask(null);
     setDraft(emptyTaskDraft(selectedListId));
+    setTagInput("");
     setTaskDialog("create");
   }
 
   function openTask(task: Task) {
     setActiveTask(task);
     setDraft(taskDraft(task));
+    setTagInput("");
     setTaskDialog("edit");
   }
 
@@ -248,6 +288,7 @@ export function TasksPanel() {
           dueDate: draft.dueDate ? new Date(draft.dueDate).toISOString() : null,
           priority: Number(draft.priority),
           links: draft.links.filter((link) => link.label.trim() && link.url.trim()),
+          tags: draft.tags,
         }),
       });
       await responseJson(response, `Could not ${editing ? "update" : "create"} task.`);
@@ -260,13 +301,13 @@ export function TasksPanel() {
     } finally { setSaving(false); }
   }
 
-  async function setDone(task: Task, done: boolean) {
+  async function setDone(task: Task) {
     setTasks((current) => current.filter((item) => item.id !== task.id));
     try {
       const response = await fetch("/api/tasks", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: task.id, done }),
+        body: JSON.stringify({ id: task.id, done: true }),
       });
       await responseJson(response, "Could not update task.");
     } catch (cause) {
@@ -293,54 +334,74 @@ export function TasksPanel() {
     } finally { setSaving(false); }
   }
 
+  const selectedDraftList = lists.find((list) => String(list.id) === draft?.listId);
+  const selectedPriority = priorityFor(draft?.priority);
+
+  function addTag() {
+    if (!draft) return;
+    const tag = tagInput.trim().replace(/^#/, "");
+    if (!tag || draft.tags.length >= 12 || draft.tags.some((item) => item.toLowerCase() === tag.toLowerCase())) return;
+    setDraft({ ...draft, tags: [...draft.tags, tag] });
+    setTagInput("");
+  }
+
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-12 pt-8 md:px-10">
-      <div className="mx-auto w-full max-w-5xl">
-        <div className="flex items-center justify-between gap-4">
-          <h1 className="chat-display-text">Tasks</h1>
-          <div className="flex gap-2">
-            <Button className="rounded-full" onClick={openNewList} variant="outline"><Plus /> List</Button>
-            <Button className="rounded-full" disabled={!selectedListId} onClick={openNewTask}><Plus /> Task</Button>
+    <div className="task-page min-h-0 flex-1 overflow-y-auto">
+      <div className="mx-auto w-full max-w-6xl px-4 pb-16 pt-6 md:px-8 md:pt-9">
+        <header className="flex items-end justify-between gap-4 border-b border-border/70 pb-5">
+          <div>
+            <p className="task-eyebrow">Household</p>
+            <h1 className="chat-display-text mt-1">Tasks</h1>
           </div>
-        </div>
+          <div className="flex gap-2">
+            <Button className="hidden rounded-full sm:inline-flex" onClick={openNewList} variant="outline"><Plus /> New list</Button>
+            <Button className="rounded-full" disabled={!selectedListId} onClick={openNewTask}><Plus /> Add task</Button>
+          </div>
+        </header>
 
-        {error && <p className="chat-ui-text mt-4 rounded-xl bg-destructive/10 p-3 text-destructive" role="alert">{error}</p>}
+        {error && <p className="chat-ui-text mt-4 rounded-xl border border-destructive/20 bg-destructive/8 p-3 text-destructive" role="alert">{error}</p>}
 
-        <div className="mt-6 md:grid md:grid-cols-[13rem_minmax(0,1fr)] md:gap-8">
+        <div className="mt-5 md:grid md:grid-cols-[14rem_minmax(0,1fr)] md:gap-10">
           <div className="md:hidden">
             {lists.length > 0 && selectedListId && (
               <Select onValueChange={(value) => value && void selectList(Number(value))} value={String(selectedListId)}>
-                <SelectTrigger className="w-full" aria-label="Task list"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="h-11 w-full bg-background" aria-label="Task list">
+                  <ListTodo className="text-muted-foreground" />
+                  <SelectValue>{selectedList?.name ?? "Choose a list"}</SelectValue>
+                </SelectTrigger>
                 <SelectContent>{lists.map((list) => <SelectItem key={list.id} value={String(list.id)}>{list.name}</SelectItem>)}</SelectContent>
               </Select>
             )}
           </div>
 
           <nav aria-label="Task lists" className="hidden min-w-0 md:block">
-            <p className="chat-meta-text mb-2 px-2 text-muted-foreground">Lists</p>
-            <div className="space-y-0.5">
+            <div className="mb-2 flex items-center justify-between px-2">
+              <p className="task-eyebrow">Lists</p>
+              <Button aria-label="Create list" onClick={openNewList} size="icon-xs" variant="ghost"><Plus /></Button>
+            </div>
+            <div className="space-y-1">
               {lists.map((list) => (
                 <button
-                  className={cn("chat-ui-text flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left", list.id === selectedListId ? "bg-muted font-medium" : "text-muted-foreground hover:bg-muted/60 hover:text-foreground")}
+                  className={cn("task-list-button", list.id === selectedListId && "task-list-button-active")}
                   key={list.id}
                   onClick={() => void selectList(list.id)}
                   type="button"
                 >
-                  <Folder className="size-4 shrink-0" /><span className="truncate">{list.name}</span>
+                  <Folder className="size-4 shrink-0" /><span className="truncate">{list.name}</span><ChevronRight className="ml-auto size-3.5 opacity-0" />
                 </button>
               ))}
             </div>
           </nav>
 
-          <section className="mt-5 min-w-0 md:mt-0">
+          <main className="mt-6 min-w-0 md:mt-0">
             {selectedList && (
-              <div className="flex min-h-9 items-start justify-between gap-3 border-b pb-4">
+              <div className="flex min-h-11 items-start justify-between gap-3 pb-4">
                 <div className="min-w-0">
-                  <div className="flex items-baseline gap-2">
-                    <h2 className="text-lg font-semibold">{selectedList.name}</h2>
+                  <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                    <h2 className="text-xl font-semibold tracking-tight">{selectedList.name}</h2>
                     {!loading && <span className="chat-meta-text text-muted-foreground">{tasks.length} open</span>}
                   </div>
-                  {selectedList.description && <p className="chat-ui-text mt-1 text-muted-foreground">{selectedList.description}</p>}
+                  {selectedList.description && <p className="chat-ui-text mt-1 max-w-2xl text-muted-foreground">{selectedList.description}</p>}
                 </div>
                 <DropdownMenu>
                   <DropdownMenuTrigger render={<Button aria-label="Manage list" size="icon-sm" variant="ghost" />}><MoreHorizontal /></DropdownMenuTrigger>
@@ -353,33 +414,36 @@ export function TasksPanel() {
             )}
 
             {loading ? (
-              <div className="chat-ui-text flex items-center justify-center gap-2 py-14 text-muted-foreground"><Spinner /> Loading…</div>
+              <div className="chat-ui-text flex items-center justify-center gap-2 py-20 text-muted-foreground"><Spinner /> Loading tasks…</div>
             ) : !selectedList ? (
-              <div className="py-14 text-center"><p className="chat-ui-text text-muted-foreground">Create a list to start organizing tasks.</p><Button className="mt-4" onClick={openNewList}><Plus /> New list</Button></div>
+              <div className="task-empty"><ListTodo /><p>No lists yet</p><Button onClick={openNewList}><Plus /> Create a list</Button></div>
             ) : tasks.length === 0 ? (
-              <button className="chat-ui-text w-full rounded-xl py-14 text-center text-muted-foreground hover:bg-muted/40" onClick={openNewTask} type="button">No open tasks. Add one.</button>
+              <button className="task-empty w-full" onClick={openNewTask} type="button"><CheckCircle2 /><p>Everything is handled</p><span>Add a task when something comes up.</span></button>
             ) : (
-              <ul className="divide-y divide-border/70">
+              <ul className="task-stack">
                 {tasks.map((task) => {
+                  const priority = priorityFor(task.priority);
+                  const due = dueState(task.dueDate);
+                  const cleaned = cleanTaskTitle(task.title, task.tags);
                   return (
-                    <li key={task.id}>
-                      <div className="group flex min-w-0 items-start gap-3 rounded-lg py-3.5 pr-2 transition-colors hover:bg-muted/45">
-                        <button aria-label={`Complete ${task.title}`} className="mt-0.5 grid size-7 shrink-0 place-items-center rounded-full text-muted-foreground hover:bg-background hover:text-foreground" onClick={() => void setDone(task, true)} type="button"><Circle className="size-4" /></button>
-                        <button className="min-w-0 flex-1 text-left" onClick={() => openTask(task)} type="button">
-                          <p className="chat-ui-text break-words font-medium">{task.title}</p>
-                          {task.description && <p className="chat-meta-text mt-1 line-clamp-2 text-muted-foreground">{task.description}</p>}
-                          <div className="chat-meta-text mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-muted-foreground">
-                            {task.dueDate && <span className="inline-flex items-center gap-1"><CalendarDays className="size-3.5" />{formatDate(task.dueDate)}</span>}
-                            {!!task.links?.length && <span className="inline-flex items-center gap-1"><Link2 className="size-3.5" />{task.links.length} {task.links.length === 1 ? "link" : "links"}</span>}
-                          </div>
-                        </button>
-                      </div>
+                    <li className="task-row" data-priority={priority.tone} key={task.id}>
+                      <button aria-label={`Complete ${task.title}`} className="task-complete" onClick={() => void setDone(task)} type="button"><Circle /></button>
+                      <button className="min-w-0 flex-1 py-3 pr-3 text-left" onClick={() => openTask(task)} type="button">
+                        <p className="chat-ui-emphasis break-words">{cleaned.title}</p>
+                        {task.description && <p className="chat-meta-text mt-1 line-clamp-2 text-muted-foreground">{task.description}</p>}
+                        <div className="chat-meta-text mt-2 flex flex-wrap items-center gap-2 text-muted-foreground">
+                          {cleaned.tags.map((tag) => <span className="task-tag" key={tag}>#{tag}</span>)}
+                          {priority.value !== "0" && <span className="task-chip"><PriorityMark value={task.priority} />{priority.label}</span>}
+                          {due && <span className={cn("task-chip", due.overdue && "task-chip-overdue")}><CalendarDays />{due.label}</span>}
+                          {!!task.links?.length && <span className="task-chip"><Link2 />{task.links.length}</span>}
+                        </div>
+                      </button>
                     </li>
                   );
                 })}
               </ul>
             )}
-          </section>
+          </main>
         </div>
       </div>
 
@@ -388,8 +452,8 @@ export function TasksPanel() {
           <form onSubmit={saveList}>
             <DialogHeader><DialogTitle>{listDialog === "edit" ? "Edit list" : "New list"}</DialogTitle><DialogDescription className="sr-only">Name and describe this task list.</DialogDescription></DialogHeader>
             <div className="mt-5 space-y-3">
-              <Input autoFocus maxLength={250} onChange={(event) => setListName(event.target.value)} placeholder="List name" required value={listName} />
-              <Textarea className="min-h-20" maxLength={20_000} onChange={(event) => setListDescription(event.target.value)} placeholder="Description (optional)" value={listDescription} />
+              <Input autoComplete="off" maxLength={250} name="list-name" onChange={(event) => setListName(event.target.value)} placeholder="List name…" required value={listName} />
+              <Textarea autoComplete="off" className="min-h-20" maxLength={20_000} name="list-description" onChange={(event) => setListDescription(event.target.value)} placeholder="Description (optional)…" value={listDescription} />
             </div>
             <DialogFooter className="mt-6"><Button onClick={() => setListDialog(null)} type="button" variant="ghost">Cancel</Button><Button disabled={saving} type="submit">{saving && <Spinner />} Save list</Button></DialogFooter>
           </form>
@@ -397,42 +461,94 @@ export function TasksPanel() {
       </Dialog>
 
       <Dialog onOpenChange={(open) => !open && setTaskDialog(null)} open={taskDialog !== null}>
-        <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-xl">
+        <DialogContent className="task-editor" showCloseButton={false}>
           {draft && (
-            <form onSubmit={saveTask}>
-              <DialogHeader>
-                <DialogTitle>{taskDialog === "edit" ? "Task details" : "New task"}</DialogTitle>
-                <DialogDescription className="sr-only">Manage the task and its source links.</DialogDescription>
+            <form className="task-editor-form" onSubmit={saveTask}>
+              <DialogHeader className="task-editor-header">
+                <div>
+                  <DialogTitle className="text-lg">{taskDialog === "edit" ? "Edit task" : "New task"}</DialogTitle>
+                  <DialogDescription className="mt-1">Keep the next step clear and easy to find.</DialogDescription>
+                </div>
+                <Button aria-label="Close task editor" onClick={() => setTaskDialog(null)} size="icon-sm" type="button" variant="ghost"><X /></Button>
               </DialogHeader>
-              <div className="mt-5 space-y-4">
-                <Input autoFocus maxLength={500} onChange={(event) => setDraft({ ...draft, title: event.target.value })} placeholder="What needs doing?" required value={draft.title} />
-                <Textarea className="min-h-28" maxLength={20_000} onChange={(event) => setDraft({ ...draft, description: event.target.value })} placeholder="Notes and context" value={draft.description} />
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="space-y-1.5"><label className="chat-meta-text text-muted-foreground" htmlFor="task-list">List</label><Select onValueChange={(value) => value && setDraft({ ...draft, listId: value })} value={draft.listId}><SelectTrigger className="w-full" id="task-list"><SelectValue /></SelectTrigger><SelectContent>{lists.map((list) => <SelectItem key={list.id} value={String(list.id)}>{list.name}</SelectItem>)}</SelectContent></Select></div>
-                  <div className="space-y-1.5"><label className="chat-meta-text text-muted-foreground" htmlFor="task-priority">Priority</label><Select onValueChange={(value) => value && setDraft({ ...draft, priority: value })} value={draft.priority}><SelectTrigger className="w-full" id="task-priority"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="0">None</SelectItem><SelectItem value="1">Low</SelectItem><SelectItem value="2">Medium</SelectItem><SelectItem value="3">High</SelectItem><SelectItem value="4">Urgent</SelectItem><SelectItem value="5">Critical</SelectItem></SelectContent></Select></div>
-                </div>
-                <div className="space-y-1.5"><label className="chat-meta-text text-muted-foreground" htmlFor="task-due">Due</label><Input id="task-due" onChange={(event) => setDraft({ ...draft, dueDate: event.target.value })} type="datetime-local" value={draft.dueDate} /></div>
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between"><p className="chat-meta-text text-muted-foreground">Source links</p><Button onClick={() => setDraft({ ...draft, links: [...draft.links, { label: "", url: "" }] })} size="sm" type="button" variant="ghost"><Plus /> Add link</Button></div>
-                  {draft.links.map((link, index) => (
-                    <div className="grid grid-cols-[minmax(0,.7fr)_minmax(0,1.3fr)_auto] gap-2" key={index}>
-                      <Input aria-label={`Link ${index + 1} label`} onChange={(event) => setDraft({ ...draft, links: draft.links.map((item, itemIndex) => itemIndex === index ? { ...item, label: event.target.value } : item) })} placeholder="Source email" value={link.label} />
-                      <Input aria-label={`Link ${index + 1} URL`} onChange={(event) => setDraft({ ...draft, links: draft.links.map((item, itemIndex) => itemIndex === index ? { ...item, url: event.target.value } : item) })} placeholder="https://…" type="url" value={link.url} />
-                      <Button aria-label={`Remove link ${index + 1}`} onClick={() => setDraft({ ...draft, links: draft.links.filter((_, itemIndex) => itemIndex !== index) })} size="icon-sm" type="button" variant="ghost"><Trash2 /></Button>
-                    </div>
-                  ))}
-                </div>
-                {taskDialog === "edit" && activeTask && (
-                  <div className="chat-meta-text flex flex-wrap gap-x-4 gap-y-1 border-t pt-3 text-muted-foreground">
-                    <span>Task #{activeTask.id}</span>
-                    {activeTask.createdAt && <span>Created {formatDate(activeTask.createdAt)}</span>}
-                    {activeTask.updatedAt && <span>Updated {formatDate(activeTask.updatedAt)}</span>}
+
+              <div className="task-editor-body">
+                <section className="space-y-4" aria-label="Task details">
+                  <div>
+                    <FieldLabel htmlFor="task-title">Task</FieldLabel>
+                    <Input autoComplete="off" className="task-title-input" id="task-title" maxLength={500} name="title" onChange={(event) => setDraft({ ...draft, title: event.target.value })} placeholder="What needs doing?" required value={draft.title} />
                   </div>
+                  <div>
+                    <FieldLabel htmlFor="task-notes">Notes</FieldLabel>
+                    <Textarea autoComplete="off" className="min-h-28 resize-y" id="task-notes" maxLength={20_000} name="description" onChange={(event) => setDraft({ ...draft, description: event.target.value })} placeholder="Add context, instructions, or a quick note…" value={draft.description} />
+                  </div>
+                </section>
+
+                <section className="task-editor-section" aria-labelledby="task-plan-label">
+                  <h3 className="task-section-title" id="task-plan-label">Plan</h3>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div>
+                      <FieldLabel htmlFor="task-list">List</FieldLabel>
+                      <Select onValueChange={(value) => value && setDraft({ ...draft, listId: value })} value={draft.listId}>
+                        <SelectTrigger className="task-editor-control w-full" id="task-list"><Folder /><SelectValue>{selectedDraftList?.name ?? "Choose a list"}</SelectValue></SelectTrigger>
+                        <SelectContent>{lists.map((list) => <SelectItem key={list.id} value={String(list.id)}><Folder />{list.name}</SelectItem>)}</SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <FieldLabel htmlFor="task-priority">Priority</FieldLabel>
+                      <Select onValueChange={(value) => value && setDraft({ ...draft, priority: value })} value={draft.priority}>
+                        <SelectTrigger className="task-editor-control w-full" id="task-priority"><PriorityMark value={draft.priority} /><SelectValue>{selectedPriority.label}</SelectValue></SelectTrigger>
+                        <SelectContent>{priorities.map((priority) => <SelectItem key={priority.value} value={priority.value}><PriorityMark value={priority.value} />{priority.label}</SelectItem>)}</SelectContent>
+                      </Select>
+                    </div>
+                    <div className="sm:col-span-2">
+                      <FieldLabel htmlFor="task-due">Due</FieldLabel>
+                      <Input autoComplete="off" className="task-editor-control" id="task-due" name="due-date" onChange={(event) => setDraft({ ...draft, dueDate: event.target.value })} type="datetime-local" value={draft.dueDate} />
+                    </div>
+                  </div>
+                </section>
+
+                <section className="task-editor-section" aria-labelledby="task-tags-label">
+                  <h3 className="task-section-title" id="task-tags-label">Tags</h3>
+                  <div className="flex gap-2">
+                    <Input aria-label="New tag" autoComplete="off" maxLength={32} name="new-tag" onChange={(event) => setTagInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === ",") { event.preventDefault(); addTag(); } }} placeholder="School, Errand, Home…" value={tagInput} />
+                    <Button disabled={!tagInput.trim() || draft.tags.length >= 12} onClick={addTag} type="button" variant="outline">Add</Button>
+                  </div>
+                  {draft.tags.length > 0 && <div className="flex flex-wrap gap-2">{draft.tags.map((tag) => <button className="task-tag task-tag-removable" key={tag} onClick={() => setDraft({ ...draft, tags: draft.tags.filter((item) => item !== tag) })} type="button">#{tag}<X /></button>)}</div>}
+                </section>
+
+                <section className="task-editor-section" aria-labelledby="task-sources-label">
+                  <div className="flex items-center justify-between gap-3">
+                    <h3 className="task-section-title" id="task-sources-label">Links</h3>
+                    <Button onClick={() => setDraft({ ...draft, links: [...draft.links, { label: "", url: "" }] })} size="sm" type="button" variant="ghost"><Plus /> Add link</Button>
+                  </div>
+                  {draft.links.length === 0 ? (
+                    <p className="chat-meta-text mt-2 text-muted-foreground">Attach the email, form, or page this task came from.</p>
+                  ) : (
+                    <div className="mt-3 space-y-3">
+                      {draft.links.map((link, index) => (
+                        <div className="task-link-row" key={index}>
+                          <Input aria-label={`Link ${index + 1} label`} autoComplete="off" name={`link-${index + 1}-label`} onChange={(event) => setDraft({ ...draft, links: draft.links.map((item, itemIndex) => itemIndex === index ? { ...item, label: event.target.value } : item) })} placeholder="Label…" value={link.label} />
+                          <Input aria-label={`Link ${index + 1} URL`} autoComplete="off" name={`link-${index + 1}-url`} onChange={(event) => setDraft({ ...draft, links: draft.links.map((item, itemIndex) => itemIndex === index ? { ...item, url: event.target.value } : item) })} placeholder="https://…" spellCheck={false} type="url" value={link.url} />
+                          {link.url && <Button aria-label={`Open link ${index + 1}`} render={<a href={link.url} rel="noreferrer" target="_blank" />} size="icon-sm" variant="ghost"><ExternalLink /></Button>}
+                          <Button aria-label={`Remove link ${index + 1}`} onClick={() => setDraft({ ...draft, links: draft.links.filter((_, itemIndex) => itemIndex !== index) })} size="icon-sm" type="button" variant="ghost"><Trash2 /></Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </section>
+
+                {taskDialog === "edit" && activeTask && (
+                  <p className="chat-meta-text border-t pt-4 text-muted-foreground">
+                    Task #{activeTask.id}{activeTask.updatedAt ? ` · Updated ${formatDate(activeTask.updatedAt)}` : activeTask.createdAt ? ` · Created ${formatDate(activeTask.createdAt)}` : ""}
+                  </p>
                 )}
               </div>
-              <DialogFooter className="mt-6 sm:justify-between">
-                <div>{taskDialog === "edit" && <Button disabled={saving} onClick={() => void removeTask()} type="button" variant="destructive"><Trash2 /> Delete</Button>}</div>
-                <div className="flex gap-2"><Button onClick={() => setTaskDialog(null)} type="button" variant="ghost">Cancel</Button><Button disabled={saving} type="submit">{saving ? <Spinner /> : taskDialog === "edit" ? <Check /> : <Plus />}{saving ? "Saving…" : "Save task"}</Button></div>
+
+              <DialogFooter className="task-editor-footer">
+                <div className="mr-auto">{taskDialog === "edit" && <Button aria-label="Delete task" disabled={saving} onClick={() => void removeTask()} size="icon-sm" type="button" variant="ghost"><Trash2 /></Button>}</div>
+                <Button onClick={() => setTaskDialog(null)} type="button" variant="ghost">Cancel</Button>
+                <Button disabled={saving} type="submit">{saving ? <Spinner /> : <Check />}{saving ? "Saving…" : "Save task"}</Button>
               </DialogFooter>
             </form>
           )}

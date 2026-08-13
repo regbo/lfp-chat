@@ -5,34 +5,8 @@ import {
   normalizeTaskIdentity,
   taskCreationLockKey,
 } from "@/lib/task-dedupe";
+import { decodeTaskDescription, encodeTaskDescription } from "@/lib/task-metadata";
 import type { Task, TaskLink, TaskList } from "@/lib/tasks";
-
-const linksMarker = /\n?<!-- lfp-chat:task-links (\[[\s\S]*?\]) -->\s*$/;
-
-function decodeDescription(value = "") {
-  const match = value.match(linksMarker);
-  if (!match) return { description: value, links: [] as TaskLink[] };
-  try {
-    const links = JSON.parse(match[1]!) as TaskLink[];
-    return {
-      description: value.replace(linksMarker, "").trimEnd(),
-      links: Array.isArray(links)
-        ? links.filter(
-            (link) =>
-              typeof link?.label === "string" && typeof link?.url === "string",
-          )
-        : [],
-    };
-  } catch {
-    return { description: value, links: [] as TaskLink[] };
-  }
-}
-
-function encodeDescription(description = "", links: TaskLink[] = []) {
-  if (!links.length) return description;
-  const body = description.trimEnd();
-  return `${body}${body ? "\n\n" : ""}<!-- lfp-chat:task-links ${JSON.stringify(links)} -->`;
-}
 
 type VikunjaProject = {
   id: number;
@@ -120,7 +94,7 @@ function taskList(project: VikunjaProject): TaskList {
 }
 
 function task(value: VikunjaTask): Task {
-  const details = decodeDescription(value.description);
+  const details = decodeTaskDescription(value.description);
   return {
     id: value.id,
     listId: value.project_id,
@@ -132,6 +106,7 @@ function task(value: VikunjaTask): Task {
       : {}),
     ...(value.priority !== undefined ? { priority: value.priority } : {}),
     ...(details.links.length ? { links: details.links } : {}),
+    ...(details.tags.length ? { tags: details.tags } : {}),
     ...(value.created ? { createdAt: value.created } : {}),
     ...(value.updated ? { updatedAt: value.updated } : {}),
   };
@@ -227,14 +202,15 @@ export async function createTask(input: {
   dueDate?: string | null;
   priority?: number;
   links?: TaskLink[];
+  tags?: string[];
 }) {
   const projectId = input.listId ?? configuration().projectId;
   const createdTask = await request<VikunjaTask>(`api/v1/projects/${projectId}/tasks`, {
     method: "PUT",
     body: JSON.stringify({
       title: input.title,
-      ...((input.description || input.links?.length)
-        ? { description: encodeDescription(input.description, input.links) }
+      ...((input.description || input.links?.length || input.tags?.length)
+        ? { description: encodeTaskDescription(input.description, input.links, input.tags) }
         : {}),
       ...(input.dueDate ? { due_date: input.dueDate } : {}),
       ...(input.priority ? { priority: input.priority } : {}),
@@ -250,6 +226,7 @@ export async function createTaskIfMissing(input: {
   dueDate?: string | null;
   priority?: number;
   links?: TaskLink[];
+  tags?: string[];
 }) {
   const listId = input.listId ?? configuration().projectId;
   return serializeCreation(
@@ -284,27 +261,30 @@ export async function updateTask(
     done?: boolean;
     priority?: number;
     links?: TaskLink[];
+    tags?: string[];
   },
 ) {
   let description = update.description;
   let links = update.links;
+  let tags = update.tags;
   if (
-    (links !== undefined && description === undefined) ||
-    (description !== undefined && links === undefined)
+    [description, links, tags].some((value) => value !== undefined) &&
+    [description, links, tags].some((value) => value === undefined)
   ) {
-    const currentDetails = decodeDescription(
+    const currentDetails = decodeTaskDescription(
       (await request<VikunjaTask>(`api/v1/tasks/${taskId}`)).description,
     );
     description ??= currentDetails.description;
     links ??= currentDetails.links;
+    tags ??= currentDetails.tags;
   }
   const updated = await request<VikunjaTask>(`api/v1/tasks/${taskId}`, {
     method: "POST",
     body: JSON.stringify({
       ...(update.listId !== undefined ? { project_id: update.listId } : {}),
       ...(update.title !== undefined ? { title: update.title } : {}),
-      ...(description !== undefined || links !== undefined
-        ? { description: encodeDescription(description, links) }
+      ...(description !== undefined || links !== undefined || tags !== undefined
+        ? { description: encodeTaskDescription(description, links, tags) }
         : {}),
       ...(update.dueDate !== undefined
         ? { due_date: update.dueDate ?? "0001-01-01T00:00:00Z" }

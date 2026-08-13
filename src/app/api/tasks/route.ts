@@ -12,6 +12,8 @@ const linkSchema = z.object({
   url: z.url().max(2_000),
 });
 
+const tagsSchema = z.array(z.string().trim().min(1).max(32)).max(12);
+
 const createSchema = z.object({
   listId: z.number().int().positive().optional(),
   title: z.string().trim().min(1).max(500),
@@ -19,6 +21,7 @@ const createSchema = z.object({
   dueDate: z.iso.datetime({ offset: true }).nullable().optional(),
   priority: z.number().int().min(0).max(5).optional(),
   links: z.array(linkSchema).max(20).optional(),
+  tags: tagsSchema.optional(),
 });
 
 const updateSchema = z.object({
@@ -30,6 +33,7 @@ const updateSchema = z.object({
   priority: z.number().int().min(0).max(5).optional(),
   done: z.boolean().optional(),
   links: z.array(linkSchema).max(20).optional(),
+  tags: tagsSchema.optional(),
 });
 
 export async function GET(request: Request) {
