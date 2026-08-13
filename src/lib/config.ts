@@ -100,8 +100,12 @@ export const serverConfig = {
   ),
   familyGraphGroupId:
     process.env.FAMILY_GRAPH_GROUP_ID?.trim() || "family-home",
+  familyEmbeddingBaseUrl: (
+    process.env.FAMILY_EMBEDDING_BASE_URL?.trim() ||
+    "http://127.0.0.1:11436/v1"
+  ).replace(/\/+$/, ""),
   familyEmbeddingModel:
-    process.env.FAMILY_EMBEDDING_MODEL?.trim() || "text-embedding-3-small",
+    process.env.FAMILY_EMBEDDING_MODEL?.trim() || "qwen3-embedding:0.6b",
   familyEmbeddingDimensions: boundedInteger(
     "FAMILY_EMBEDDING_DIMENSIONS",
     1_024,

@@ -216,13 +216,12 @@ Available public tables: documents (ingest_id, family_id, source, external_id, t
 });
 
 async function embedFamilyQuery(query: string) {
-  if (!serverConfig.openaiApiKey) {
-    throw new Error("OpenAI is not configured for family search embeddings.");
-  }
-  const response = await fetch("https://api.openai.com/v1/embeddings", {
+  const response = await fetch(`${serverConfig.familyEmbeddingBaseUrl}/embeddings`, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${serverConfig.openaiApiKey}`,
+      // Ollama's OpenAI-compatible endpoint accepts a placeholder credential.
+      // The private bridge replaces it with a short-lived tunnel identity.
+      Authorization: "Bearer local-bridge",
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
@@ -233,7 +232,7 @@ async function embedFamilyQuery(query: string) {
     signal: AbortSignal.timeout(30_000),
   });
   if (!response.ok) {
-    throw new Error(`OpenAI embedding query failed with HTTP ${response.status}.`);
+    throw new Error(`Family embedding query failed with HTTP ${response.status}.`);
   }
   const payload = (await response.json()) as {
     data?: Array<{ embedding?: number[] }>;
