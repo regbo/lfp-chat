@@ -149,6 +149,7 @@ import {
   useRef,
   useState,
   useSyncExternalStore,
+  type RefObject,
 } from "react";
 
 type CoreView =
@@ -183,6 +184,37 @@ const suggestions = [
   "Use both tools to search the stack and calculate 144 divided by 12.",
   "Remember that I prefer concise answers, then explain this architecture.",
 ];
+
+function useVisualViewportShell(shellRef: RefObject<HTMLElement | null>) {
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    const shell = shellRef.current;
+    if (!viewport || !shell) return;
+
+    // iOS may pan the layout viewport when its keyboard opens. Anchor the app
+    // shell to the actually visible viewport so its header is never panned away.
+    let animationFrame = 0;
+    const updateShell = () => {
+      window.cancelAnimationFrame(animationFrame);
+      animationFrame = window.requestAnimationFrame(() => {
+        shell.style.setProperty("--visual-viewport-height", `${viewport.height}px`);
+        shell.style.setProperty("--visual-viewport-top", `${viewport.offsetTop}px`);
+      });
+    };
+
+    updateShell();
+    viewport.addEventListener("resize", updateShell);
+    viewport.addEventListener("scroll", updateShell);
+
+    return () => {
+      window.cancelAnimationFrame(animationFrame);
+      viewport.removeEventListener("resize", updateShell);
+      viewport.removeEventListener("scroll", updateShell);
+      shell.style.removeProperty("--visual-viewport-height");
+      shell.style.removeProperty("--visual-viewport-top");
+    };
+  }, [shellRef]);
+}
 
 const makeId = () =>
   `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
@@ -1226,6 +1258,8 @@ export type ChatAppProps = {
 };
 
 export function ChatApp({ mods = [], plugins = [], user }: ChatAppProps) {
+  const appShellRef = useRef<HTMLElement>(null);
+  useVisualViewportShell(appShellRef);
   const pathname = usePathname();
   const registeredMods = useMemo(() => validateChatAppMods(mods), [mods]);
   const registeredPlugins = useMemo(
@@ -1757,7 +1791,7 @@ export function ChatApp({ mods = [], plugins = [], user }: ChatAppProps) {
 
   return (
     <>
-    <main className="app-shell flex bg-background">
+    <main className="app-shell flex bg-background" ref={appShellRef}>
       <div className={cn("hidden transition-[width] duration-200 md:block", sidebarOpen ? "w-[244px]" : "w-0 overflow-hidden")}>{sidebar}</div>
       {mobileSidebarOpen && (
         <div className="absolute inset-0 z-40 flex md:hidden">
