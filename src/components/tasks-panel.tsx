@@ -443,15 +443,50 @@ export function TasksPanel() {
   return (
     <div className="task-page min-h-0 flex-1 overflow-y-auto">
       <div className="mx-auto w-full max-w-6xl px-4 pb-16 pt-6 md:px-8 md:pt-9">
-        <header className="flex items-end justify-between gap-4 border-b border-border/70 pb-5">
-          <div>
-            <p className="task-eyebrow">Household</p>
-            <h1 className="chat-display-text mt-1">Tasks</h1>
+        <header className="space-y-5 border-b border-border/70 pb-5">
+          <div className="flex items-end justify-between gap-4">
+            <div>
+              <p className="task-eyebrow">Household</p>
+              <h1 className="chat-display-text mt-1">Tasks</h1>
+            </div>
+            <div className="flex gap-2">
+              <Button className="hidden rounded-full sm:inline-flex" onClick={openNewList} variant="outline"><Plus /> New list</Button>
+              <Button className="rounded-full" disabled={!selectedListId} onClick={openNewTask}><Plus /> Add task</Button>
+            </div>
           </div>
-          <div className="flex gap-2">
-            <Button className="hidden rounded-full sm:inline-flex" onClick={openNewList} variant="outline"><Plus /> New list</Button>
-            <Button className="rounded-full" disabled={!selectedListId} onClick={openNewTask}><Plus /> Add task</Button>
-          </div>
+
+          {!loading && searchableTasks.length > 0 && (
+            <div className="space-y-3">
+              <div className="relative">
+                <Search aria-hidden="true" className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  aria-label="Search tasks across all lists"
+                  autoComplete="off"
+                  className="h-11 rounded-xl bg-background pl-10 pr-20"
+                  name="task-search"
+                  onChange={(event) => {
+                    setTaskQuery(event.target.value);
+                    setTaskSearchLoading(Boolean(event.target.value.trim() || selectedTaskTags.length));
+                  }}
+                  placeholder="Search every task list…"
+                  value={taskQuery}
+                />
+                <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center">
+                  {taskSearchLoading && filteringTasks && <Spinner aria-label="Searching tasks" className="mr-1 size-4" />}
+                  {filteringTasks && <Button aria-label="Clear task search and filters" onClick={clearTaskFilters} size="icon-xs" type="button" variant="ghost"><X /></Button>}
+                </div>
+              </div>
+              {availableTaskTags.length > 0 && (
+                <div aria-label="Filter tasks across all lists by tag" className="flex flex-wrap gap-2">
+                  {availableTaskTags.slice(0, 10).map(({ label, count }) => {
+                    const active = selectedTaskTags.some((tag) => tag.toLocaleLowerCase() === label.toLocaleLowerCase());
+                    return <button aria-pressed={active} className={cn("task-search-tag", active && "task-search-tag-active")} key={label} onClick={() => toggleTaskTag(label)} type="button">#{label}<span>{count}</span>{active && <X aria-hidden="true" />}</button>;
+                  })}
+                </div>
+              )}
+              {taskSearchError && <p className="chat-meta-text text-destructive" role="alert">{taskSearchError}</p>}
+            </div>
+          )}
         </header>
 
         {error && <p className="chat-ui-text mt-4 rounded-xl border border-destructive/20 bg-destructive/8 p-3 text-destructive" role="alert">{error}</p>}
@@ -493,51 +528,20 @@ export function TasksPanel() {
               <div className="flex min-h-11 items-start justify-between gap-3 pb-4">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                    <h2 className="text-xl font-semibold tracking-tight" id="selected-task-list">{selectedList.name}</h2>
+                    <h2 className="text-xl font-semibold tracking-tight" id="selected-task-list">{filteringTasks ? "Search results" : selectedList.name}</h2>
                     {!loading && <span className="chat-meta-text text-muted-foreground">{filteringTasks ? (taskSearchLoading ? "Searching…" : `${visibleTasks.length} results`) : `${tasks.length} open`}</span>}
                   </div>
-                  {selectedList.description && <p className="chat-ui-text mt-1 max-w-2xl text-muted-foreground">{selectedList.description}</p>}
+                  {filteringTasks
+                    ? <p className="chat-ui-text mt-1 text-muted-foreground">Across all lists</p>
+                    : selectedList.description && <p className="chat-ui-text mt-1 max-w-2xl text-muted-foreground">{selectedList.description}</p>}
                 </div>
-                <DropdownMenu>
+                {!filteringTasks && <DropdownMenu>
                   <DropdownMenuTrigger render={<Button aria-label="Manage list" size="icon-sm" variant="ghost" />}><MoreHorizontal /></DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-40 p-1">
                     <DropdownMenuItem className="gap-2 px-2 py-1.5" onClick={openEditList}><Pencil /> Edit list</DropdownMenuItem>
                     <DropdownMenuItem className="gap-2 px-2 py-1.5" onClick={() => void removeList()} variant="destructive"><Trash2 /> Delete list</DropdownMenuItem>
                   </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-            )}
-
-            {selectedList && !loading && searchableTasks.length > 0 && (
-              <div className="mb-4 space-y-3">
-                <div className="relative">
-                  <Search aria-hidden="true" className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                  <Input
-                    aria-label="Search tasks across all lists"
-                    autoComplete="off"
-                    className="h-11 rounded-xl pl-10 pr-20"
-                    name="task-search"
-                    onChange={(event) => {
-                      setTaskQuery(event.target.value);
-                      setTaskSearchLoading(Boolean(event.target.value.trim() || selectedTaskTags.length));
-                    }}
-                    placeholder="Search all lists…"
-                    value={taskQuery}
-                  />
-                  <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center">
-                    {taskSearchLoading && filteringTasks && <Spinner aria-label="Searching tasks" className="mr-1 size-4" />}
-                    {filteringTasks && <Button aria-label="Clear task search and filters" onClick={clearTaskFilters} size="icon-xs" type="button" variant="ghost"><X /></Button>}
-                  </div>
-                </div>
-                {availableTaskTags.length > 0 && (
-                  <div aria-label="Filter tasks across all lists by tag" className="flex flex-wrap gap-2">
-                    {availableTaskTags.slice(0, 10).map(({ label, count }) => {
-                      const active = selectedTaskTags.some((tag) => tag.toLocaleLowerCase() === label.toLocaleLowerCase());
-                      return <button aria-pressed={active} className={cn("task-search-tag", active && "task-search-tag-active")} key={label} onClick={() => toggleTaskTag(label)} type="button">#{label}<span>{count}</span>{active && <X aria-hidden="true" />}</button>;
-                    })}
-                  </div>
-                )}
-                {taskSearchError && <p className="chat-meta-text text-destructive" role="alert">{taskSearchError}</p>}
+                </DropdownMenu>}
               </div>
             )}
 
@@ -592,7 +596,7 @@ export function TasksPanel() {
       </Dialog>
 
       <Dialog onOpenChange={(open) => !open && setTaskDialog(null)} open={taskDialog !== null}>
-        <DialogContent className="task-editor" showCloseButton={false}>
+        <DialogContent className="task-editor" showCloseButton={false} viewportClassName="task-editor-viewport">
           {draft && (
             <form className="task-editor-form" onSubmit={saveTask}>
               <DialogHeader className="task-editor-header">
