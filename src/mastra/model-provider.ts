@@ -1,10 +1,11 @@
-import { openai } from "@ai-sdk/openai";
+import { createOpenAI, openai } from "@ai-sdk/openai";
 import type { ToolsInput } from "@mastra/core/agent";
 import type { ModelRouterModelId } from "@mastra/core/llm";
 import type { RequestContext } from "@mastra/core/request-context";
 import { webSearchTool } from "@mastra/core/tools";
 
 import { serverConfig } from "@/lib/config";
+import { SCHEDULE_JOB_CONTEXT_KEY } from "@/lib/schedules";
 import {
   createAgentCatalog,
   createModelCatalog,
@@ -31,6 +32,11 @@ let modelCatalogExpiresAt = 0;
 let pendingModelCatalog: Promise<typeof cachedModelCatalog> | null = null;
 
 const MODEL_CATALOG_TTL_MS = 10 * 60 * 1_000;
+const scheduledOllama = createOpenAI({
+  name: "ollama",
+  baseURL: serverConfig.scheduledModelBaseUrl,
+  apiKey: "local-bridge",
+});
 
 type OpenAiModelsResponse = {
   data?: Array<{ id?: string }>;
@@ -101,10 +107,16 @@ function selectionFromRequestContext(requestContext?: RequestContext) {
 }
 
 export function resolveRuntimeModel(requestContext?: RequestContext) {
+  if (requestContext?.get(SCHEDULE_JOB_CONTEXT_KEY) === true) {
+    return scheduledOllama.chat(serverConfig.scheduledModelName);
+  }
   return selectionFromRequestContext(requestContext).modelId as ModelRouterModelId;
 }
 
 export function resolveRuntimeOptions(requestContext?: RequestContext) {
+  if (requestContext?.get(SCHEDULE_JOB_CONTEXT_KEY) === true) {
+    return { maxSteps: serverConfig.agentMaxSteps, providerOptions: undefined };
+  }
   const selection = selectionFromRequestContext(requestContext);
   const model = cachedModelCatalog.models.find(
     (candidate) => candidate.id === selection.modelId,
