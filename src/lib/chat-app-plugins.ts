@@ -37,6 +37,13 @@ export type ChatAppToolContribution = {
   dedicatedModel?: DedicatedToolModelConfig;
 };
 
+export type ChatAppToolPolicy = {
+  /** Initial availability. For non-configurable tools this is enforced by the server. */
+  enabled?: boolean;
+  /** Whether the user can change availability in the Tools screen. */
+  userConfigurable?: boolean;
+};
+
 /** App-wide extension bundle supplied without patching ChatApp internals. */
 export type ChatAppMod = {
   id: string;

@@ -1,4 +1,4 @@
-import { mkdir, rm } from "node:fs/promises";
+import { cp, mkdir, rm } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { $ } from "bun";
 
@@ -19,7 +19,7 @@ const externalDependencies = Object.keys(manifest.dependencies ?? {}).flatMap(
   (dependency) => [dependency, `${dependency}/*`],
 );
 
-const bundle = await Bun.build({
+const clientBundle = await Bun.build({
   banner: '"use client";',
   // Bun otherwise selects the development JSX runtime for this standalone
   // library bundle, which is not available while Next.js prerenders consumers.
@@ -33,11 +33,30 @@ const bundle = await Bun.build({
   target: "browser",
 });
 
-if (!bundle.success) {
-  for (const log of bundle.logs) {
+if (!clientBundle.success) {
+  for (const log of clientBundle.logs) {
     console.error(log);
   }
   throw new Error("The package JavaScript bundle failed.");
+}
+
+const serverBundle = await Bun.build({
+  define: { "process.env.NODE_ENV": '"production"' },
+  entrypoints: [resolve(projectRoot, "src/server-package.ts")],
+  external: externalDependencies,
+  format: "esm",
+  minify: true,
+  naming: "mastra.js",
+  outdir: packageRoot,
+  sourcemap: "none",
+  target: "bun",
+});
+
+if (!serverBundle.success) {
+  for (const log of serverBundle.logs) {
+    console.error(log);
+  }
+  throw new Error("The Mastra package JavaScript bundle failed.");
 }
 
 await $`${process.execPath} x tsc -p ${resolve(projectRoot, "tsconfig.publish.json")}`.cwd(
@@ -45,32 +64,24 @@ await $`${process.execPath} x tsc -p ${resolve(projectRoot, "tsconfig.publish.js
 );
 
 const publicTypesRoot = resolve(packageRoot, "types");
-await mkdir(resolve(publicTypesRoot, "components"), { recursive: true });
-await mkdir(resolve(publicTypesRoot, "lib"), { recursive: true });
-for (const relativePath of [
-  "index.d.ts",
-  "components/chat-app.d.ts",
-  "components/tasks-panel.d.ts",
-  "lib/app-branding.d.ts",
-  "lib/chat-app-plugins.d.ts",
-  "lib/tasks.d.ts",
-]) {
-  await Bun.write(
-    resolve(publicTypesRoot, relativePath),
-    Bun.file(resolve(temporaryTypesRoot, relativePath)),
-  );
-}
+await mkdir(publicTypesRoot, { recursive: true });
+await cp(temporaryTypesRoot, publicTypesRoot, { recursive: true });
 await rm(temporaryTypesRoot, { force: true, recursive: true });
 
 await $`${process.execPath} x tailwindcss -i ${resolve(projectRoot, "src/app/globals.css")} -o ${resolve(packageRoot, "styles.css")} --minify`.cwd(
   projectRoot,
 );
 
-const bundledSource = await Bun.file(resolve(packageRoot, "index.js")).text();
-if (/react\/jsx-dev-runtime|\bjsxDEV\b/.test(bundledSource)) {
+const clientSource = await Bun.file(resolve(packageRoot, "index.js")).text();
+if (/react\/jsx-dev-runtime|\bjsxDEV\b/.test(clientSource)) {
   throw new Error("The package bundle contains React's development-only JSX runtime.");
 }
-const imports = new Bun.Transpiler({ loader: "js" }).scan(bundledSource).imports;
+const serverSource = await Bun.file(resolve(packageRoot, "mastra.js")).text();
+const transpiler = new Bun.Transpiler({ loader: "js" });
+const imports = [
+  ...transpiler.scan(clientSource).imports,
+  ...transpiler.scan(serverSource).imports,
+];
 const dependencyNames = Object.keys(manifest.dependencies ?? {});
 const usedDependencies = new Set<string>();
 for (const item of imports) {
@@ -107,6 +118,11 @@ const packageManifest = {
       types: "./types/index.d.ts",
       import: "./index.js",
       default: "./index.js",
+    },
+    "./mastra": {
+      types: "./types/server-package.d.ts",
+      import: "./mastra.js",
+      default: "./mastra.js",
     },
     "./styles.css": "./styles.css",
     "./package.json": "./package.json",

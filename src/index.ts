@@ -12,5 +12,6 @@ export type {
   ChatAppMod,
   ChatAppPlugin,
   ChatAppToolContribution,
+  ChatAppToolPolicy,
 } from "./lib/chat-app-plugins";
 export type { Task, TaskLink, TaskList } from "./lib/tasks";

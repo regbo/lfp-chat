@@ -98,6 +98,128 @@ function optionalHttpUrl(name: string) {
   return value.replace(/\/+$/, "");
 }
 
+export type McpToolSource = {
+  id: string;
+  title: string;
+  description: string;
+  url: string;
+  enabled: boolean;
+  defaultEnabled: boolean;
+  userConfigurable: boolean;
+  authToken?: string;
+  timeoutMs: number;
+  forwardInstructions: boolean;
+};
+
+export type ToolPolicyOverride = {
+  enabled?: boolean;
+  userConfigurable?: boolean;
+};
+
+function toolPolicyOverrides(): Record<string, ToolPolicyOverride> {
+  const raw = process.env.TOOL_POLICIES?.trim();
+  if (!raw) return {};
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    throw new Error("TOOL_POLICIES must be valid JSON.", { cause: error });
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("TOOL_POLICIES must be a JSON object keyed by tool id.");
+  }
+  return Object.fromEntries(Object.entries(parsed).map(([id, value]) => {
+    if (!/^[a-z][a-z0-9_-]{0,62}$/.test(id) || !value || typeof value !== "object") {
+      throw new Error(`Invalid TOOL_POLICIES entry: ${id}`);
+    }
+    const policy = value as Record<string, unknown>;
+    for (const field of ["enabled", "userConfigurable"] as const) {
+      if (policy[field] !== undefined && typeof policy[field] !== "boolean") {
+        throw new Error(`TOOL_POLICIES.${id}.${field} must be boolean.`);
+      }
+    }
+    return [id, {
+      ...(typeof policy.enabled === "boolean" ? { enabled: policy.enabled } : {}),
+      ...(typeof policy.userConfigurable === "boolean"
+        ? { userConfigurable: policy.userConfigurable }
+        : {}),
+    }];
+  }));
+}
+
+function mcpToolSources(): McpToolSource[] {
+  const raw = process.env.MCP_TOOL_SOURCES?.trim();
+  if (!raw) return [];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    throw new Error("MCP_TOOL_SOURCES must be valid JSON.", { cause: error });
+  }
+  if (!Array.isArray(parsed)) {
+    throw new Error("MCP_TOOL_SOURCES must be a JSON array.");
+  }
+  const seen = new Set<string>();
+  return parsed.map((value, index) => {
+    if (!value || typeof value !== "object") {
+      throw new Error(`MCP_TOOL_SOURCES[${index}] must be an object.`);
+    }
+    const source = value as Record<string, unknown>;
+    const id = typeof source.id === "string" ? source.id.trim() : "";
+    const title = typeof source.title === "string" ? source.title.trim() : "";
+    const description =
+      typeof source.description === "string" ? source.description.trim() : "";
+    const rawUrl = typeof source.url === "string" ? source.url.trim() : "";
+    if (!/^[a-z][a-z0-9_-]{0,62}$/.test(id)) {
+      throw new Error(`MCP_TOOL_SOURCES[${index}].id must be a lowercase slug.`);
+    }
+    if (seen.has(id)) throw new Error(`Duplicate MCP tool source id: ${id}`);
+    if (!title || !description) {
+      throw new Error(`MCP tool source ${id} requires title and description.`);
+    }
+    let url: URL;
+    try {
+      url = new URL(rawUrl);
+    } catch (error) {
+      throw new Error(`MCP tool source ${id} has an invalid URL.`, { cause: error });
+    }
+    if (!["http:", "https:"].includes(url.protocol)) {
+      throw new Error(`MCP tool source ${id} URL must use HTTP or HTTPS.`);
+    }
+    const authTokenFile =
+      typeof source.authTokenFile === "string" ? source.authTokenFile.trim() : "";
+    const authToken = authTokenFile
+      ? readFileSync(authTokenFile, "utf8").trim()
+      : typeof source.authToken === "string"
+        ? source.authToken.trim()
+        : undefined;
+    if (authTokenFile && !authToken) {
+      throw new Error(`MCP tool source ${id} auth token file is empty.`);
+    }
+    const timeoutMs = source.timeoutMs === undefined ? 60_000 : Number(source.timeoutMs);
+    if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1_000 || timeoutMs > 300_000) {
+      throw new Error(`MCP tool source ${id} timeoutMs must be from 1000 to 300000.`);
+    }
+    const enabled = typeof source.enabled === "boolean"
+      ? source.enabled
+      : source.defaultEnabled !== false;
+    const userConfigurable = source.userConfigurable === true;
+    seen.add(id);
+    return {
+      id,
+      title,
+      description,
+      url: url.toString(),
+      enabled,
+      defaultEnabled: enabled,
+      userConfigurable,
+      authToken,
+      timeoutMs,
+      forwardInstructions: source.forwardInstructions !== false,
+    };
+  });
+}
+
 const vikunjaApiUrl = process.env.VIKUNJA_API_URL?.trim();
 const vikunjaApiToken = secretValue(
   "VIKUNJA_API_TOKEN",
@@ -125,6 +247,8 @@ export const serverConfig = {
   vikunjaApiToken,
   vikunjaProjectId: boundedInteger("VIKUNJA_PROJECT_ID", 1, 1, 2_147_483_647),
   taskServiceConfigured: Boolean(vikunjaApiUrl && vikunjaApiToken),
+  mcpToolSources: mcpToolSources(),
+  toolPolicyOverrides: toolPolicyOverrides(),
   scheduleRunImmediately: booleanValue("SCHEDULE_RUN_IMMEDIATELY", true),
   webPushSubject: process.env.WEB_PUSH_SUBJECT?.trim() || "mailto:admin@localhost",
   webPushPublicKey: process.env.WEB_PUSH_PUBLIC_KEY?.trim(),

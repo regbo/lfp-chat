@@ -93,6 +93,40 @@ const workspaceMod = {
 
 The legacy `plugins` prop remains available for a single routed view.
 
+### Customize the Mastra server
+
+Server consumers can build on the complete stock configuration through the
+server-only `@regbo/lfp-chat/mastra` entry point. The callbacks receive the
+actual `AgentConfig` and `Mastra` config, so consumers can add or replace tools,
+agents, workflows, storage, memory, MCP servers, and other supported settings:
+
+```ts
+import { createLfpChatMastra } from "@regbo/lfp-chat/mastra";
+
+export const { mastra, memory } = createLfpChatMastra({
+  configureChatAgent: (config) => ({
+    ...config,
+    instructions: `${config.instructions}\nUse the host application's domain rules.`,
+  }),
+  configureMastra: (config) => ({
+    ...config,
+    workflows: { ...config.workflows, hostWorkflow },
+  }),
+});
+```
+
+For deployment-time integrations, `MCP_TOOL_SOURCES` accepts a JSON array of
+sources with `id`, `title`, `description`, and `url`, plus optional
+`authTokenFile`, `timeoutMs`, and `forwardInstructions`. `enabled` defaults to
+`true` and `userConfigurable` defaults to `false`. A configurable source appears
+in the Tools screen and uses `enabled` as its initial state; a disabled,
+non-configurable source is removed from the agent and hidden from the UI.
+
+`TOOL_POLICIES` applies the same `{ enabled, userConfigurable }` override to
+built-in logical capabilities or exact Mastra tool IDs. For example,
+`{"code_mode":{"enabled":false,"userConfigurable":false}}` fully removes Code
+mode rather than showing a disabled toggle.
+
 The included application gives every primary view a stable URL: `/search`,
 `/scheduled`, `/tools`, `/archived`, `/tasks`, and `/settings`. Conversations
 remain addressable at `/c/[threadId]`, and `/` always starts a new chat.

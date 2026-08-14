@@ -123,7 +123,6 @@ import {
   type ThreadSummary,
 } from "@/lib/thread-state";
 import {
-  defaultEnabledToolIds,
   migrateEnabledToolIds,
   toolCatalog,
   TOOL_CATALOG_VERSION,
@@ -135,6 +134,7 @@ import {
   validateChatAppMods,
   type ChatAppMod,
   type ChatAppPlugin,
+  type ChatAppToolPolicy,
 } from "../lib/chat-app-plugins";
 import { type FileUIPart, type UIMessage } from "ai";
 import Image from "next/image";
@@ -1646,6 +1646,8 @@ export type ChatAppProps = {
   plugins?: readonly ChatAppPlugin[];
   /** App-wide contributions for routes, settings, and host-implemented tools. */
   mods?: readonly ChatAppMod[];
+  /** Availability and user-toggle overrides for built-in tools. */
+  toolPolicies?: Readonly<Record<string, ChatAppToolPolicy>>;
   /** Server-authenticated identity used to scope memory and scheduled work. */
   user?: {
     resourceId: string;
@@ -1654,7 +1656,7 @@ export type ChatAppProps = {
   };
 };
 
-export function ChatApp({ branding = DEFAULT_APP_BRANDING, mods = [], plugins = [], user }: ChatAppProps) {
+export function ChatApp({ branding = DEFAULT_APP_BRANDING, mods = [], plugins = [], toolPolicies = {}, user }: ChatAppProps) {
   const appShellRef = useRef<HTMLElement>(null);
   useVisualViewportShell(appShellRef);
   const pathname = usePathname();
@@ -1681,6 +1683,21 @@ export function ChatApp({ branding = DEFAULT_APP_BRANDING, mods = [], plugins = 
   const contributedSettings = useMemo(
     () => registeredMods.flatMap((mod) => mod.settings ? [mod.settings] : []),
     [registeredMods],
+  );
+  const configuredBuiltInTools = useMemo(
+    () => toolCatalog
+      .filter((tool) => toolPolicies[tool.id]?.userConfigurable !== false)
+      .map((tool) => ({
+        ...tool,
+        defaultEnabled: toolPolicies[tool.id]?.enabled ?? tool.defaultEnabled,
+      })),
+    [toolPolicies],
+  );
+  const configuredDefaultToolIds = useMemo(
+    () => configuredBuiltInTools
+      .filter((tool) => tool.defaultEnabled)
+      .map((tool) => tool.id as string),
+    [configuredBuiltInTools],
   );
   const dedicatedModelTools = useMemo(
     () => contributedTools.flatMap((tool) =>
@@ -1713,7 +1730,10 @@ export function ChatApp({ branding = DEFAULT_APP_BRANDING, mods = [], plugins = 
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [enabledToolIds, setEnabledToolIds] = useState<string[]>(
-    defaultEnabledToolIds,
+    () => [
+      ...configuredDefaultToolIds,
+      ...contributedTools.filter((tool) => tool.defaultEnabled).map((tool) => tool.id),
+    ],
   );
   const [modelCatalog, setModelCatalog] = useState<ModelCatalogResponse | null>(null);
   const [modelSelection, setModelSelection] = useState<ModelSelection | null>(null);
@@ -1847,10 +1867,24 @@ export function ChatApp({ branding = DEFAULT_APP_BRANDING, mods = [], plugins = 
           const preserved = Array.isArray(raw)
             ? raw.filter((id): id is string => typeof id === "string" && contributedIds.has(id))
             : [];
+          const previousContributed = new Set(
+            JSON.parse(
+              window.localStorage.getItem("lfp-chat-contributed-tool-ids") || "[]",
+            ) as string[],
+          );
+          const newlyIntroduced = contributedTools
+            .filter((tool) => tool.defaultEnabled && !previousContributed.has(tool.id))
+            .map((tool) => tool.id);
+          const configurableBuiltInIds = new Set(
+            configuredBuiltInTools.map((tool) => tool.id as string),
+          );
           const migrated = Array.from(new Set([
             ...migrateEnabledToolIds(raw, storedVersion),
             ...preserved,
-          ]));
+            ...newlyIntroduced,
+          ])).filter((id) =>
+            !toolCatalog.some((tool) => tool.id === id) || configurableBuiltInIds.has(id),
+          );
           setEnabledToolIds(migrated);
           window.localStorage.setItem("lfp-chat-enabled-tools", JSON.stringify(migrated));
           window.localStorage.setItem(
@@ -1859,16 +1893,20 @@ export function ChatApp({ branding = DEFAULT_APP_BRANDING, mods = [], plugins = 
           );
         } else {
           setEnabledToolIds(Array.from(new Set([
-            ...defaultEnabledToolIds,
+            ...configuredDefaultToolIds,
             ...contributedTools.filter((tool) => tool.defaultEnabled).map((tool) => tool.id),
           ])));
         }
+        window.localStorage.setItem(
+          "lfp-chat-contributed-tool-ids",
+          JSON.stringify(contributedTools.map((tool) => tool.id)),
+        );
       } catch {
         // Restricted browsers use the centralized defaults for this session.
       }
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [contributedTools]);
+  }, [configuredBuiltInTools, configuredDefaultToolIds, contributedTools]);
 
   const toggleTool = useCallback((toolId: string) => {
     setEnabledToolIds((current) => {
@@ -2466,7 +2504,7 @@ export function ChatApp({ branding = DEFAULT_APP_BRANDING, mods = [], plugins = 
           />
         )}
         {resourceId && activeView === "tools" && (
-          <ToolsPanel contributedTools={contributedTools} enabledToolIds={enabledToolIds} onToggle={toggleTool} resourceId={resourceId} />
+          <ToolsPanel builtInTools={configuredBuiltInTools} contributedTools={contributedTools} enabledToolIds={enabledToolIds} onToggle={toggleTool} resourceId={resourceId} />
         )}
         {resourceId && activeView === "archived" && (
           <ArchivedPanel

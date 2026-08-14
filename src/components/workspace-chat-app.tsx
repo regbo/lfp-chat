@@ -6,6 +6,7 @@ import { ChatApp } from "@/components/chat-app";
 import { TasksPanel } from "@/components/tasks-panel";
 import type { AppBranding } from "@/lib/app-branding";
 import type { UserScope } from "@/lib/user-scope";
+import type { McpToolSource, ToolPolicyOverride } from "@/lib/config";
 
 const coreMods = [{
   id: "workspace",
@@ -18,6 +19,15 @@ const taskMods = [{
   tools: [{ id: "tasks", title: "Tasks", description: "Create, organize, update, and review tasks.", icon: <ListTodo />, defaultEnabled: true }],
 }] as const;
 
-export function WorkspaceChatApp({ branding, taskServiceConfigured, user }: { branding: AppBranding; taskServiceConfigured: boolean; user?: UserScope }) {
-  return <ChatApp branding={branding} mods={taskServiceConfigured ? [...coreMods, ...taskMods] : coreMods} user={user} />;
+export function WorkspaceChatApp({ branding, taskServiceConfigured, mcpToolSources, toolPolicies, user }: { branding: AppBranding; taskServiceConfigured: boolean; mcpToolSources: readonly Pick<McpToolSource, "id" | "title" | "description" | "defaultEnabled" | "userConfigurable">[]; toolPolicies: Record<string, ToolPolicyOverride>; user?: UserScope }) {
+  const configurableMcpSources = mcpToolSources.filter((source) => source.userConfigurable);
+  const mcpMods = configurableMcpSources.length
+    ? [{ id: "configured-mcp", tools: configurableMcpSources }]
+    : [];
+  const mods = [
+    ...coreMods,
+    ...(taskServiceConfigured ? taskMods : []),
+    ...mcpMods,
+  ];
+  return <ChatApp branding={branding} mods={mods} toolPolicies={toolPolicies} user={user} />;
 }

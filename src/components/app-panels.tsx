@@ -37,7 +37,6 @@ import {
 import type { ThreadSummary } from "@/lib/thread-state";
 import {
   orderToolsWithCodeModeLast,
-  toolCatalog,
   type SelectableToolId,
 } from "@/lib/tool-catalog";
 import type { ChatAppToolContribution } from "@/lib/chat-app-plugins";
@@ -826,11 +825,13 @@ const toolIcons: Record<SelectableToolId, LucideIcon> = {
 };
 
 export function ToolsPanel({
+  builtInTools,
   contributedTools,
   enabledToolIds,
   onToggle,
   resourceId,
 }: {
+  builtInTools: readonly ChatAppToolContribution[];
   contributedTools?: readonly ChatAppToolContribution[];
   enabledToolIds: string[];
   onToggle: (toolId: string) => void;
@@ -840,7 +841,7 @@ export function ToolsPanel({
   const [savedToolValues, setSavedToolValues] = useState<Record<string, Array<{ label: string; value: unknown }>>>({});
   const [selectedTool, setSelectedTool] = useState<DashboardUserTool>();
   const tools = orderToolsWithCodeModeLast([
-    ...toolCatalog,
+    ...builtInTools,
     ...(contributedTools ?? []),
   ]);
   const loadSavedTools = useCallback(async () => {

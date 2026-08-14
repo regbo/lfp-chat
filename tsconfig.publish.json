@@ -9,6 +9,6 @@
     "outDir": "./dist/.package-types",
     "rootDir": "./src"
   },
-  "include": ["src/index.ts"],
+  "include": ["src/index.ts", "src/server-package.ts"],
   "exclude": ["node_modules", ".next", "dist"]
 }

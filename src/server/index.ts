@@ -5,7 +5,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 
 import { serverConfig } from "@/lib/config";
-import { mastra } from "@/mastra";
+import { mastra } from "@/mastra/runtime";
 import { getModelCatalog } from "@/mastra/model-provider";
 import { runDashboardWidget } from "@/mastra/dashboard-refresh";
 

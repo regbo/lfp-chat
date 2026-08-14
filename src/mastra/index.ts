@@ -1,5 +1,7 @@
 import { Agent } from "@mastra/core/agent";
+import type { AgentConfig } from "@mastra/core/agent";
 import { Mastra } from "@mastra/core/mastra";
+import type { Config as MastraConfig } from "@mastra/core/mastra";
 import { Memory } from "@mastra/memory";
 import { PostgresStore } from "@mastra/pg";
 
@@ -45,12 +47,13 @@ import { notifyResource } from "@/lib/push-notifications";
 import { notificationSendTool } from "@/mastra/notification-tool";
 import { createObservability } from "@/mastra/observability";
 import { DEFAULT_WRITING_STYLE_INSTRUCTIONS } from "@/mastra/writing-style-instructions";
+import { configuredMcpTools } from "@/mastra/mcp-tool-sources";
 
-const globalForMastra = globalThis as typeof globalThis & {
-  lfpMastra?: {
-    mastra: Mastra;
-    memory: Memory;
-  };
+export type LfpChatMastraCustomization = {
+  /** Replace or extend any Chat Agent setting, including tools, model, memory, and workspace. */
+  configureChatAgent?: (config: AgentConfig) => AgentConfig;
+  /** Replace or extend any Mastra setting, including agents, workflows, tools, storage, and MCP. */
+  configureMastra?: (config: MastraConfig) => MastraConfig;
 };
 
 const configuredTaskTools = {
@@ -64,7 +67,27 @@ const configuredTaskTools = {
   task_delete: taskDeleteTool,
 };
 
-function createMastra() {
+function resolvedEnabledCapabilities(value: unknown): Set<string> {
+  const enabled = new Set(normalizeEnabledToolIds(value));
+  for (const [id, policy] of Object.entries(serverConfig.toolPolicyOverrides)) {
+    if (policy.userConfigurable === true) continue;
+    if (policy.enabled === false) enabled.delete(id);
+    else enabled.add(id);
+  }
+  return enabled;
+}
+
+function exactToolPolicy(id: string, enabled: Set<string>): boolean | undefined {
+  const policy = serverConfig.toolPolicyOverrides[id];
+  if (!policy) return undefined;
+  return policy.userConfigurable === true
+    ? enabled.has(id)
+    : policy.enabled !== false;
+}
+
+export function createLfpChatMastra(
+  customization: LfpChatMastraCustomization = {},
+) {
   const storage = new PostgresStore({
     id: "lfp-chat-postgres",
     connectionString: serverConfig.databaseUrl,
@@ -93,18 +116,17 @@ function createMastra() {
   // read-oriented tools are exposed to persisted widget programs by default.
   ensureDashboardCapabilities();
 
-  const chatAgent = new Agent({
+  const baseChatAgentConfig: AgentConfig = {
     id: "chatAgent",
     name: serverConfig.appBranding.fullName,
     description: "A concise, tool-capable assistant with persistent memory.",
     model: ({ requestContext }) => resolveRuntimeModel(requestContext),
     memory,
-    tools: ({ requestContext }) => {
-      const enabled = new Set<string>(
-        normalizeEnabledToolIds(requestContext.get(TOOLS_CONTEXT_KEY)),
-      );
+    tools: async ({ requestContext }) => {
+      const enabled = resolvedEnabledCapabilities(requestContext.get(TOOLS_CONTEXT_KEY));
       if (!serverConfig.taskServiceConfigured) enabled.delete("tasks");
       const isScheduledJob = requestContext.get(SCHEDULE_JOB_CONTEXT_KEY) === true;
+      const mcpTools = await configuredMcpTools(enabled);
       const availableTools = {
         monty: montyTool,
         render_chart: renderChartTool,
@@ -125,30 +147,36 @@ function createMastra() {
         job_memory_recall: jobMemoryRecallTool,
         notification_send: notificationSendTool,
         ...(isScheduledJob ? {} : modelProvider.tools),
+        ...mcpTools,
       };
       return Object.fromEntries(
-        Object.entries(availableTools).filter(
-          ([id]) =>
-            (serverConfig.taskServiceConfigured || !id.startsWith("task_")) && (
+        Object.entries(availableTools).filter(([id]) => {
+          if (!serverConfig.taskServiceConfigured && id.startsWith("task_")) return false;
+          const policyDecision = exactToolPolicy(id, enabled);
+          if (policyDecision !== undefined) return policyDecision;
+          return (
               isMandatoryAgentToolId(id) || enabled.has(id) ||
               (enabled.has("tasks") && id.startsWith("task_")) ||
               (enabled.has("scheduling") && id.startsWith("schedule_")) ||
               (enabled.has("notifications") && id === "notification_send") ||
+              serverConfig.mcpToolSources.some(
+                (source) =>
+                  (source.userConfigurable ? enabled.has(source.id) : source.enabled) &&
+                  id.startsWith(`${source.id}_`),
+              ) ||
               (isScheduledJob && ["job_memory_recall", "notification_send"].includes(id))
-            ),
-        ),
+            );
+        }),
       );
     },
     workspace: ({ requestContext }) =>
-      normalizeEnabledToolIds(requestContext.get(TOOLS_CONTEXT_KEY)).includes(
-        "code_mode",
-      )
+      resolvedEnabledCapabilities(requestContext.get(TOOLS_CONTEXT_KEY)).has("code_mode")
         ? hostWorkspace
         : undefined,
     instructions: ({ requestContext }) => {
-      const enabled = normalizeEnabledToolIds(
+      const enabled = [...resolvedEnabledCapabilities(
         requestContext.get(TOOLS_CONTEXT_KEY),
-      ).filter((id) => serverConfig.taskServiceConfigured || id !== "tasks");
+      )].filter((id) => serverConfig.taskServiceConfigured || id !== "tasks");
       const scheduledJobInstructions =
         requestContext.get(SCHEDULE_JOB_CONTEXT_KEY) === true
           ? "This run belongs to a scheduled job with its own private history. Use job_memory_recall before answering whenever the task asks for novelty, non-repetition, continuity, or comparison with prior runs. If this job can create tasks or task lists, inspect the current open tasks and lists before writing. Treat matching source links or substantially equivalent titles and purposes as the same work: update the existing task instead of creating another. Never evade task_create's created=false result by rewording a duplicate. Use notification_send when the job prompt asks for a user alert, keeping the alert concise. Previous outputs are recorded automatically; never use another job or ordinary chat as this job's memory."
@@ -171,14 +199,20 @@ Remember stable user preferences in working memory, but do not store secrets or 
     },
     defaultOptions: ({ requestContext }) =>
       resolveRuntimeOptions(requestContext),
-  });
+  };
+
+  const chatAgentConfig =
+    customization.configureChatAgent?.(baseChatAgentConfig) ??
+    baseChatAgentConfig;
+
+  const chatAgent = new Agent(chatAgentConfig);
 
   const codexAgent = serverConfig.codexAgentEnabled
     ? createCodexAgent(memory)
     : undefined;
   const observability = createObservability();
 
-  const mastra = new Mastra({
+  const baseMastraConfig: MastraConfig = {
     ...(observability ? { observability } : {}),
     agents: {
       chatAgent,
@@ -270,10 +304,12 @@ Remember stable user preferences in working memory, but do not store secrets or 
         allowHeaders: ["Content-Type", "Authorization", "x-mastra-client-type"],
       },
     },
-  });
+  };
+
+  const mastraConfig =
+    customization.configureMastra?.(baseMastraConfig) ?? baseMastraConfig;
+
+  const mastra = new Mastra(mastraConfig);
 
   return { mastra, memory };
 }
-
-export const { mastra, memory } =
-  globalForMastra.lfpMastra ?? (globalForMastra.lfpMastra = createMastra());
