@@ -94,6 +94,12 @@ import { cn } from "@/lib/utils";
 import { truncateToolValue } from "@/lib/tool-output";
 import { SCHEDULE_TIMEZONE_CONTEXT_KEY } from "@/lib/schedules";
 import {
+  fallbackStarterSuggestions,
+  normalizeStarterSuggestions,
+  normalizeStarterTitles,
+  starterSuggestionSignature,
+} from "@/lib/starter-suggestions";
+import {
   isThreadArchived,
   isThreadPinned,
   type ThreadSummary,
@@ -183,11 +189,101 @@ type InstallPromptEvent = Event & {
   userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
 };
 
-const suggestions = [
-  "Search the project knowledge and explain how memory works.",
-  "Use both tools to search the stack and calculate 144 divided by 12.",
-  "Remember that I prefer concise answers, then explain this architecture.",
-];
+const STARTER_SUGGESTION_CACHE_VERSION = 1;
+
+function useStarterSuggestions(resourceId: string, recentTitles: readonly string[]) {
+  const normalizedTitles = useMemo(
+    () => normalizeStarterTitles(recentTitles),
+    [recentTitles],
+  );
+  const signature = useMemo(
+    () => starterSuggestionSignature(normalizedTitles),
+    [normalizedTitles],
+  );
+  const fallback = useMemo(
+    () => fallbackStarterSuggestions(normalizedTitles),
+    [normalizedTitles],
+  );
+  const [resolvedSuggestions, setResolvedSuggestions] = useState<{
+    signature: string;
+    values: string[];
+  } | null>(null);
+
+  useEffect(() => {
+    if (!resourceId || !signature) return;
+
+    const cacheKey = `lfp-chat-starters:v${STARTER_SUGGESTION_CACHE_VERSION}:${resourceId}`;
+    try {
+      const cached = JSON.parse(window.localStorage.getItem(cacheKey) || "null") as {
+        expiresAt?: number;
+        signature?: string;
+        suggestions?: unknown;
+      } | null;
+      if (
+        cached?.signature === signature &&
+        typeof cached.expiresAt === "number" &&
+        cached.expiresAt > Date.now() &&
+        Array.isArray(cached.suggestions)
+      ) {
+        const values = normalizeStarterSuggestions(
+          cached.suggestions.filter((value): value is string => typeof value === "string"),
+          fallback,
+        );
+        const cachedTimer = window.setTimeout(
+          () => setResolvedSuggestions({ signature, values }),
+          0,
+        );
+        return () => window.clearTimeout(cachedTimer);
+      }
+    } catch {
+      // Suggestions remain useful when browser storage is unavailable.
+    }
+
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      void fetch("/api/suggestions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ resourceId, recentTitles: normalizedTitles }),
+        signal: controller.signal,
+      })
+        .then(async (response) => {
+          if (!response.ok) throw new Error("Unable to refresh suggestions.");
+          return response.json() as Promise<{ suggestions?: unknown; ttlMs?: number }>;
+        })
+        .then((payload) => {
+          const generated = Array.isArray(payload.suggestions)
+            ? payload.suggestions.filter((value): value is string => typeof value === "string")
+            : [];
+          const next = normalizeStarterSuggestions(generated, fallback);
+          setResolvedSuggestions({ signature, values: next });
+          try {
+            window.localStorage.setItem(cacheKey, JSON.stringify({
+              signature,
+              suggestions: next,
+              expiresAt: Date.now() + Math.max(60_000, payload.ttlMs ?? 30 * 60 * 1_000),
+            }));
+          } catch {
+            // The server cache still prevents repeated model work.
+          }
+        })
+        .catch((error: unknown) => {
+          if (!(error instanceof DOMException && error.name === "AbortError")) {
+            setResolvedSuggestions(null);
+          }
+        });
+    }, 250);
+
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [fallback, normalizedTitles, resourceId, signature]);
+
+  return resolvedSuggestions?.signature === signature
+    ? resolvedSuggestions.values
+    : fallback;
+}
 
 function useVisualViewportShell(shellRef: RefObject<HTMLElement | null>) {
   useEffect(() => {
@@ -356,10 +452,13 @@ function ChatSubmitButton({
     Boolean(editingSteerId) ||
     draft.trim().length > 0 ||
     attachments.files.length > 0;
+  const emphasizeSubmit = hasPendingSubmission || status === "submitted" || status === "streaming";
 
   return (
     <PromptInputSubmit
+      aria-label={status === "submitted" || status === "streaming" ? "Stop response" : "Send message"}
       className="chat-composer-submit bg-foreground text-background hover:bg-foreground/85"
+      data-emphasized={emphasizeSubmit}
       onStop={onStop}
       status={hasPendingSubmission ? "ready" : status}
     />
@@ -749,6 +848,7 @@ type ChatSessionProps = {
   modelSelection: ModelSelection | null;
   onModelSelectionChange: (selection: ModelSelection) => void;
   enabledToolIds: string[];
+  recentSuggestionTitles: readonly string[];
 };
 
 function ChatSession({
@@ -758,6 +858,7 @@ function ChatSession({
   modelCatalog,
   modelSelection,
   enabledToolIds,
+  recentSuggestionTitles,
   onModelSelectionChange,
   onConversationChange,
   onThreadListChange,
@@ -771,6 +872,7 @@ function ChatSession({
   const { error, messages, status } = session;
   const [steers, setSteers] = useState<PendingSteer[]>([]);
   const [draft, setDraft] = useState("");
+  const suggestions = useStarterSuggestions(resourceId, recentSuggestionTitles);
   const [editingSteerId, setEditingSteerId] = useState<string | null>(null);
   const [steerError, setSteerError] = useState("");
   const [loadingOlder, setLoadingOlder] = useState(false);
@@ -1206,7 +1308,7 @@ function ChatSession({
 
       <div
         className={cn(
-          "pointer-events-none absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-background via-background/95 to-transparent px-[var(--chat-inline-gutter)] pb-2.5 pt-9",
+          "chat-composer-dock pointer-events-none absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-background via-background/95 to-transparent px-[var(--chat-inline-gutter)] pb-2.5 pt-9",
           isEmpty && "md:hidden",
         )}
       >
@@ -1716,6 +1818,10 @@ export function ChatApp({ mods = [], plugins = [], user }: ChatAppProps) {
     () => activeThreads.filter((thread) => !isThreadPinned(thread)),
     [activeThreads],
   );
+  const recentSuggestionTitles = useMemo(
+    () => recentThreads.map((thread) => thread.title || "").filter(Boolean).slice(0, 8),
+    [recentThreads],
+  );
   const archivedThreads = useMemo(
     () => threadsWithBackgroundRuns.filter(isThreadArchived),
     [threadsWithBackgroundRuns],
@@ -1941,6 +2047,7 @@ export function ChatApp({ mods = [], plugins = [], user }: ChatAppProps) {
                 onModelSelectionChange={selectModel}
                 onThreadListChange={refreshThreads}
                 resourceId={resourceId}
+                recentSuggestionTitles={recentSuggestionTitles}
                 threadId={sessionId}
               />
             </div>

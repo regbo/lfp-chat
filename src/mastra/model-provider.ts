@@ -38,6 +38,11 @@ const scheduledOllama = createOpenAI({
   apiKey: "local-bridge",
 });
 
+/** Use the inexpensive local model for background UI assistance. */
+export function resolveBackgroundModel() {
+  return scheduledOllama.chat(serverConfig.scheduledModelName);
+}
+
 type OpenAiModelsResponse = {
   data?: Array<{ id?: string }>;
 };

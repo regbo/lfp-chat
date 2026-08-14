@@ -32,6 +32,7 @@ COPY --chown=node:node --from=build /app/.next/static ./.next/static
 COPY --chown=node:node --from=build /app/public ./public
 COPY --chown=node:node --from=build /app/dist/server ./dist/server
 COPY --chown=node:node --from=build /app/node_modules/@pydantic ./node_modules/@pydantic
+COPY --chown=node:node --from=build /app/scripts/start-container.ts ./scripts/start-container.ts
 USER node
 EXPOSE 3000 4111
-CMD ["node", "server.js"]
+CMD ["bun", "scripts/start-container.ts"]
