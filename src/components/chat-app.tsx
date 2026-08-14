@@ -1760,7 +1760,7 @@ export function ChatApp({ mods = [], plugins = [], user }: ChatAppProps) {
   }, [renderThreadActions, runningThreadIds]);
 
   const sidebar = (
-    <aside className="flex h-full w-[244px] shrink-0 flex-col bg-sidebar px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-[max(0.4rem,env(safe-area-inset-top))] text-sidebar-foreground">
+    <aside className="app-sidebar flex h-full w-[244px] shrink-0 flex-col bg-sidebar px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-[max(0.4rem,env(safe-area-inset-top))] text-sidebar-foreground">
       <div className="mb-1.5 flex items-center justify-between px-1">
         <button className="chat-ui-emphasis flex items-baseline gap-1 rounded-lg px-2 py-1.5 tracking-[-0.005em] hover:bg-sidebar-accent" onClick={newChat} type="button">
           LFP Chat
@@ -1859,7 +1859,7 @@ export function ChatApp({ mods = [], plugins = [], user }: ChatAppProps) {
       {mobileSidebarOpen && (
         <div className="absolute inset-0 z-40 flex md:hidden">
           <button aria-label="Close sidebar" className="absolute inset-0 bg-black/35" onClick={() => setMobileSidebarOpen(false)} type="button" />
-          <div className="relative">{sidebar}</div>
+          <div className="relative h-full">{sidebar}</div>
         </div>
       )}
       <section className="relative flex min-w-0 flex-1 flex-col">

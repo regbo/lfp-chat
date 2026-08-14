@@ -69,7 +69,7 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useId, useMemo, useState } from "react";
 
 type ScheduleSummary = {
   id: string;
@@ -115,14 +115,14 @@ function PanelShell({
   return (
     <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-12 pt-8 md:px-10">
       <div className="mx-auto w-full max-w-3xl">
-        <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="panel-heading flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
             <h1 className="chat-display-text">{title}</h1>
             <p className="chat-ui-text mt-1 text-muted-foreground">{description}</p>
           </div>
           {action}
         </div>
-        <div className="mt-7">{children}</div>
+        <div className="panel-content mt-7">{children}</div>
       </div>
     </div>
   );
@@ -334,6 +334,8 @@ function ModelSelectionFields({
   onChange: (selection: ModelSelection) => void;
   selection: ModelSelection | null;
 }) {
+  const modelControlId = useId();
+  const effortControlId = useId();
   if (!catalog || !selection) return null;
   const selectedModel = catalog.models.find(
     (candidate) => candidate.id === selection.modelId,
@@ -346,7 +348,7 @@ function ModelSelectionFields({
   return (
     <div className="grid gap-3 sm:grid-cols-2">
       <div className="space-y-1.5">
-        <label className="chat-ui-text font-medium">{modelLabel}</label>
+        <label className="chat-ui-text font-medium" htmlFor={modelControlId}>{modelLabel}</label>
         <Select
           onValueChange={(value) => {
             if (!value) return;
@@ -370,7 +372,7 @@ function ModelSelectionFields({
           }}
           value={targetValue}
         >
-          <SelectTrigger aria-label="Job model" className="w-full">
+          <SelectTrigger aria-label={modelLabel} className="w-full" id={modelControlId}>
             <SelectValue>{modelSelectionLabel(catalog, selection)}</SelectValue>
           </SelectTrigger>
           <SelectContent>
@@ -399,7 +401,7 @@ function ModelSelectionFields({
         selectedModel &&
         selectedModel.reasoningEfforts.length > 0 && (
           <div className="space-y-1.5">
-            <label className="chat-ui-text font-medium">Reasoning</label>
+            <label className="chat-ui-text font-medium" htmlFor={effortControlId}>Thinking effort</label>
             <Select
               onValueChange={(value) => {
                 if (!value) return;
@@ -410,7 +412,7 @@ function ModelSelectionFields({
               }}
               value={selection.reasoningEffort || selectedModel.defaultReasoningEffort || "none"}
             >
-              <SelectTrigger aria-label="Job reasoning" className="w-full">
+              <SelectTrigger aria-label="Thinking effort" className="w-full" id={effortControlId}>
                 <SelectValue>
                   {formatReasoningEffort(
                     selection.reasoningEffort || selectedModel.defaultReasoningEffort,
@@ -934,48 +936,48 @@ export function SettingsPanel({
       description="Choose defaults and manage app preferences."
     >
       <div className="rounded-2xl border p-4">
-        <p className="chat-ui-emphasis">Default intelligence</p>
+        <p className="chat-ui-emphasis">Default model</p>
         <p className="chat-ui-text mt-1 text-muted-foreground">
-          New chats and schedules use this selection unless you choose another model.
+          Used for new chats and schedules until you choose something else.
         </p>
         <div className="mt-4">
           <ModelSelectionFields
             catalog={modelCatalog}
-            modelLabel="Default model"
+            modelLabel="Model"
             onChange={onModelSelectionChange}
             selection={modelSelection}
           />
         </div>
       </div>
-      <div className="mt-3 flex items-center gap-3 rounded-2xl border p-4">
+      <div className="settings-row mt-3">
         <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-muted"><MoonStar className="size-4" /></span>
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0">
           <p className="chat-ui-emphasis">Appearance</p>
-          <p className="chat-ui-text mt-1 text-muted-foreground">Use the system setting or choose a fixed theme.</p>
+          <p className="chat-ui-text mt-1 text-muted-foreground">Choose how LFP Chat looks on this device.</p>
         </div>
         <Select value={themePreference} onValueChange={(value) => changeTheme(value as ThemePreference)}>
-          <SelectTrigger aria-label="Appearance" className="w-28">
-            <SelectValue />
+          <SelectTrigger aria-label="Color theme" className="settings-row-action w-36">
+            <SelectValue>{themePreference === "auto" ? "Follow system" : themePreference === "light" ? "Always light" : "Always dark"}</SelectValue>
           </SelectTrigger>
           <SelectContent align="end">
-            <SelectItem value="auto">Auto</SelectItem>
-            <SelectItem value="light">Light</SelectItem>
-            <SelectItem value="dark">Dark</SelectItem>
+            <SelectItem value="auto">Follow system</SelectItem>
+            <SelectItem value="light">Always light</SelectItem>
+            <SelectItem value="dark">Always dark</SelectItem>
           </SelectContent>
         </Select>
       </div>
       {notificationState !== "loading" && notificationState !== "unsupported" && (
-        <div className="mt-3 flex items-start gap-3 rounded-2xl border p-4">
+        <div className="settings-row mt-3">
           <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-muted"><Bell className="size-4" /></span>
-          <div className="min-w-0 flex-1">
+          <div className="min-w-0">
             <p className="chat-ui-emphasis">Notifications</p>
             <p className="chat-ui-text mt-1 text-muted-foreground">
-              {notificationState === "install" ? "Add LFP Chat to your iPhone or iPad Home Screen, then enable notifications here." : notificationState === "unconfigured" ? "Web Push keys have not been configured on this server." : notificationState === "on" ? "This device can receive notifications from LFP Chat." : "Enable alerts for completed background work and important updates."}
+              {notificationState === "install" ? "Add LFP Chat to your Home Screen first, then turn on notifications here." : notificationState === "unconfigured" ? "Notifications aren't available yet." : notificationState === "on" ? "This device receives updates from LFP Chat." : "Get alerts when background work finishes or something needs your attention."}
             </p>
             {notificationError && <p className="chat-meta-text mt-2 text-destructive">{notificationError}</p>}
           </div>
           {(["off", "on"] as const).includes(notificationState as "off" | "on") && (
-            <Button disabled={notificationBusy || !pushPublicKey} onClick={() => void toggleNotifications()} size="sm" variant={notificationState === "on" ? "outline" : "default"}>{notificationBusy && <LoaderCircle className="animate-spin" />}{notificationState === "on" ? "Disable" : "Enable"}</Button>
+            <Button className="settings-row-action" disabled={notificationBusy || !pushPublicKey} onClick={() => void toggleNotifications()} size="sm" variant={notificationState === "on" ? "outline" : "default"}>{notificationBusy && <LoaderCircle className="animate-spin" />}{notificationState === "on" ? "Turn off" : "Turn on"}</Button>
           )}
         </div>
       )}

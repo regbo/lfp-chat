@@ -615,7 +615,7 @@ export function TasksPanel() {
                   </div>
                   <div>
                     <FieldLabel htmlFor="task-notes">Notes</FieldLabel>
-                    <Textarea autoComplete="off" className="min-h-28 resize-y" id="task-notes" maxLength={20_000} name="description" onChange={(event) => setDraft({ ...draft, description: event.target.value })} placeholder="Add context, instructions, or a quick note…" value={draft.description} />
+                    <Textarea autoComplete="off" className="min-h-28" id="task-notes" maxLength={20_000} name="description" onChange={(event) => setDraft({ ...draft, description: event.target.value })} placeholder="Add context, instructions, or a quick note…" value={draft.description} />
                   </div>
                 </section>
 

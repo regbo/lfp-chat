@@ -27,7 +27,8 @@ export function GmailSettings() {
       })
       .catch((cause: unknown) => {
         if (cause instanceof DOMException && cause.name === "AbortError") return;
-        setError(cause instanceof Error ? cause.message : "Could not load Gmail accounts.");
+        const message = cause instanceof Error ? cause.message : "Could not load Gmail accounts.";
+        setError(message.toLowerCase().includes("not configured") ? "Gmail isn't available yet." : message);
       });
     return () => controller.abort();
   }, []);
@@ -49,11 +50,11 @@ export function GmailSettings() {
   };
 
   return (
-    <section className="flex items-start gap-3 rounded-2xl border p-4">
+    <section className="settings-row">
       <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-muted">
         <Mail className="size-4" />
       </span>
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0">
         <h2 className="chat-ui-emphasis">Gmail</h2>
         {accounts.length > 0 ? (
           <ul className="chat-ui-text mt-1 text-muted-foreground">
@@ -66,7 +67,7 @@ export function GmailSettings() {
         )}
         {error && <p className="chat-meta-text mt-2 text-destructive">{error}</p>}
       </div>
-      <Button disabled={busy} onClick={() => void connect()} size="sm">
+      <Button className="settings-row-action" disabled={busy} onClick={() => void connect()} size="sm">
         {busy && <LoaderCircle className="animate-spin" />}
         Connect Gmail
       </Button>

@@ -53,13 +53,13 @@ function DialogContent({
     <DialogPortal>
       <DialogOverlay />
       <DialogPrimitive.Viewport
-        className={cn("fixed inset-0 z-50 grid place-items-center overflow-y-auto p-4", viewportClassName)}
+        className={cn("fixed inset-0 z-50 grid place-items-stretch overflow-hidden p-0 sm:place-items-center sm:overflow-y-auto sm:p-4", viewportClassName)}
         data-slot="dialog-viewport"
       >
         <DialogPrimitive.Popup
           data-slot="dialog-content"
           className={cn(
-            "relative z-50 grid w-full max-w-[calc(100%-2rem)] gap-4 rounded-xl bg-popover p-4 text-popover-foreground ring-1 ring-foreground/10 duration-100 outline-none sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+            "relative z-50 grid h-full w-full max-w-none gap-4 overflow-y-auto overscroll-contain rounded-none bg-popover px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(1rem,env(safe-area-inset-top))] text-popover-foreground outline-none sm:h-auto sm:max-h-[calc(100dvh-2rem)] sm:max-w-sm sm:rounded-xl sm:p-4 sm:ring-1 sm:ring-foreground/10 sm:data-open:animate-in sm:data-open:fade-in-0 sm:data-open:zoom-in-95 sm:data-closed:animate-out sm:data-closed:fade-out-0 sm:data-closed:zoom-out-95",
             className
           )}
           {...props}
