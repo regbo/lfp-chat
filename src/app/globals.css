@@ -930,7 +930,7 @@
     grid-template-columns:
       var(--control-height-md)
       minmax(0, 1fr)
-      minmax(4rem, auto)
+      minmax(3.25rem, auto)
       var(--control-height-md)
       var(--composer-submit-size);
     grid-template-rows: var(--composer-submit-size);
@@ -992,7 +992,7 @@
   }
 
   .chat-composer:not([data-expanded="true"]):not(:has([data-attachments])) .chat-model-trigger span {
-    max-width: 4.75rem;
+    max-width: 3.5rem;
   }
 
   .chat-composer button[aria-label="Start dictation"] {

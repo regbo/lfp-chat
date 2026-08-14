@@ -673,7 +673,7 @@ function ModelSelector({
         >
           <div aria-hidden className="mx-auto h-1 w-10 rounded-full bg-muted-foreground/45 sm:hidden" />
           <DialogHeader className="items-center gap-0.5 pb-2 text-center">
-            <DialogTitle className="text-base">Advanced</DialogTitle>
+            <DialogTitle className="w-full text-center text-base">Advanced</DialogTitle>
             <DialogDescription className="sr-only">
               Choose the model and its reasoning effort.
             </DialogDescription>
@@ -683,7 +683,9 @@ function ModelSelector({
               <span>Model</span>
               <Select onValueChange={selectModelChoice} value={modelChoice}>
                 <SelectTrigger aria-label="Model" className="model-picker-select">
-                  <SelectValue />
+                  <SelectValue>
+                    {selectedAgent?.label ?? selectedModel?.label ?? "Choose model"}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent align="end" className="min-w-64">
                   {(catalog?.agents.length ?? 0) > 0 && (
