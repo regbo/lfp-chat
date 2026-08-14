@@ -29,8 +29,9 @@ const chartRowValueSchema = z.union([
 const chartRequestSchema = z.object({
   title: z.string().trim().min(1).max(160),
   description: z.string().trim().min(1).max(500).optional(),
-  data: z
-    .array(z.record(z.string().min(1).max(80), chartRowValueSchema))
+  columns: z.array(z.string().trim().min(1).max(80)).min(2).max(16),
+  rows: z
+    .array(z.array(chartRowValueSchema).min(2).max(16))
     .min(1)
     .max(240),
   unit: z.enum(chartUnits).default("number"),
@@ -67,21 +68,6 @@ export const renderChartTool = createTool({
   strict: true,
   inputSchema: chartRequestSchema,
   outputSchema: chartOutputSchema,
-  inputExamples: [
-    {
-      input: {
-        title: "Monthly spending by merchant",
-        description: "Compare Amazon and Target spending over time.",
-        data: [
-          { month: "Jan", Amazon: 120, Target: 60 },
-          { month: "Feb", Amazon: 80, Target: 95 },
-          { month: "Mar", Amazon: 145, Target: 40 },
-        ],
-        unit: "currency",
-        currency: "USD",
-      },
-    },
-  ],
   mcp: {
     annotations: {
       title: "Render chart",
@@ -92,10 +78,14 @@ export const renderChartTool = createTool({
     },
   },
   execute: async (input, context) => {
+    if (input.rows.some((row) => row.length !== input.columns.length)) {
+      throw new Error("Every chart row must contain one value per column.");
+    }
     const prompt = [
       `Title: ${input.title}`,
       input.description ? `Intent: ${input.description}` : undefined,
-      `Dataset (JSON, one row per object):\n${JSON.stringify(input.data)}`,
+      `Columns: ${JSON.stringify(input.columns)}`,
+      `Rows (JSON, aligned to columns):\n${JSON.stringify(input.rows)}`,
     ]
       .filter(Boolean)
       .join("\n");
