@@ -32,15 +32,15 @@ let modelCatalogExpiresAt = 0;
 let pendingModelCatalog: Promise<typeof cachedModelCatalog> | null = null;
 
 const MODEL_CATALOG_TTL_MS = 10 * 60 * 1_000;
-const scheduledOllama = createOpenAI({
+const localOllama = createOpenAI({
   name: "ollama",
-  baseURL: serverConfig.scheduledModelBaseUrl,
+  baseURL: serverConfig.localModelBaseUrl,
   apiKey: "local-bridge",
 });
 
 /** Use the inexpensive local model for background UI assistance. */
 export function resolveBackgroundModel() {
-  return scheduledOllama.chat(serverConfig.scheduledModelName);
+  return localOllama.chat(serverConfig.scheduledModelName);
 }
 
 type OpenAiModelsResponse = {
@@ -113,9 +113,13 @@ function selectionFromRequestContext(requestContext?: RequestContext) {
 
 export function resolveRuntimeModel(requestContext?: RequestContext) {
   if (requestContext?.get(SCHEDULE_JOB_CONTEXT_KEY) === true) {
-    return scheduledOllama.chat(serverConfig.scheduledModelName);
+    return localOllama.chat(serverConfig.scheduledModelName);
   }
-  return selectionFromRequestContext(requestContext).modelId as ModelRouterModelId;
+  const selection = selectionFromRequestContext(requestContext);
+  if (selection.modelId.startsWith("ollama/")) {
+    return localOllama.chat(selection.modelId.slice("ollama/".length));
+  }
+  return selection.modelId as ModelRouterModelId;
 }
 
 export function resolveRuntimeOptions(requestContext?: RequestContext) {

@@ -212,6 +212,12 @@ REASONING_EFFORT=medium
 OPENAI_API_KEY=...
 ```
 
+For a local OpenAI-compatible Ollama endpoint, use `MODEL_PROVIDER=ollama`, set
+`MODEL_NAME` to an installed model, and configure `OLLAMA_MODEL_BASE_URL`. Chart
+requests use the read-only family database tool followed by the structured
+`render_chart` Mastra tool, so the browser receives chart data rather than an
+LLM-generated image.
+
 The composer also lists **Codex CLI** as an agent rather than a model. Mastra runs it through `@mastra/acp` and `@agentclientprotocol/codex-acp`, while PostgreSQL remains the durable conversation store. Codex runs in an isolated ACP session for each request and defaults to workspace-write access without network access. Configure its boundary explicitly when the server should operate on another repository:
 
 The application intentionally uses Mastra's standard agent stream instead of maintaining its own Cursor `stream-json` or Codex App Server event adapter.

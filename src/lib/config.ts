@@ -150,7 +150,8 @@ export const serverConfig = {
   ),
   agentMaxSteps: boundedInteger("MASTRA_AGENT_MAX_STEPS", 16, 1, 40),
   openaiApiKey: secretValue("OPENAI_API_KEY", "OPENAI_API_KEY_FILE"),
-  scheduledModelBaseUrl: (
+  localModelBaseUrl: (
+    process.env.OLLAMA_MODEL_BASE_URL?.trim() ||
     process.env.SCHEDULED_MODEL_BASE_URL?.trim() ||
     "http://ollama-graphiti-auth-bridge:8080/v1"
   ).replace(/\/+$/, ""),

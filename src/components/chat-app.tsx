@@ -67,6 +67,7 @@ import {
 } from "@/components/tool-event-summary";
 import { type PendingSteer, SteerQueue } from "@/components/steer-queue";
 import { formatAttachmentLinks } from "@/lib/attachment-links";
+import { isChatChartSpec } from "@/lib/chart-spec";
 import { formatCitationMarkers } from "@/lib/citations";
 import {
   browserMastraClient,
@@ -121,6 +122,7 @@ import {
 } from "../lib/chat-app-plugins";
 import { type FileUIPart, type UIMessage } from "ai";
 import Image from "next/image";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -162,6 +164,11 @@ import {
   useSyncExternalStore,
   type RefObject,
 } from "react";
+
+const ChatChart = dynamic(
+  () => import("@/components/chat-chart").then((module) => module.ChatChart),
+  { ssr: false },
+);
 
 type CoreView =
   | "chat"
@@ -856,6 +863,14 @@ function ChatMessage({ message, streaming }: { message: UIMessage; streaming: bo
           <MessageActions className="absolute -left-10 top-1/2 -translate-y-1/2 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
             <CopyAction text={text} />
           </MessageActions>
+  const charts = tools.flatMap((part) => {
+    const name =
+      part.type === "dynamic-tool"
+        ? part.toolName
+        : part.type.split("-").slice(1).join("-");
+    const output = "output" in part ? part.output : undefined;
+    return name === "render_chart" && isChatChartSpec(output) ? [output] : [];
+  });
         )}
       </div>
       {text && !isUser && (
@@ -882,6 +897,9 @@ type ChatSessionProps = {
   enabledToolIds: string[];
   recentSuggestionTitles: readonly string[];
 };
+          {charts.map((chart, index) => (
+            <ChatChart key={`${message.id}-chart-${index}`} spec={chart} />
+          ))}
 
 function ChatSession({
   threadId,

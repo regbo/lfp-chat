@@ -1,6 +1,6 @@
 "use client";
 
-import { Database, ListTodo, Mail, Paperclip, Search, Share2 } from "lucide-react";
+import { ChartNoAxesCombined, Database, ListTodo, Mail, Paperclip, Search, Share2 } from "lucide-react";
 
 import { ChatApp } from "@/components/chat-app";
 import { GmailSettings } from "@/components/gmail-settings";
@@ -21,6 +21,7 @@ const mods = [{
   settings: <GmailSettings />,
   tools: [
     { id: "family_database", title: "Family database", description: "Query family records, accounts, balances, and transactions safely.", icon: <Database />, defaultEnabled: true },
+    { id: "render_chart", title: "Charts", description: "Render interactive charts from retrieved data.", icon: <ChartNoAxesCombined />, defaultEnabled: true },
     { id: "family_search", title: "Family search", description: "Search email and attachments using semantic and full-text retrieval.", icon: <Search />, defaultEnabled: true },
     { id: "family_graph", title: "Family graph", description: "Search document-derived temporal facts and relationships.", icon: <Share2 />, defaultEnabled: true },
     { id: "family_email", title: "Family email", description: "Retrieve original emails and inspect parsed content.", icon: <Mail />, defaultEnabled: true },
