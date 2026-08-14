@@ -43,15 +43,21 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -606,7 +612,7 @@ function ModelSelector({
   onSelect: (selection: ModelSelection) => void;
   selection: ModelSelection | null;
 }) {
-  const [modelQuery, setModelQuery] = useState("");
+  const [open, setOpen] = useState(false);
   const selectedModel = catalog?.models.find(
     (model) => model.id === selection?.modelId,
   );
@@ -620,159 +626,128 @@ function ModelSelector({
         .filter(Boolean)
         .join(" ")
     : "Model or agent";
-  const filteredModels = useMemo(() => {
-    const query = modelQuery.trim().toLocaleLowerCase();
-    if (!query) return catalog?.models ?? [];
-    return (catalog?.models ?? []).filter((model) =>
-      [
-        model.label,
-        model.shortLabel,
-        model.id,
-        model.provider,
-        model.description,
-        ...model.reasoningEfforts,
-      ]
-        .join(" ")
-        .toLocaleLowerCase()
-        .includes(query),
+  const modelChoice = selectedAgent
+    ? `agent:${selectedAgent.id}`
+    : selectedModel
+      ? `model:${selectedModel.id}`
+      : "";
+
+  const selectModelChoice = (value: string | null) => {
+    if (!value || !catalog || !selection) return;
+    if (value.startsWith("agent:")) {
+      onSelect({
+        agentId: value.slice("agent:".length),
+        modelId: selection.modelId,
+        reasoningEffort: null,
+      });
+      return;
+    }
+    const model = catalog.models.find(
+      (candidate) => candidate.id === value.slice("model:".length),
     );
-  }, [catalog?.models, modelQuery]);
+    if (!model) return;
+    onSelect({
+      agentId: DEFAULT_CHAT_AGENT_ID,
+      modelId: model.id,
+      reasoningEffort: model.defaultReasoningEffort,
+    });
+  };
 
   return (
-    <DropdownMenu onOpenChange={(open) => !open && setModelQuery("")}>
-      <DropdownMenuTrigger
+    <>
+      <PromptInputButton
+        aria-label="Select model, agent, and reasoning"
+        className="chat-model-trigger chat-ui-text max-w-[13rem] gap-1 rounded-full px-2 text-muted-foreground"
         disabled={disabled || !catalog || !selection}
-        render={
-          <PromptInputButton
-            aria-label="Select model, agent, and reasoning"
-            className="chat-ui-text max-w-[13rem] gap-1 rounded-full px-2 text-muted-foreground"
-            tooltip="Model or agent"
-          />
-        }
+        onClick={() => setOpen(true)}
+        tooltip="Model or agent"
       >
         <span className="truncate">{label}</span>
         <ChevronDown className="size-3.5 shrink-0" />
-      </DropdownMenuTrigger>
-      <DropdownMenuContent
-        align="end"
-        className="w-72"
-        side="top"
-        sideOffset={8}
-      >
-        <DropdownMenuGroup>
-          <DropdownMenuLabel>Agents</DropdownMenuLabel>
-          {catalog?.agents.map((agent) => (
-            <DropdownMenuItem
-              key={agent.id}
-              onClick={() =>
-                onSelect({
-                  agentId: agent.id,
-                  modelId:
-                    selection?.modelId ?? catalog.defaultSelection.modelId,
-                  reasoningEffort: null,
-                })
-              }
-            >
-              <span className="min-w-0 flex-1">
-                <span className="block truncate font-medium">{agent.label}</span>
-                <span className="chat-meta-text block truncate text-muted-foreground">
-                  {agent.description}
-                </span>
-              </span>
-              {agent.id === selection?.agentId && (
-                <Check className="size-3.5 text-muted-foreground" />
-              )}
-            </DropdownMenuItem>
-          ))}
-          <DropdownMenuSeparator />
-          <div
-            className="relative mx-1 mb-1"
-            onKeyDown={(event) => {
-              if (event.key !== "Escape") event.stopPropagation();
-            }}
-          >
-            <Search className="pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              aria-label="Search models"
-              autoFocus
-              className="chat-meta-text h-7 border-input/40 bg-muted/35 pr-2 pl-7 shadow-none focus-visible:ring-0"
-              onChange={(event) => setModelQuery(event.currentTarget.value)}
-              placeholder="Search models"
-              value={modelQuery}
-            />
-          </div>
-          <DropdownMenuLabel>Models and reasoning</DropdownMenuLabel>
-          {filteredModels.length === 0 && (
-            <div className="chat-meta-text px-2 py-4 text-center text-muted-foreground">
-              No models found
-            </div>
-          )}
-          {filteredModels.map((model) =>
-            model.reasoningEfforts.length > 0 ? (
-              <DropdownMenuSub key={model.id}>
-                <DropdownMenuSubTrigger>
-                  <span className="min-w-0 flex-1">
-                    <span className="flex items-center gap-1.5">
-                      <span className="truncate font-medium">{model.label}</span>
-                      {model.id === selection?.modelId && (
-                        <Check className="size-3.5 text-muted-foreground" />
-                      )}
-                    </span>
-                    <span className="chat-meta-text block truncate text-muted-foreground">
-                      {model.description}
-                    </span>
-                  </span>
-                </DropdownMenuSubTrigger>
-                <DropdownMenuSubContent className="w-44">
-                  <DropdownMenuGroup>
-                    <DropdownMenuLabel>Reasoning effort</DropdownMenuLabel>
-                    {model.reasoningEfforts.map((effort) => (
-                      <DropdownMenuItem
-                        key={effort}
-                        onClick={() =>
-                          onSelect({
-                            agentId: DEFAULT_CHAT_AGENT_ID,
-                            modelId: model.id,
-                            reasoningEffort: effort,
-                          })
-                        }
-                      >
-                        <span className="flex-1">{formatReasoningEffort(effort)}</span>
-                        {model.id === selection?.modelId &&
-                          effort === selection.reasoningEffort && (
-                            <Check className="size-3.5 text-muted-foreground" />
-                          )}
-                      </DropdownMenuItem>
+      </PromptInputButton>
+      <Dialog onOpenChange={setOpen} open={open}>
+        <DialogContent
+          className="model-picker-sheet mt-auto h-auto max-h-[82dvh] gap-3 rounded-t-[2rem] border-t bg-background px-4 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] sm:mt-0 sm:max-w-md sm:rounded-2xl sm:p-4"
+          showCloseButton={false}
+          viewportClassName="place-items-end sm:place-items-center"
+        >
+          <div aria-hidden className="mx-auto h-1 w-10 rounded-full bg-muted-foreground/45 sm:hidden" />
+          <DialogHeader className="items-center gap-0.5 pb-2 text-center">
+            <DialogTitle className="text-base">Advanced</DialogTitle>
+            <DialogDescription className="sr-only">
+              Choose the model and its reasoning effort.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="overflow-hidden rounded-[1.35rem] bg-muted/75">
+            <div className="model-picker-row">
+              <span>Model</span>
+              <Select onValueChange={selectModelChoice} value={modelChoice}>
+                <SelectTrigger aria-label="Model" className="model-picker-select">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent align="end" className="min-w-64">
+                  {(catalog?.agents.length ?? 0) > 0 && (
+                    <SelectGroup>
+                      <SelectLabel>Agents</SelectLabel>
+                      {catalog?.agents.map((agent) => (
+                        <SelectItem key={agent.id} value={`agent:${agent.id}`}>
+                          {agent.label}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  )}
+                  <SelectGroup>
+                    <SelectLabel>Models</SelectLabel>
+                    {catalog?.models.map((model) => (
+                      <SelectItem key={model.id} value={`model:${model.id}`}>
+                        {model.label}
+                      </SelectItem>
                     ))}
-                  </DropdownMenuGroup>
-                </DropdownMenuSubContent>
-              </DropdownMenuSub>
-            ) : (
-              <DropdownMenuItem
-                key={model.id}
-                onClick={() =>
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="mx-4 h-px bg-border" />
+            <div className="model-picker-row">
+              <span>Intelligence</span>
+              <Select
+                disabled={Boolean(selectedAgent) || !selectedModel?.reasoningEfforts.length}
+                onValueChange={(value) => {
+                  if (!value || !selectedModel) return;
                   onSelect({
                     agentId: DEFAULT_CHAT_AGENT_ID,
-                    modelId: model.id,
-                    reasoningEffort: null,
-                  })
-                }
+                    modelId: selectedModel.id,
+                    reasoningEffort: value as ModelSelection["reasoningEffort"],
+                  });
+                }}
+                value={selection?.reasoningEffort ?? "none"}
               >
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate font-medium">{model.label}</span>
-                  <span className="chat-meta-text block truncate text-muted-foreground">
-                    {model.description}
-                  </span>
-                </span>
-                {model.id === selection?.modelId && (
-                  <Check className="size-3.5 text-muted-foreground" />
-                )}
-              </DropdownMenuItem>
-            ),
-          )}
-        </DropdownMenuGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
+                <SelectTrigger aria-label="Intelligence" className="model-picker-select">
+                  <SelectValue>
+                    {selectedAgent
+                      ? "Agent managed"
+                      : formatReasoningEffort(selection?.reasoningEffort ?? null) || "Standard"}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent align="end">
+                  <SelectGroup>
+                    <SelectLabel>Intelligence</SelectLabel>
+                    {selectedModel?.reasoningEfforts.map((effort) => (
+                      <SelectItem key={effort} value={effort}>
+                        {formatReasoningEffort(effort)}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <Button className="mt-2 h-11 rounded-full" onClick={() => setOpen(false)}>
+            Done
+          </Button>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
@@ -783,6 +758,7 @@ function ChatComposer({ draft, editingSteerId, modelCatalog, modelSelection, onD
       <PromptInput
         accept="image/*,application/pdf,text/plain,text/csv,application/json"
         className="chat-composer relative z-10 w-full"
+        data-expanded={Boolean(draft.trim() || editingSteerId)}
         globalDrop
         maxFileSize={10 * 1024 * 1024}
         maxFiles={5}
@@ -954,6 +930,16 @@ function ChatSession({
     const assistantId = makeId();
     const runId = makeId();
     const controller = new AbortController();
+    let timedOut = false;
+    let inactivityTimer = 0;
+    const armInactivityTimeout = (milliseconds: number) => {
+      window.clearTimeout(inactivityTimer);
+      inactivityTimer = window.setTimeout(() => {
+        timedOut = true;
+        controller.abort();
+      }, milliseconds);
+    };
+    armInactivityTimeout(90_000);
     updateChatSession(threadId, (current) => ({
       ...current,
       messages: [...current.messages, userMessage],
@@ -1018,6 +1004,7 @@ function ChatSession({
       });
       const consumeStream = () => stream?.processDataStream({
         onChunk: (chunk) => {
+          armInactivityTimeout(180_000);
           eventOffset += 1;
           const payload = chunk.payload ?? {};
           switch (chunk.type) {
@@ -1109,7 +1096,14 @@ function ChatSession({
         abortController: null,
       }));
     } catch (caught) {
-      if (controller.signal.aborted) {
+      if (timedOut) {
+        updateChatSession(threadId, (current) => ({
+          ...current,
+          status: "error",
+          error: new Error("The response stopped making progress. Try again or choose a faster intelligence level."),
+          abortController: null,
+        }));
+      } else if (controller.signal.aborted) {
         updateChatSession(threadId, (current) => ({
           ...current,
           status: "ready",
@@ -1124,6 +1118,7 @@ function ChatSession({
         }));
       }
     } finally {
+      window.clearTimeout(inactivityTimer);
       window.setTimeout(onThreadListChange, 500);
     }
   }, [enabledToolIds, modelSelection, onConversationChange, onThreadListChange, resourceId, threadId]);
