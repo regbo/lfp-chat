@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { UIMessage } from "ai";
 import { ArrowDownIcon, DownloadIcon } from "lucide-react";
-import type { ComponentProps } from "react";
+import type { ComponentProps, RefObject } from "react";
 import { useCallback, useEffect, useRef } from "react";
 import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
 
@@ -45,6 +45,52 @@ export function ConversationSubmitAutoScroll({ request }: { request: number }) {
       ignoreEscapes: true,
     });
   }, [request, scrollToBottom]);
+
+  return null;
+}
+
+export function ConversationViewportAutoScroll({
+  resizeTargetRef,
+}: {
+  resizeTargetRef?: RefObject<Element | null>;
+}) {
+  const { scrollToBottom, state } = useStickToBottomContext();
+
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    let animationFrame = 0;
+
+    const keepLockedToBottom = () => {
+      window.cancelAnimationFrame(animationFrame);
+      animationFrame = window.requestAnimationFrame(() => {
+        animationFrame = window.requestAnimationFrame(() => {
+          if (state.escapedFromLock) return;
+          void scrollToBottom({
+            animation: "instant",
+            ignoreEscapes: true,
+          });
+        });
+      });
+    };
+
+    window.addEventListener("resize", keepLockedToBottom);
+    viewport?.addEventListener("resize", keepLockedToBottom);
+    viewport?.addEventListener("scroll", keepLockedToBottom);
+    const resizeObserver = resizeTargetRef?.current
+      ? new ResizeObserver(keepLockedToBottom)
+      : undefined;
+    if (resizeTargetRef?.current) {
+      resizeObserver?.observe(resizeTargetRef.current);
+    }
+
+    return () => {
+      window.cancelAnimationFrame(animationFrame);
+      resizeObserver?.disconnect();
+      window.removeEventListener("resize", keepLockedToBottom);
+      viewport?.removeEventListener("resize", keepLockedToBottom);
+      viewport?.removeEventListener("scroll", keepLockedToBottom);
+    };
+  }, [resizeTargetRef, scrollToBottom, state]);
 
   return null;
 }

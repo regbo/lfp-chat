@@ -4,6 +4,39 @@ project: lfp-chat
 automation:
   enabled: true
   triggers:
+    - id: local-chat-source
+      source:
+        type: files
+        include:
+          - Dockerfile
+          - lfpconnect.config.yml
+          - package.json
+          - bun.lock
+          - next.config.ts
+          - postcss.config.mjs
+          - tsconfig.json
+          - tsconfig.publish.json
+          - "public/**"
+          - "scripts/**"
+          - "src/**"
+        exclude:
+          - "**/*.test.ts"
+      # Establish the link immediately, then rebuild it whenever source or this workflow changes.
+      runOnInitial: true
+      commands:
+        - name: build local chat package
+          entrypoint: [bun]
+          command: [run, build:package]
+          timeoutMs: 120000
+        - name: link local chat package
+          entrypoint: [bun]
+          command: [run, local-link, --link, "@regbo/lfp-chat=dist/package"]
+          timeoutMs: 120000
+        - name: validate and build hosted chat with local package
+          entrypoint: [bun]
+          command: [run, check]
+          timeoutMs: 1200000
+
     - id: published-chat-package
       source:
         type: npm

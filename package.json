@@ -1,6 +1,6 @@
 {
   "name": "lfp-chat",
-  "version": "0.3.8",
+  "version": "0.3.9",
   "description": "Reusable LFP Chat interface for Mastra-powered React applications.",
   "private": true,
   "license": "UNLICENSED",
@@ -30,6 +30,7 @@
     "build:web": "next build",
     "build:mastra": "bun build src/server/index.ts --target bun --outdir dist/server --external @pydantic/monty",
     "build:package": "bun scripts/build-package.ts",
+    "local-link": "bun scripts/install-local-links.ts",
     "start": "bun run --parallel \"start:*\"",
     "start:web": "next start --hostname 127.0.0.1",
     "start:mastra": "MASTRA_HOST=127.0.0.1 bun dist/server/index.js",

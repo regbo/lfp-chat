@@ -11,12 +11,18 @@ FROM dependencies AS build
 COPY . .
 ARG DEPENDENCY_REFRESH=false
 ARG DEPENDENCY_REFRESH_TOKEN=locked
+ARG LOCAL_LINKS=false
 # A refreshed deployment deliberately crosses the 0.x minor boundary for the
 # reusable chat package, then refreshes all other dependencies within their ranges.
 RUN if [ "$DEPENDENCY_REFRESH" = "true" ]; then \
       echo "Refreshing dependencies for $DEPENDENCY_REFRESH_TOKEN" && \
       bun update @regbo/lfp-chat --latest && bun update; \
     fi
+RUN case "$LOCAL_LINKS" in \
+      false) ;; \
+      true) bun run local-link --manifest .lfp-local-links/manifest.json ;; \
+      *) echo "LOCAL_LINKS must be true or false" >&2; exit 1 ;; \
+    esac
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN bun run build
 

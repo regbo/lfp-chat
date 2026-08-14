@@ -242,3 +242,17 @@ bun run db:up       # Start PostgreSQL
 bun run db:down     # Stop PostgreSQL
 bun run check       # Lint, typecheck, and production build
 ```
+
+Any installed dependency can be temporarily replaced by a prepared local package directory. The
+directory's `package.json` name must match the requested package; its declared dependencies are
+installed without changing the root manifest or lockfile:
+
+```powershell
+bun run build:package
+bun run local-link --link @regbo/lfp-chat=dist/package
+bun run build
+```
+
+Repeat `--link package=directory` to overlay more than one dependency. Run `bun install --force` to
+restore registry packages afterward. The cluster deployment helper exposes the same local-link
+mechanism for isolated Docker builds without modifying this checkout's `node_modules`.

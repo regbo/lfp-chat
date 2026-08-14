@@ -7,6 +7,7 @@ import {
   ConversationHistoryLoader,
   ConversationScrollButton,
   ConversationSubmitAutoScroll,
+  ConversationViewportAutoScroll,
 } from "@/components/ai-elements/conversation";
 import {
   Message,
@@ -314,6 +315,37 @@ function useVisualViewportShell(shellRef: RefObject<HTMLElement | null>) {
       shell.style.removeProperty("--visual-viewport-top");
     };
   }, [shellRef]);
+}
+
+function useComposerClearance(
+  containerRef: RefObject<HTMLDivElement | null>,
+  dockRef: RefObject<HTMLDivElement | null>,
+  enabled: boolean,
+) {
+  useEffect(() => {
+    const container = containerRef.current;
+    const dock = dockRef.current;
+    if (!container || !dock || !enabled) {
+      container?.style.removeProperty("--chat-composer-clearance");
+      return;
+    }
+
+    const updateClearance = () => {
+      container.style.setProperty(
+        "--chat-composer-clearance",
+        `${Math.ceil(dock.getBoundingClientRect().height)}px`,
+      );
+    };
+
+    updateClearance();
+    const observer = new ResizeObserver(updateClearance);
+    observer.observe(dock);
+
+    return () => {
+      observer.disconnect();
+      container.style.removeProperty("--chat-composer-clearance");
+    };
+  }, [containerRef, dockRef, enabled]);
 }
 
 const makeId = () =>
@@ -877,6 +909,8 @@ function ChatSession({
   const [steerError, setSteerError] = useState("");
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [submitScrollRequest, setSubmitScrollRequest] = useState(0);
+  const chatContainerRef = useRef<HTMLDivElement>(null);
+  const composerDockRef = useRef<HTMLDivElement>(null);
   const isStreaming = status === "submitted" || status === "streaming";
   const renderedMessages = useMemo(
     () => Array.from(new Map(messages.map((message) => [message.id, message])).values()),
@@ -1232,11 +1266,16 @@ function ChatSession({
   const isEmpty = renderedMessages.length === 0;
   const hasStreamingAssistant =
     renderedMessages.at(-1)?.role === "assistant";
+  useComposerClearance(chatContainerRef, composerDockRef, !isEmpty);
 
   return (
-    <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col">
+    <div
+      className="flex min-h-0 w-full min-w-0 flex-1 flex-col"
+      ref={chatContainerRef}
+    >
       <Conversation className="min-h-0 w-full min-w-0">
         <ConversationSubmitAutoScroll request={submitScrollRequest} />
+        <ConversationViewportAutoScroll resizeTargetRef={composerDockRef} />
         <ConversationHistoryLoader
           disabled={!session.hasMoreHistory}
           loading={loadingOlder}
@@ -1245,8 +1284,9 @@ function ChatSession({
         <ConversationContent
           className={cn(
             "chat-conversation-content mx-auto w-full max-w-none pt-4",
-            isEmpty ? "pb-6" : "pb-28",
+            isEmpty && "pb-6",
           )}
+          style={isEmpty ? undefined : { paddingBottom: "var(--chat-composer-clearance, 9.75rem)" }}
         >
           {loadingOlder && (
             <div className="chat-meta-text chat-column py-2 text-center text-muted-foreground">
@@ -1311,6 +1351,7 @@ function ChatSession({
           "chat-composer-dock pointer-events-none absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-background via-background/95 to-transparent px-[var(--chat-inline-gutter)] pb-2.5 pt-9",
           isEmpty && "md:hidden",
         )}
+        ref={composerDockRef}
       >
           <div className="chat-column pointer-events-auto">
             <ChatComposer {...composerProps} />
