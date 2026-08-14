@@ -384,6 +384,18 @@ function useComposerClearance(
   }, [containerRef, dockRef, enabled]);
 }
 
+function focusVisibleComposer() {
+  const inputs = document.querySelectorAll<HTMLTextAreaElement>(
+    "[data-chat-composer-input]",
+  );
+  const input = Array.from(inputs).find(
+    (candidate) =>
+      candidate.getClientRects().length > 0 &&
+      !candidate.closest('[aria-hidden="true"]'),
+  );
+  input?.focus({ preventScroll: true });
+}
+
 const makeId = () =>
   `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
 
@@ -820,6 +832,7 @@ function ChatComposer({ draft, editingSteerId, modelCatalog, modelSelection, onD
           <PromptInputTextarea
             aria-label="Message"
             className="flex-1"
+            data-chat-composer-input
             onChange={(event) => onDraftChange(event.currentTarget.value)}
             placeholder={editingSteerId ? "Edit steer" : "Ask anything"}
             rows={1}
@@ -961,6 +974,21 @@ function ChatSession({
     () => Array.from(new Map(messages.map((message) => [message.id, message])).values()),
     [messages],
   );
+  const isEmpty = renderedMessages.length === 0;
+  const hasStreamingAssistant =
+    renderedMessages.at(-1)?.role === "assistant";
+
+  useEffect(() => {
+    if (!isEmpty) return;
+    let secondFrame = 0;
+    const firstFrame = window.requestAnimationFrame(() => {
+      secondFrame = window.requestAnimationFrame(focusVisibleComposer);
+    });
+    return () => {
+      window.cancelAnimationFrame(firstFrame);
+      window.cancelAnimationFrame(secondFrame);
+    };
+  }, [isEmpty, threadId]);
 
   const runMessage = useCallback(async (message: PromptInputMessage) => {
     const userMessage = promptMessageToUserMessage(message);
@@ -1341,9 +1369,6 @@ function ChatSession({
     }
   }, [loadingOlder, resourceId, threadId]);
 
-  const isEmpty = renderedMessages.length === 0;
-  const hasStreamingAssistant =
-    renderedMessages.at(-1)?.role === "assistant";
   useComposerClearance(chatContainerRef, composerDockRef, true);
 
   return (
@@ -2055,6 +2080,9 @@ export function ChatApp({ branding = DEFAULT_APP_BRANDING, mods = [], plugins = 
   }, [refreshThreads]);
 
   const newChat = useCallback(() => {
+    // Preserve the trusted tap while the empty thread mounts so iOS keeps the
+    // keyboard open, then ChatSession transfers focus to its visible composer.
+    focusVisibleComposer();
     openRequestId.current += 1;
     const nextThreadId = makeId();
     rememberSession(nextThreadId, []);

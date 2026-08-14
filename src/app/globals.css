@@ -144,6 +144,7 @@
   --mobile-composer-font-size: 1rem;
   --mobile-composer-height: 5.75rem;
   --mobile-composer-input-height: 3rem;
+  --mobile-composer-attachment-height: 3.5rem;
   --mobile-composer-input-max-height: min(12rem, 35dvh);
   --mobile-composer-padding-inline: 0.5rem;
   --mobile-composer-padding-block: 0.25rem;
@@ -1096,6 +1097,14 @@
   .chat-composer [data-attachments] {
     grid-row: 1;
     grid-column: 1 / -1;
+    order: 0;
+    padding-block: 0.25rem;
+  }
+
+  .chat-composer [data-attachments] [data-slot="button"] {
+    width: 1.75rem;
+    height: 1.75rem;
+    min-height: 1.75rem;
   }
 
   .chat-composer [data-slot="input-group-control"] {
@@ -1108,7 +1117,7 @@
     padding: 0.5rem 0.25rem;
   }
 
-  .chat-composer:is(
+  .chat-composer:where(
     [data-expanded="true"],
     :has([data-attachments]),
     :has([data-slot="input-group-control"]:focus)
@@ -1118,11 +1127,17 @@
       minmax(0, 1fr)
       var(--control-height-md)
       var(--composer-submit-size);
-    grid-template-rows: 0 minmax(var(--mobile-composer-input-height), auto) var(--composer-submit-size);
+    grid-template-rows: 0 minmax(var(--mobile-composer-input-height), max-content) var(--composer-submit-size);
     min-height: var(--mobile-composer-height);
+    row-gap: 0.125rem;
   }
 
-  .chat-composer:is(
+  .chat-composer:has([data-attachments]) [data-slot="input-group"] {
+    grid-template-rows: minmax(var(--mobile-composer-attachment-height), max-content) minmax(var(--mobile-composer-input-height), max-content) var(--composer-submit-size);
+    padding-top: 0.5rem;
+  }
+
+  .chat-composer:where(
     [data-expanded="true"],
     :has([data-attachments]),
     :has([data-slot="input-group-control"]:focus)
@@ -1136,6 +1151,7 @@
 
   .chat-composer-dock {
     padding-right: 0.75rem;
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
     padding-left: 0.75rem;
   }
 
@@ -1182,7 +1198,7 @@
     justify-self: center;
   }
 
-  .chat-composer:is(
+  .chat-composer:where(
     [data-expanded="true"],
     :has([data-attachments]),
     :has([data-slot="input-group-control"]:focus)
@@ -1191,7 +1207,7 @@
     grid-column: 1;
   }
 
-  .chat-composer:is(
+  .chat-composer:where(
     [data-expanded="true"],
     :has([data-attachments]),
     :has([data-slot="input-group-control"]:focus)
@@ -1200,7 +1216,7 @@
     grid-column: 2;
   }
 
-  .chat-composer:is(
+  .chat-composer:where(
     [data-expanded="true"],
     :has([data-attachments]),
     :has([data-slot="input-group-control"]:focus)
@@ -1209,7 +1225,7 @@
     grid-column: 3;
   }
 
-  .chat-composer:is(
+  .chat-composer:where(
     [data-expanded="true"],
     :has([data-attachments]),
     :has([data-slot="input-group-control"]:focus)
