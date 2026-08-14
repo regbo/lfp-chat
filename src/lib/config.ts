@@ -104,8 +104,9 @@ export type McpToolSource = {
   description: string;
   url: string;
   enabled: boolean;
-  defaultEnabled: boolean;
+  hidden: boolean;
   userConfigurable: boolean;
+  availableToMonty: boolean;
   authToken?: string;
   timeoutMs: number;
   forwardInstructions: boolean;
@@ -113,7 +114,9 @@ export type McpToolSource = {
 
 export type ToolPolicyOverride = {
   enabled?: boolean;
+  hidden?: boolean;
   userConfigurable?: boolean;
+  availableToMonty?: boolean;
 };
 
 function toolPolicyOverrides(): Record<string, ToolPolicyOverride> {
@@ -133,15 +136,19 @@ function toolPolicyOverrides(): Record<string, ToolPolicyOverride> {
       throw new Error(`Invalid TOOL_POLICIES entry: ${id}`);
     }
     const policy = value as Record<string, unknown>;
-    for (const field of ["enabled", "userConfigurable"] as const) {
+    for (const field of ["enabled", "hidden", "userConfigurable", "availableToMonty"] as const) {
       if (policy[field] !== undefined && typeof policy[field] !== "boolean") {
         throw new Error(`TOOL_POLICIES.${id}.${field} must be boolean.`);
       }
     }
     return [id, {
       ...(typeof policy.enabled === "boolean" ? { enabled: policy.enabled } : {}),
+      ...(typeof policy.hidden === "boolean" ? { hidden: policy.hidden } : {}),
       ...(typeof policy.userConfigurable === "boolean"
         ? { userConfigurable: policy.userConfigurable }
+        : {}),
+      ...(typeof policy.availableToMonty === "boolean"
+        ? { availableToMonty: policy.availableToMonty }
         : {}),
     }];
   }));
@@ -204,6 +211,8 @@ function mcpToolSources(): McpToolSource[] {
       ? source.enabled
       : source.defaultEnabled !== false;
     const userConfigurable = source.userConfigurable === true;
+    const hidden = source.hidden === true;
+    const availableToMonty = source.availableToMonty === true;
     seen.add(id);
     return {
       id,
@@ -211,8 +220,9 @@ function mcpToolSources(): McpToolSource[] {
       description,
       url: url.toString(),
       enabled,
-      defaultEnabled: enabled,
+      hidden,
       userConfigurable,
+      availableToMonty,
       authToken,
       timeoutMs,
       forwardInstructions: source.forwardInstructions !== false,

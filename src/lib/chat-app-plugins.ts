@@ -31,7 +31,12 @@ export type ChatAppToolContribution = {
   title: string;
   description: string;
   icon?: ReactNode;
-  defaultEnabled?: boolean;
+  /** Initial availability before this device saves a preference. */
+  enabled?: boolean;
+  /** Omit the tool from the Tools screen while retaining server availability. */
+  hidden?: boolean;
+  /** Show the current state without allowing the user to change it. */
+  userConfigurable?: boolean;
   dangerous?: boolean;
   /** Adds an isolated, reusable model picker for this tool in Settings. */
   dedicatedModel?: DedicatedToolModelConfig;
@@ -40,6 +45,8 @@ export type ChatAppToolContribution = {
 export type ChatAppToolPolicy = {
   /** Initial availability. For non-configurable tools this is enforced by the server. */
   enabled?: boolean;
+  /** Whether the tool is omitted from the Tools screen. */
+  hidden?: boolean;
   /** Whether the user can change availability in the Tools screen. */
   userConfigurable?: boolean;
 };

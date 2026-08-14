@@ -843,7 +843,7 @@ export function ToolsPanel({
   const tools = orderToolsWithCodeModeLast([
     ...builtInTools,
     ...(contributedTools ?? []),
-  ]);
+  ]).filter((tool) => tool.hidden !== true);
   const loadSavedTools = useCallback(async () => {
     const query = new URLSearchParams({ resourceId, includeArchived: "true" });
     const response = await fetch(`/api/dashboard?${query}`, { cache: "no-store" });
@@ -892,12 +892,15 @@ export function ToolsPanel({
         {tools.map((detail) => {
           const Icon = toolIcons[detail.id as SelectableToolId] ?? Blocks;
           const enabled = enabledToolIds.includes(detail.id);
+          const configurable = detail.userConfigurable !== false;
           return (
             <button
               aria-pressed={enabled}
+              disabled={!configurable}
               className={cn(
                 "flex w-full items-center gap-3 rounded-xl border border-border/70 px-3 py-3 text-left transition-colors hover:bg-muted/55",
                 enabled && "bg-muted/45",
+                !configurable && "cursor-default hover:bg-muted/45",
               )}
               key={detail.id}
               onClick={() => onToggle(detail.id)}
@@ -908,6 +911,7 @@ export function ToolsPanel({
                 <span className="chat-ui-text flex items-center gap-2 font-medium">
                   {detail.title}
                   {"dangerous" in detail && detail.dangerous && <ShieldAlert className="size-3.5 text-amber-600" />}
+                  {!configurable && <span className="chat-meta-text font-normal text-muted-foreground">Managed</span>}
                 </span>
                 <span className="chat-meta-text mt-0.5 block text-muted-foreground">{detail.description}</span>
               </span>

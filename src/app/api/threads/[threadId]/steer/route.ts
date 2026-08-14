@@ -1,5 +1,4 @@
 import { mastraClient } from "@/lib/mastra-client";
-import { after } from "next/server";
 import { z } from "zod";
 import { resolveUserScope } from "@/lib/user-scope";
 
@@ -7,7 +6,6 @@ export const runtime = "nodejs";
 
 const steerSchema = z.object({
   resourceId: z.string().min(1),
-  runId: z.string().min(1),
   text: z.string().max(20_000),
   files: z.array(z.object({
     url: z.string().min(1),
@@ -28,7 +26,7 @@ export async function POST(request: Request, context: RouteContext) {
   const resolved = await resolveUserScope(request.headers, parsed.data.resourceId);
   if (!resolved.ok) return resolved.response;
   const { threadId } = await context.params;
-  const { runId, text, files } = parsed.data;
+  const { text, files } = parsed.data;
   const { resourceId } = resolved.scope;
   const contents = [
     ...(text.trim() ? [{ type: "text" as const, text: text.trim() }] : []),
@@ -40,19 +38,17 @@ export async function POST(request: Request, context: RouteContext) {
     })),
   ];
 
-  after(async () => {
-    try {
-      await mastraClient.getAgent("chatAgent").sendMessage({
-        runId,
-        resourceId,
-        threadId,
-        message: contents,
-        ifActive: { behavior: "deliver", attributes: { source: "steer" } },
-      });
-    } catch (error) {
-      console.error("Unable to deliver steer to the active run.", error);
-    }
-  });
-
-  return Response.json({ accepted: true, runId }, { status: 202 });
+  try {
+    const result = await mastraClient.getAgent("chatAgent").sendMessage({
+      resourceId,
+      threadId,
+      message: contents,
+      ifActive: { behavior: "deliver", attributes: { source: "steer" } },
+      ifIdle: { behavior: "wake", attributes: { source: "steer" } },
+    });
+    return Response.json(result);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unable to steer the chat.";
+    return Response.json({ error: message }, { status: 400 });
+  }
 }

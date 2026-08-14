@@ -11,60 +11,30 @@ import {
   resolveRuntimeModel,
   resolveRuntimeOptions,
 } from "@/mastra/model-provider";
-import { montyTool } from "@/mastra/tools";
-import {
-  dashboardArchiveTool,
-  dashboardDeleteTool,
-  dashboardListTool,
-  dashboardRunUserTool,
-  dashboardUpsertUserTool,
-  dashboardUpsertWidgetTool,
-} from "@/mastra/dashboard-tools";
-import { dashboardSqlTool, dashboardWebFetchTool } from "@/mastra/dashboard-source-tools";
-import { urlFetchTool } from "@/mastra/url-fetch-tool";
-import { dashboardCacheTool } from "@/mastra/dashboard-cache-tool";
-import {
-  taskCreateTool, taskDeleteTool, taskListCreateTool, taskListDeleteTool,
-  taskListListsTool, taskListTool, taskListUpdateTool, taskUpdateTool,
-} from "@/mastra/task-tools";
-import { ensureDashboardCapabilities } from "@/mastra/dashboard-capabilities";
-import { renderChartTool } from "@/mastra/chart-tool";
 import { hostWorkspace } from "@/mastra/host-workspace";
 import { createCodexAgent } from "@/mastra/codex-agent";
 import {
-  scheduleCreateTool,
-  scheduleListTool,
-} from "@/mastra/schedule-tools";
-import {
   normalizeEnabledToolIds,
-  isMandatoryAgentToolId,
   TOOLS_CONTEXT_KEY,
 } from "@/lib/tool-catalog";
 import { SCHEDULE_JOB_CONTEXT_KEY } from "@/lib/schedules";
-import { jobMemoryRecallTool } from "@/mastra/job-memory-tool";
-import { scheduleParseTool } from "@/mastra/schedule-parser";
 import { notifyResource } from "@/lib/push-notifications";
-import { notificationSendTool } from "@/mastra/notification-tool";
 import { createObservability } from "@/mastra/observability";
 import { DEFAULT_WRITING_STYLE_INSTRUCTIONS } from "@/mastra/writing-style-instructions";
 import { configuredMcpTools } from "@/mastra/mcp-tool-sources";
+import {
+  createToolRegistry,
+  type LfpChatToolRegistryOverrides,
+} from "@/mastra/tool-registry";
+import { registerDashboardMastraTools } from "@/lib/dashboard-runtime";
 
 export type LfpChatMastraCustomization = {
+  /** Keyed native Mastra tool overrides; existing keys update and new keys register. */
+  configureTools?: LfpChatToolRegistryOverrides;
   /** Replace or extend any Chat Agent setting, including tools, model, memory, and workspace. */
   configureChatAgent?: (config: AgentConfig) => AgentConfig;
   /** Replace or extend any Mastra setting, including agents, workflows, tools, storage, and MCP. */
   configureMastra?: (config: MastraConfig) => MastraConfig;
-};
-
-const configuredTaskTools = {
-  task_list: taskListTool,
-  task_list_lists: taskListListsTool,
-  task_list_create: taskListCreateTool,
-  task_list_update: taskListUpdateTool,
-  task_list_delete: taskListDeleteTool,
-  task_create: taskCreateTool,
-  task_update: taskUpdateTool,
-  task_delete: taskDeleteTool,
 };
 
 function resolvedEnabledCapabilities(value: unknown): Set<string> {
@@ -72,7 +42,7 @@ function resolvedEnabledCapabilities(value: unknown): Set<string> {
   for (const [id, policy] of Object.entries(serverConfig.toolPolicyOverrides)) {
     if (policy.userConfigurable === true) continue;
     if (policy.enabled === false) enabled.delete(id);
-    else enabled.add(id);
+    else if (policy.enabled === true) enabled.add(id);
   }
   return enabled;
 }
@@ -82,12 +52,39 @@ function exactToolPolicy(id: string, enabled: Set<string>): boolean | undefined 
   if (!policy) return undefined;
   return policy.userConfigurable === true
     ? enabled.has(id)
-    : policy.enabled !== false;
+    : policy.enabled;
 }
 
 export function createLfpChatMastra(
   customization: LfpChatMastraCustomization = {},
 ) {
+  const toolRegistry = createToolRegistry();
+  toolRegistry.configureTools(Object.fromEntries(
+    serverConfig.mcpToolSources.map((source) => [source.id, {
+      title: source.title,
+      description: source.description,
+      hidden: source.hidden,
+      enabled: source.enabled,
+      userConfigurable: source.userConfigurable,
+      tools: {},
+    }]),
+  ));
+  for (const entry of toolRegistry.entries()) {
+    const policy = serverConfig.toolPolicyOverrides[entry.id];
+    if (!policy) continue;
+    toolRegistry.configureTools({ [entry.id]: {
+      ...(policy.enabled === undefined ? {} : { enabled: policy.enabled }),
+      ...(policy.hidden === undefined ? {} : { hidden: policy.hidden }),
+      ...(policy.userConfigurable === undefined ? {} : { userConfigurable: policy.userConfigurable }),
+      ...(policy.availableToMonty === undefined
+        ? {}
+        : { availableToMonty: policy.availableToMonty ? Object.keys(entry.tools) : [] }),
+    } });
+  }
+  if (customization.configureTools) {
+    toolRegistry.configureTools(customization.configureTools);
+  }
+  registerDashboardMastraTools(toolRegistry.montyTools());
   const storage = new PostgresStore({
     id: "lfp-chat-postgres",
     connectionString: serverConfig.databaseUrl,
@@ -112,10 +109,6 @@ export function createLfpChatMastra(
     },
   });
 
-  // The runtime is generated from real Mastra tools. Only deterministic,
-  // read-oriented tools are exposed to persisted widget programs by default.
-  ensureDashboardCapabilities();
-
   const baseChatAgentConfig: AgentConfig = {
     id: "chatAgent",
     name: serverConfig.appBranding.fullName,
@@ -126,46 +119,17 @@ export function createLfpChatMastra(
       const enabled = resolvedEnabledCapabilities(requestContext.get(TOOLS_CONTEXT_KEY));
       if (!serverConfig.taskServiceConfigured) enabled.delete("tasks");
       const isScheduledJob = requestContext.get(SCHEDULE_JOB_CONTEXT_KEY) === true;
-      const mcpTools = await configuredMcpTools(enabled);
+      await configuredMcpTools(enabled, toolRegistry);
       const availableTools = {
-        monty: montyTool,
-        render_chart: renderChartTool,
-        web_fetch: dashboardWebFetchTool,
-        url_fetch: urlFetchTool,
-        cache: dashboardCacheTool,
-        ...(serverConfig.dashboard.sqlDatabaseUrl ? { sql_query: dashboardSqlTool } : {}),
-        dashboard_upsert_widget: dashboardUpsertWidgetTool,
-        dashboard_upsert_tool: dashboardUpsertUserTool,
-        dashboard_run_tool: dashboardRunUserTool,
-        dashboard_list: dashboardListTool,
-        dashboard_archive: dashboardArchiveTool,
-        dashboard_delete: dashboardDeleteTool,
-        ...configuredTaskTools,
-        schedule_create: scheduleCreateTool,
-        schedule_list: scheduleListTool,
-        schedule_parse: scheduleParseTool,
-        job_memory_recall: jobMemoryRecallTool,
-        notification_send: notificationSendTool,
-        ...(isScheduledJob ? {} : modelProvider.tools),
-        ...mcpTools,
+        ...toolRegistry.resolve(enabled, {
+          scheduled: isScheduledJob,
+          taskServiceConfigured: serverConfig.taskServiceConfigured,
+        }),
       };
       return Object.fromEntries(
         Object.entries(availableTools).filter(([id]) => {
-          if (!serverConfig.taskServiceConfigured && id.startsWith("task_")) return false;
           const policyDecision = exactToolPolicy(id, enabled);
-          if (policyDecision !== undefined) return policyDecision;
-          return (
-              isMandatoryAgentToolId(id) || enabled.has(id) ||
-              (enabled.has("tasks") && id.startsWith("task_")) ||
-              (enabled.has("scheduling") && id.startsWith("schedule_")) ||
-              (enabled.has("notifications") && id === "notification_send") ||
-              serverConfig.mcpToolSources.some(
-                (source) =>
-                  (source.userConfigurable ? enabled.has(source.id) : source.enabled) &&
-                  id.startsWith(`${source.id}_`),
-              ) ||
-              (isScheduledJob && ["job_memory_recall", "notification_send"].includes(id))
-            );
+          return policyDecision ?? true;
         }),
       );
     },
@@ -218,26 +182,11 @@ Remember stable user preferences in working memory, but do not store secrets or 
       chatAgent,
       ...(codexAgent ? { codexAgent } : {}),
     },
-    tools: Object.fromEntries(Object.entries({
-      monty: montyTool,
-      render_chart: renderChartTool,
-      web_fetch: dashboardWebFetchTool,
-      url_fetch: urlFetchTool,
-      cache: dashboardCacheTool,
-      ...(serverConfig.dashboard.sqlDatabaseUrl ? { sql_query: dashboardSqlTool } : {}),
-      dashboard_upsert_widget: dashboardUpsertWidgetTool,
-      dashboard_upsert_tool: dashboardUpsertUserTool,
-      dashboard_run_tool: dashboardRunUserTool,
-      dashboard_list: dashboardListTool,
-      dashboard_archive: dashboardArchiveTool,
-      dashboard_delete: dashboardDeleteTool,
-      ...configuredTaskTools,
-      schedule_create: scheduleCreateTool,
-      schedule_list: scheduleListTool,
-      schedule_parse: scheduleParseTool,
-      job_memory_recall: jobMemoryRecallTool,
-      notification_send: notificationSendTool,
-    }).filter(([id]) => serverConfig.taskServiceConfigured || !id.startsWith("task_"))),
+    tools: Object.fromEntries(
+      Object.entries(toolRegistry.mastraTools()).filter(([id]) =>
+        serverConfig.taskServiceConfigured || !id.startsWith("task_"),
+      ),
+    ),
     storage,
     scheduler: {
       enabled: true,
@@ -311,5 +260,12 @@ Remember stable user preferences in working memory, but do not store secrets or 
 
   const mastra = new Mastra(mastraConfig);
 
-  return { mastra, memory };
+  return {
+    mastra,
+    memory,
+    toolRegistry,
+    toolCatalog: toolRegistry.uiCatalog({
+      taskServiceConfigured: serverConfig.taskServiceConfigured,
+    }),
+  };
 }

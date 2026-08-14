@@ -84,7 +84,7 @@ const workspaceMod = {
     id: "workspace_task_assignment",
     title: "Task assignment",
     description: "Assign tasks using the workspace directory.",
-    defaultEnabled: true,
+    enabled: true,
   }],
 } satisfies ChatAppMod;
 
@@ -97,13 +97,22 @@ The legacy `plugins` prop remains available for a single routed view.
 
 Server consumers can build on the complete stock configuration through the
 server-only `@regbo/lfp-chat/mastra` entry point. The callbacks receive the
-actual `AgentConfig` and `Mastra` config, so consumers can add or replace tools,
-agents, workflows, storage, memory, MCP servers, and other supported settings:
+actual `AgentConfig` and `Mastra` config. Native tools live in one typed registry
+that supplies the agent, the UI catalog, Mastra's global tool collection, and
+the explicitly allowed Monty capabilities:
 
 ```ts
 import { createLfpChatMastra } from "@regbo/lfp-chat/mastra";
 
-export const { mastra, memory } = createLfpChatMastra({
+export const { mastra, memory, toolCatalog } = createLfpChatMastra({
+  configureTools: {
+    home_data: {
+      title: "Home data",
+      tools: { home_data_query: homeDataQueryTool },
+      availableToMonty: ["home_data_query"],
+    },
+    url_fetch: { userConfigurable: false },
+  },
   configureChatAgent: (config) => ({
     ...config,
     instructions: `${config.instructions}\nUse the host application's domain rules.`,
@@ -115,17 +124,29 @@ export const { mastra, memory } = createLfpChatMastra({
 });
 ```
 
+Registry values are native Mastra `ToolsInput` values, so tool descriptions,
+Zod input/output schemas, MCP metadata, and execution types are preserved. A
+default key updates that entry; a new key creates one. A native tool passed
+directly gets sensible defaults: visible, enabled, user-configurable, and not
+available to Monty. Pass the returned `toolCatalog` to `<ChatApp tools={toolCatalog}>`
+so a consuming UI uses the same registry.
+
 For deployment-time integrations, `MCP_TOOL_SOURCES` accepts a JSON array of
 sources with `id`, `title`, `description`, and `url`, plus optional
 `authTokenFile`, `timeoutMs`, and `forwardInstructions`. `enabled` defaults to
-`true` and `userConfigurable` defaults to `false`. A configurable source appears
-in the Tools screen and uses `enabled` as its initial state; a disabled,
-non-configurable source is removed from the agent and hidden from the UI.
+`true`, `hidden` defaults to `false`, and `userConfigurable` defaults to `false`.
+A visible non-configurable source appears as managed in the Tools screen.
+`availableToMonty: true` trusts every tool from that source for saved Monty
+programs; otherwise only MCP tools carrying Mastra's native
+`mcp.annotations.readOnlyHint: true` are added to Monty.
+Each source is registered as a normal tool-registry entry, and its discovered
+native Mastra tools are attached to that entry before the agent resolves tools.
 
-`TOOL_POLICIES` applies the same `{ enabled, userConfigurable }` override to
+`TOOL_POLICIES` applies `{ hidden, enabled, userConfigurable, availableToMonty }`
+overrides to
 built-in logical capabilities or exact Mastra tool IDs. For example,
-`{"code_mode":{"enabled":false,"userConfigurable":false}}` fully removes Code
-mode rather than showing a disabled toggle.
+`{"code_mode":{"enabled":false,"userConfigurable":false}}` shows Code mode as
+a managed disabled setting; add `"hidden":true` to omit it from the UI.
 
 The included application gives every primary view a stable URL: `/search`,
 `/scheduled`, `/tools`, `/archived`, `/tasks`, and `/settings`. Conversations

@@ -15,3 +15,5 @@ export type {
   ChatAppToolPolicy,
 } from "./lib/chat-app-plugins";
 export type { Task, TaskLink, TaskList } from "./lib/tasks";
+export { defaultRegisteredTools, defaultTools } from "./lib/tool-catalog";
+export type { ToolCatalogEntry, ToolUiSettings } from "./lib/tool-catalog";

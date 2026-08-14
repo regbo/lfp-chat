@@ -16,6 +16,7 @@ import {
 } from "@/lib/dashboard-user-tool-store";
 import { dashboardUserToolDraftSchema, dashboardWidgetDraftSchema } from "@/lib/dashboard-spec";
 import { executeDashboardUserTool } from "@/lib/dashboard-user-tool-runtime";
+import { dashboardCapabilityDescriptions } from "@/lib/dashboard-runtime";
 import { runDashboardWidget } from "@/mastra/dashboard-refresh";
 
 function resourceId(context: { agent?: { resourceId?: string } }) {
@@ -42,16 +43,18 @@ export const dashboardUpsertWidgetTool = createTool({
 
 export const dashboardListTool = createTool({
   id: "dashboard_list",
-  description: "List the current user's dashboard tabs, widget IDs, programs, cache state, and archives.",
+  description: "List the current user's dashboard tabs, widget IDs, programs, cache state, archives, and the registered capabilities that saved tools may call.",
   inputSchema: z.object({ includeArchived: z.boolean().default(false) }),
   outputSchema: z.record(z.string(), z.unknown()),
-  execute: async ({ includeArchived }, context) =>
-    listDashboard(resourceId(context), { includeArchived }),
+  execute: async ({ includeArchived }, context) => ({
+    ...await listDashboard(resourceId(context), { includeArchived }),
+    availableCapabilities: dashboardCapabilityDescriptions(),
+  }),
 });
 
 export const dashboardUpsertUserTool = createTool({
   id: "dashboard_upsert_tool",
-  description: `Create or update a reusable deterministic dashboard tool. Write Monty Python that reads the JSON-compatible args variable and returns any JSON-compatible value. It also receives previous, the prior cached complete output for the same deeply stable input during refresh or TTL recomputation, or None on the first run. It may call declared built-in or user tools with await tool_call("tool_name", {input fields}); url_fetch and cache are available by default. The cache tool supports resource-scoped get, set, and soft-delete operations for intermediate values; get may explicitly include expired or deleted values. cacheTtlSeconds automatically caches the complete output for each deeply stable input with PostgreSQL advisory-lock protection. Tool calls may compose or recurse with changing inputs, bounded to six levels and 32 calls. Use a stable toolId when editing.`,
+  description: `Create or update a reusable deterministic dashboard tool. Write Monty Python that reads the JSON-compatible args variable and returns any JSON-compatible value. It also receives previous, the prior cached complete output for the same deeply stable input during refresh or TTL recomputation, or None on the first run. It may call declared registered or user tools with await tool_call("tool_name", {input fields}); inspect dashboard_list.availableCapabilities for the current registry. The cache tool supports resource-scoped get, set, and soft-delete operations for intermediate values; get may explicitly include expired or deleted values. cacheTtlSeconds automatically caches the complete output for each deeply stable input with PostgreSQL advisory-lock protection. Tool calls may compose or recurse with changing inputs, bounded to six levels and 32 calls. Use a stable toolId when editing.`,
   inputSchema: dashboardUserToolDraftSchema.extend({
     testInput: z.unknown().optional(),
     runNow: z.boolean().default(true),

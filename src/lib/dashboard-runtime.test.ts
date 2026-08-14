@@ -1,6 +1,12 @@
 import { describe, expect, test } from "bun:test";
 
-import { executeDashboardProgram } from "./dashboard-runtime";
+import { createTool } from "@mastra/core/tools";
+import { z } from "zod";
+import {
+  callRegisteredDashboardTool,
+  executeDashboardProgram,
+  registerDashboardMastraTools,
+} from "./dashboard-runtime";
 import { dashboardWidgetDraftSchema, dashboardWidgetLayoutSchema } from "./dashboard-spec";
 import { dashboardToolCacheKey } from "./dashboard-user-tool-store";
 
@@ -25,6 +31,51 @@ describe("dashboard presentation runtime", () => {
       toolInput: {},
       code: '{"kind":"html", "html":"<script>bad()</script>"}',
     })).rejects.toThrow();
+  });
+});
+
+describe("dashboard capability registry", () => {
+  test("uses Mastra's public-schema adapter for Zod transforms", async () => {
+    const tool = createTool({
+      id: "typed_dashboard_lookup",
+      description: "Validate and transform a typed dashboard lookup.",
+      inputSchema: z.object({ value: z.string().transform(Number) }),
+      outputSchema: z.object({ value: z.number() }),
+      execute: async ({ value }) => ({ value }),
+    });
+    registerDashboardMastraTools({ typed_dashboard_lookup: tool });
+
+    await expect(callRegisteredDashboardTool(
+      "typed_dashboard_lookup",
+      { value: "17" },
+      "test-resource",
+    )).resolves.toEqual({ found: true, value: { value: 17 } });
+  });
+
+  test("keeps configured tools when the compatibility registry initializes", async () => {
+    const configured = createTool({
+      id: "configured_dashboard_lookup",
+      description: "Consumer-configured implementation.",
+      inputSchema: z.object({}),
+      execute: async () => ({ source: "configured" }),
+    });
+    const fallback = createTool({
+      id: "configured_dashboard_lookup",
+      description: "Compatibility fallback.",
+      inputSchema: z.object({}),
+      execute: async () => ({ source: "fallback" }),
+    });
+    registerDashboardMastraTools({ configured_dashboard_lookup: configured });
+    registerDashboardMastraTools(
+      { configured_dashboard_lookup: fallback },
+      { overwrite: false },
+    );
+
+    await expect(callRegisteredDashboardTool(
+      "configured_dashboard_lookup",
+      {},
+      "test-resource",
+    )).resolves.toEqual({ found: true, value: { source: "configured" } });
   });
 });
 

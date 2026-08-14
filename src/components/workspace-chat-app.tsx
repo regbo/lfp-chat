@@ -1,33 +1,20 @@
 "use client";
 
-import { ChartNoAxesCombined, ListTodo } from "lucide-react";
+import { ListTodo } from "lucide-react";
 
 import { ChatApp } from "@/components/chat-app";
 import { TasksPanel } from "@/components/tasks-panel";
 import type { AppBranding } from "@/lib/app-branding";
 import type { UserScope } from "@/lib/user-scope";
-import type { McpToolSource, ToolPolicyOverride } from "@/lib/config";
-
-const coreMods = [{
-  id: "workspace",
-  tools: [{ id: "render_chart", title: "Charts", description: "Render interactive charts from retrieved data.", icon: <ChartNoAxesCombined />, defaultEnabled: true }],
-}] as const;
+import type { ToolPolicyOverride } from "@/lib/config";
+import type { ChatAppToolContribution } from "@/lib/chat-app-plugins";
 
 const taskMods = [{
   id: "tasks",
   views: [{ id: "tasks", label: "Tasks", href: "/tasks", icon: <ListTodo />, content: <TasksPanel /> }],
-  tools: [{ id: "tasks", title: "Tasks", description: "Create, organize, update, and review tasks.", icon: <ListTodo />, defaultEnabled: true }],
 }] as const;
 
-export function WorkspaceChatApp({ branding, taskServiceConfigured, mcpToolSources, toolPolicies, user }: { branding: AppBranding; taskServiceConfigured: boolean; mcpToolSources: readonly Pick<McpToolSource, "id" | "title" | "description" | "defaultEnabled" | "userConfigurable">[]; toolPolicies: Record<string, ToolPolicyOverride>; user?: UserScope }) {
-  const configurableMcpSources = mcpToolSources.filter((source) => source.userConfigurable);
-  const mcpMods = configurableMcpSources.length
-    ? [{ id: "configured-mcp", tools: configurableMcpSources }]
-    : [];
-  const mods = [
-    ...coreMods,
-    ...(taskServiceConfigured ? taskMods : []),
-    ...mcpMods,
-  ];
-  return <ChatApp branding={branding} mods={mods} toolPolicies={toolPolicies} user={user} />;
+export function WorkspaceChatApp({ branding, taskServiceConfigured, toolPolicies, tools, user }: { branding: AppBranding; taskServiceConfigured: boolean; toolPolicies: Record<string, ToolPolicyOverride>; tools: readonly ChatAppToolContribution[]; user?: UserScope }) {
+  const mods = taskServiceConfigured ? taskMods : [];
+  return <ChatApp branding={branding} mods={mods} toolPolicies={toolPolicies} tools={tools} user={user} />;
 }

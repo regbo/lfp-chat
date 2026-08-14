@@ -946,6 +946,10 @@
   font-size: inherit;
 }
 
+.chat-model-compact-icon {
+  display: none;
+}
+
 @media (max-width: 767px) {
   :root {
     --text-chat: 1rem;
@@ -1147,8 +1151,19 @@
     max-width: 100%;
   }
 
-  .chat-composer:not([data-expanded="true"]):not(:has([data-attachments])):not(:has([data-slot="input-group-control"]:focus)) .chat-model-trigger span {
-    max-width: 8.5rem;
+  .chat-composer:not([data-expanded="true"]):not(:has([data-attachments])):not(:has([data-slot="input-group-control"]:focus)) .chat-model-trigger {
+    width: var(--control-height-md);
+    padding-inline: 0;
+    justify-content: center;
+  }
+
+  .chat-composer:not([data-expanded="true"]):not(:has([data-attachments])):not(:has([data-slot="input-group-control"]:focus)) .chat-model-trigger .chat-model-label,
+  .chat-composer:not([data-expanded="true"]):not(:has([data-attachments])):not(:has([data-slot="input-group-control"]:focus)) .chat-model-trigger .chat-model-chevron {
+    display: none;
+  }
+
+  .chat-composer:not([data-expanded="true"]):not(:has([data-attachments])):not(:has([data-slot="input-group-control"]:focus)) .chat-model-trigger .chat-model-compact-icon {
+    display: block;
   }
 
   .chat-composer button[aria-label="Start dictation"] {

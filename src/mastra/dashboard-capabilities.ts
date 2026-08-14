@@ -16,6 +16,6 @@ export function ensureDashboardCapabilities() {
     url_fetch: urlFetchTool,
     cache: dashboardCacheTool,
     ...(serverConfig.dashboard.sqlDatabaseUrl ? { sql_query: dashboardSqlTool } : {}),
-  });
+  }, { overwrite: false });
   registered = true;
 }

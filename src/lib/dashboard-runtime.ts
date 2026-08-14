@@ -1,5 +1,5 @@
 import { RequestContext } from "@mastra/core/request-context";
-import { z } from "zod";
+import { isValidationError } from "@mastra/core/tools";
 
 import { executeMontyCode } from "@/lib/monty-runtime";
 import {
@@ -28,7 +28,6 @@ type AdaptedTool = {
 type MastraToolAdapterSource = {
   id: string;
   description: string;
-  inputSchema?: unknown;
   execute?: unknown;
 };
 
@@ -61,23 +60,27 @@ export async function callRegisteredDashboardTool(id: string, input: unknown, re
  */
 export function registerDashboardMastraTools(
   tools: Record<string, MastraToolAdapterSource>,
+  options: { overwrite?: boolean } = {},
 ) {
   for (const [key, tool] of Object.entries(tools)) {
     if (typeof tool.execute !== "function") continue;
-    const execute = tool.execute as (input: unknown, context: unknown) => Promise<unknown>;
+    const execute = tool.execute as (
+      input: unknown,
+      context: unknown,
+    ) => Promise<unknown>;
     const id = dashboardCapabilitySchema.parse(tool.id || key);
+    if (options.overwrite === false && registry().has(id)) continue;
     registry().set(id, {
       id,
       description: tool.description,
       execute: async (input: unknown, resourceId: string) => {
-        const parsed = tool.inputSchema instanceof z.ZodType
-          ? await tool.inputSchema.parseAsync(input)
-          : input;
         const requestContext = new RequestContext<Record<string, unknown>>();
-        return execute(parsed, {
+        const result = await execute(input, {
           requestContext,
           agent: { agentId: "dashboard-runtime", resourceId },
         } as never);
+        if (isValidationError(result)) throw new Error(result.message);
+        return result;
       },
     });
   }
