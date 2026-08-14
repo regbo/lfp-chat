@@ -214,7 +214,10 @@ Available public tables:
 - financial_accounts (provider, external_id, connection_external_id, name, currency, balance, available_balance, balance_at, raw_data JSONB, first_seen_at, last_seen_at)
 - financial_transactions (provider, account_external_id, external_id, posted_at, transacted_at, amount, description, payee, memo, pending, raw_data JSONB, first_seen_at, last_seen_at)
 - financial_sync_runs (run_id, provider, status, window_start, fetched_at, completed_at, connection_count, account_count, transaction_count, provider_errors JSONB)
-Join financial_transactions to financial_accounts on provider plus account_external_id = external_id, then join financial_accounts to financial_connections on provider plus connection_external_id = external_id when account or institution names are needed. Financial amounts retain the provider's signed values. Use JSONB operators for labels, metadata, or raw provider fields. Always select only the columns needed and add a LIMIT to row-returning queries.`;
+- financial_merchant_profiles (fingerprint, normalized_descriptor, canonical_name, category, tags TEXT[], source, confidence, needs_review, classifier_version, model_name, created_at, updated_at)
+- financial_transaction_enrichments (provider, account_external_id, transaction_external_id, merchant_fingerprint, enriched_at)
+- financial_transaction_context view (transactions joined to account_name, institution_name, canonical_merchant, category, tags, enrichment_source, enrichment_confidence, needs_review)
+Prefer financial_transaction_context for transaction lists, merchant filters, category summaries, tags, and spending or cash-flow analysis. Use the base financial tables for raw provider fields, current balances, synchronization state, or enrichment review. Financial amounts retain the provider's signed values. Use JSONB operators for labels, metadata, or raw provider fields. Always select only the columns needed and add a LIMIT to row-returning queries.`;
 
 export const familyDatabaseTool = createTool({
   id: "family_database",

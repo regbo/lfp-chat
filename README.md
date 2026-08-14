@@ -162,6 +162,10 @@ the tool exposes connected financial institutions, accounts, current balances,
 transactions, and synchronization history. The agent uses these normalized tables
 for exact transaction lookup, merchant/date filters, and spending or cash-flow
 aggregation while retaining provider-native JSON for later refinement.
+Merchant normalization runs once per stable descriptor and exposes canonical merchant
+names, controlled categories, tags, confidence, and review state through the
+`financial_transaction_context` view. Chat prefers that view for transaction lists
+and financial summaries while the normalized base tables remain available for audit.
 
 Raw ledger events intentionally remain in PostgreSQL instead of being duplicated
 into Graphiti. PostgreSQL is authoritative for exact amounts, dates, pending state,

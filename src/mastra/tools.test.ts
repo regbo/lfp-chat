@@ -9,6 +9,9 @@ describe("family database tool contract", () => {
       "financial_accounts",
       "financial_transactions",
       "financial_sync_runs",
+      "financial_merchant_profiles",
+      "financial_transaction_enrichments",
+      "financial_transaction_context",
     ]) {
       expect(FAMILY_DATABASE_DESCRIPTION).toContain(table);
     }
