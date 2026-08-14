@@ -859,6 +859,60 @@
   -webkit-user-select: none;
 }
 
+.dashboard-widget-grid .react-grid-item {
+  transition: transform 160ms ease, width 160ms ease, height 160ms ease;
+}
+
+.dashboard-widget-grid .react-grid-item.react-draggable-dragging,
+.dashboard-widget-grid .react-grid-item.resizing {
+  z-index: 20;
+  transition: none;
+}
+
+.dashboard-widget-grid .react-grid-placeholder {
+  border-radius: 1rem;
+  background: color-mix(in srgb, var(--primary) 18%, transparent);
+  opacity: 1;
+}
+
+.dashboard-widget-grid .react-resizable-handle::after {
+  right: 0.45rem;
+  bottom: 0.45rem;
+  width: 0.55rem;
+  height: 0.55rem;
+  border-color: color-mix(in srgb, var(--foreground) 42%, transparent);
+}
+
+.dashboard-widget-grid .react-resizable-handle {
+  background-image: none !important;
+}
+
+.dashboard-widget-content:has(.chat-chart-canvas),
+.dashboard-widget-content > figure {
+  height: 100%;
+}
+
+.dashboard-widget-content > figure {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.dashboard-widget-content .chat-chart-canvas {
+  flex: 1;
+  height: 100%;
+  min-height: 0;
+}
+
+.dashboard-widget-content .chat-chart-canvas,
+.dashboard-widget-content .chat-chart-canvas canvas {
+  touch-action: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-widget-grid .react-grid-item { transition: none; }
+}
+
 .chat-composer [data-slot="input-group-control"] {
   min-width: 0;
   min-height: calc(var(--composer-height) - 2px);

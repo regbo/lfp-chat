@@ -77,6 +77,18 @@ export const dashboardWidgetOutputSchema = z.union([
 
 export type DashboardWidgetOutput = z.infer<typeof dashboardWidgetOutputSchema>;
 
+export const dashboardWidgetLayoutSchema = z.object({
+  widgetId: z.string().uuid(),
+  x: z.number().int().min(0).max(11),
+  y: z.number().int().min(0).max(100_000),
+  w: z.number().int().min(3).max(12),
+  h: z.number().int().min(2).max(24),
+}).refine((layout) => layout.x + layout.w <= 12, {
+  message: "Widget layout must fit within the dashboard grid.",
+});
+
+export type DashboardWidgetLayout = z.infer<typeof dashboardWidgetLayoutSchema>;
+
 export const dashboardWidgetDraftSchema = z.object({
   widgetId: z.string().trim().min(1).max(100).optional(),
   tabName: z.string().trim().min(1).max(80).optional(),
@@ -115,6 +127,7 @@ export type DashboardWidget = DashboardWidgetDraft & {
   id: string;
   tabId: string;
   position: number;
+  layout: Omit<DashboardWidgetLayout, "widgetId">;
   output?: DashboardWidgetOutput;
   lastRunAt?: string;
   lastDurationMs?: number;

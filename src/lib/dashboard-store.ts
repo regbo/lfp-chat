@@ -6,12 +6,14 @@ import { serverConfig } from "@/lib/config";
 import { listDashboardUserTools } from "@/lib/dashboard-user-tool-store";
 import {
   dashboardCapabilitySchema,
+  dashboardWidgetLayoutSchema,
   dashboardWidgetDraftSchema,
   dashboardWidgetOutputSchema,
   type DashboardState,
   type DashboardTab,
   type DashboardWidget,
   type DashboardWidgetDraft,
+  type DashboardWidgetLayout,
 } from "@/lib/dashboard-spec";
 
 type DashboardTabRow = {
@@ -36,6 +38,10 @@ type DashboardWidgetRow = {
   refresh_interval_seconds: number | null;
   lazy: boolean;
   position: number;
+  grid_x: number;
+  grid_y: number;
+  grid_w: number;
+  grid_h: number;
   cached_output: unknown;
   cache_expires_at: Date | string | null;
   last_run_at: Date | string | null;
@@ -86,6 +92,10 @@ async function ready() {
       refresh_interval_seconds integer,
       lazy boolean NOT NULL DEFAULT false,
       position integer NOT NULL DEFAULT 0,
+      grid_x integer NOT NULL DEFAULT 0,
+      grid_y integer NOT NULL DEFAULT 0,
+      grid_w integer NOT NULL DEFAULT 6,
+      grid_h integer NOT NULL DEFAULT 4,
       cached_output jsonb,
       cache_expires_at timestamptz,
       last_run_at timestamptz,
@@ -99,6 +109,24 @@ async function ready() {
       ON lfp_dashboard_widgets (resource_id, tab_id, position, created_at);
     ALTER TABLE lfp_dashboard_widgets ADD COLUMN IF NOT EXISTS tool_name text;
     ALTER TABLE lfp_dashboard_widgets ADD COLUMN IF NOT EXISTS tool_input jsonb NOT NULL DEFAULT '{}';
+    ALTER TABLE lfp_dashboard_widgets ADD COLUMN IF NOT EXISTS grid_x integer;
+    ALTER TABLE lfp_dashboard_widgets ADD COLUMN IF NOT EXISTS grid_y integer;
+    ALTER TABLE lfp_dashboard_widgets ADD COLUMN IF NOT EXISTS grid_w integer;
+    ALTER TABLE lfp_dashboard_widgets ADD COLUMN IF NOT EXISTS grid_h integer;
+    UPDATE lfp_dashboard_widgets SET
+      grid_x = (position % 2) * 6,
+      grid_y = (position / 2) * 4,
+      grid_w = 6,
+      grid_h = 4
+    WHERE grid_x IS NULL OR grid_y IS NULL OR grid_w IS NULL OR grid_h IS NULL;
+    ALTER TABLE lfp_dashboard_widgets ALTER COLUMN grid_x SET DEFAULT 0;
+    ALTER TABLE lfp_dashboard_widgets ALTER COLUMN grid_x SET NOT NULL;
+    ALTER TABLE lfp_dashboard_widgets ALTER COLUMN grid_y SET DEFAULT 0;
+    ALTER TABLE lfp_dashboard_widgets ALTER COLUMN grid_y SET NOT NULL;
+    ALTER TABLE lfp_dashboard_widgets ALTER COLUMN grid_w SET DEFAULT 6;
+    ALTER TABLE lfp_dashboard_widgets ALTER COLUMN grid_w SET NOT NULL;
+    ALTER TABLE lfp_dashboard_widgets ALTER COLUMN grid_h SET DEFAULT 4;
+    ALTER TABLE lfp_dashboard_widgets ALTER COLUMN grid_h SET NOT NULL;
   `).then(() => undefined);
   return globalForDashboard.lfpDashboardReady;
 }
@@ -121,6 +149,7 @@ function widgetFromRow(row: DashboardWidgetRow): DashboardWidget {
     toolInput: dashboardWidgetDraftSchema.shape.toolInput.parse(row.tool_input ?? {}),
     code: row.code,
     position: row.position,
+    layout: { x: row.grid_x, y: row.grid_y, w: row.grid_w, h: row.grid_h },
     ...(output?.success ? { output: output.data } : {}),
     ...(iso(row.last_run_at) ? { lastRunAt: iso(row.last_run_at) } : {}),
     ...(row.last_duration_ms !== null ? { lastDurationMs: row.last_duration_ms } : {}),
@@ -169,6 +198,7 @@ export async function listDashboard(
     pool().query<DashboardWidgetRow>(
       `SELECT id, tab_id, title, description, code, tool_name, tool_input, capabilities,
               cache_ttl_seconds, refresh_interval_seconds, lazy, position,
+              grid_x, grid_y, grid_w, grid_h,
               cached_output, cache_expires_at, last_run_at, last_duration_ms,
               last_error, archived_at, created_at, updated_at
        FROM lfp_dashboard_widgets
@@ -272,11 +302,14 @@ export async function upsertDashboardWidget(
       )
     ).rows[0]?.position ?? 0;
     const id = existing?.id ?? randomUUID();
+    const defaultGridX = (position % 2) * 6;
+    const defaultGridY = Math.floor(position / 2) * 4;
     const result = await client.query<DashboardWidgetRow>(
       `INSERT INTO lfp_dashboard_widgets (
          id, resource_id, tab_id, title, description, code, tool_name, tool_input,
-         capabilities, cache_ttl_seconds, refresh_interval_seconds, lazy, position
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, '{}', 0, NULL, false, $9)
+         capabilities, cache_ttl_seconds, refresh_interval_seconds, lazy, position,
+         grid_x, grid_y, grid_w, grid_h
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, '{}', 0, NULL, false, $9, $10, $11, 6, 4)
        ON CONFLICT (id) DO UPDATE SET
          tab_id = EXCLUDED.tab_id,
          title = EXCLUDED.title,
@@ -300,6 +333,8 @@ export async function upsertDashboardWidget(
         draft.toolName,
         JSON.stringify(draft.toolInput),
         position,
+        existing?.grid_x ?? defaultGridX,
+        existing?.grid_y ?? defaultGridY,
       ],
     );
     await client.query("COMMIT");
@@ -456,6 +491,38 @@ export async function updateDashboardWidgetMetadata(
   );
   if (!result.rows[0]) throw new Error("Dashboard widget was not found.");
   return widgetFromRow(result.rows[0]);
+}
+
+export async function updateDashboardWidgetLayouts(
+  resourceId: string,
+  layouts: DashboardWidgetLayout[],
+) {
+  await ready();
+  const parsed = layouts.map((layout) => dashboardWidgetLayoutSchema.parse(layout));
+  if (!parsed.length) return [];
+  const client = await pool().connect();
+  try {
+    await client.query("BEGIN");
+    const updated: DashboardWidget[] = [];
+    for (const layout of parsed) {
+      const result = await client.query<DashboardWidgetRow>(
+        `UPDATE lfp_dashboard_widgets SET
+           grid_x = $3, grid_y = $4, grid_w = $5, grid_h = $6, updated_at = now()
+         WHERE id = $1 AND resource_id = $2 AND archived_at IS NULL
+         RETURNING *`,
+        [layout.widgetId, resourceId, layout.x, layout.y, layout.w, layout.h],
+      );
+      if (!result.rows[0]) throw new Error("Dashboard widget was not found.");
+      updated.push(widgetFromRow(result.rows[0]));
+    }
+    await client.query("COMMIT");
+    return updated;
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 export async function deleteDashboardWidget(resourceId: string, widgetId: string) {

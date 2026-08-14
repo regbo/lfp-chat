@@ -6,6 +6,8 @@ import { ThemeSync } from "@/components/theme-sync";
 import { THEME_BOOTSTRAP_SCRIPT, THEME_COLORS } from "@/lib/theme-preference";
 import { serverConfig } from "@/lib/config";
 import "@regbo/lfp-chat/styles.css";
+import "react-grid-layout/css/styles.css";
+import "react-resizable/css/styles.css";
 import "./globals.css";
 
 const geistMono = Geist_Mono({

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { executeDashboardProgram } from "./dashboard-runtime";
+import { dashboardWidgetLayoutSchema } from "./dashboard-spec";
 import { dashboardToolCacheKey } from "./dashboard-user-tool-store";
 
 describe("dashboard presentation runtime", () => {
@@ -37,5 +38,27 @@ describe("dashboard tool cache keys", () => {
   test("different nested inputs produce different keys", () => {
     expect(dashboardToolCacheKey({ filters: { merchant: "Amazon" } }))
       .not.toBe(dashboardToolCacheKey({ filters: { merchant: "Target" } }));
+  });
+});
+
+describe("dashboard widget layouts", () => {
+  test("accepts a widget that fits in the twelve-column grid", () => {
+    expect(dashboardWidgetLayoutSchema.parse({
+      widgetId: "0c4cb628-5453-4fa9-82f1-761a133f3e17",
+      x: 6,
+      y: 4,
+      w: 6,
+      h: 4,
+    })).toMatchObject({ x: 6, y: 4, w: 6, h: 4 });
+  });
+
+  test("rejects a widget that extends beyond the grid", () => {
+    expect(() => dashboardWidgetLayoutSchema.parse({
+      widgetId: "0c4cb628-5453-4fa9-82f1-761a133f3e17",
+      x: 8,
+      y: 0,
+      w: 6,
+      h: 4,
+    })).toThrow("Widget layout must fit within the dashboard grid");
   });
 });
