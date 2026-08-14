@@ -1238,14 +1238,17 @@ function ChatSession({
         return;
       }
       if (isStreaming) {
-        deliverSteer({ id: makeId(), message: { text, files } });
+        setSteers((current) => [
+          ...current,
+          { id: makeId(), message: { text, files } },
+        ]);
         setDraft("");
         return;
       }
       setDraft("");
       void runMessage({ text, files });
     },
-    [deliverSteer, editingSteerId, isStreaming, runMessage],
+    [editingSteerId, isStreaming, runMessage],
   );
 
   useEffect(() => {
