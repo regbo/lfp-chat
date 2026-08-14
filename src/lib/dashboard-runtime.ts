@@ -15,6 +15,14 @@ type DashboardExecutionOptions = {
   resourceId: string;
   cachedOutput?: DashboardWidgetOutput;
   cacheAgeSeconds?: number;
+  userToolCall?: (id: string, input: unknown, budget: DashboardCallBudget) => Promise<unknown>;
+  budget?: DashboardCallBudget;
+};
+
+export type DashboardCallBudget = {
+  depth: number;
+  counter: { calls: number };
+  stack: string[];
 };
 
 type AdaptedTool = {
@@ -38,7 +46,7 @@ function registry() {
   return (globalForDashboardTools.lfpDashboardTools ??= new Map());
 }
 
-function fromMonty(value: unknown): unknown {
+export function fromMonty(value: unknown): unknown {
   if (value instanceof Map) {
     return Object.fromEntries(
       Array.from(value.entries(), ([key, item]) => [String(key), fromMonty(item)]),
@@ -46,6 +54,11 @@ function fromMonty(value: unknown): unknown {
   }
   if (Array.isArray(value)) return value.map(fromMonty);
   return value;
+}
+
+export async function callRegisteredDashboardTool(id: string, input: unknown, resourceId: string) {
+  const tool = registry().get(dashboardCapabilitySchema.parse(id));
+  return tool ? { found: true as const, value: await tool.execute(fromMonty(input), resourceId) } : { found: false as const };
 }
 
 /**
@@ -92,9 +105,16 @@ export async function executeDashboardProgram(options: DashboardExecutionOptions
     if (!allowed.has(id)) {
       throw new Error(`Dashboard program did not declare the ${id} capability.`);
     }
-    const tool = registry().get(id);
-    if (!tool) throw new Error(`Dashboard capability ${id} is not registered.`);
-    return tool.execute(fromMonty(input), options.resourceId);
+    const registered = await callRegisteredDashboardTool(id, input, options.resourceId);
+    if (registered.found) return registered.value;
+    if (options.userToolCall) {
+      return options.userToolCall(id, fromMonty(input), options.budget ?? {
+        depth: 0,
+        counter: { calls: 0 },
+        stack: [],
+      });
+    }
+    throw new Error(`Dashboard capability ${id} is not registered.`);
   };
 
   const startedAt = performance.now();

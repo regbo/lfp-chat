@@ -11,7 +11,9 @@ export function getMontyPool() {
     globalForMonty.lfpMontyPool ??=
       Monty.create({
         minProcesses: 1,
-        maxProcesses: 2,
+        // Persisted tools may compose other Monty tools. The runtime bounds
+        // nesting separately; enough workers prevents a nested checkout stall.
+        maxProcesses: 8,
         checkoutTimeout: 5,
         requestTimeout: 15,
         maxCheckoutsPerWorker: 100,

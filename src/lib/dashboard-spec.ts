@@ -86,6 +86,28 @@ export const dashboardWidgetDraftSchema = z.object({
 
 export type DashboardWidgetDraft = z.infer<typeof dashboardWidgetDraftSchema>;
 
+export const dashboardUserToolDraftSchema = z.object({
+  toolId: z.string().trim().min(1).max(100).optional(),
+  name: dashboardCapabilitySchema,
+  title: z.string().trim().min(1).max(160),
+  description: z.string().trim().min(1).max(500),
+  code: z.string().trim().min(1).max(30_000),
+  capabilities: z.array(dashboardCapabilitySchema).max(32).default(["url_fetch"]),
+  cacheTtlSeconds: z.number().int().min(0).max(604_800).default(300),
+});
+
+export type DashboardUserToolDraft = z.infer<typeof dashboardUserToolDraftSchema>;
+
+export type DashboardUserTool = DashboardUserToolDraft & {
+  id: string;
+  lastRunAt?: string;
+  lastDurationMs?: number;
+  lastError?: string;
+  archivedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type DashboardWidget = DashboardWidgetDraft & {
   id: string;
   tabId: string;
@@ -112,6 +134,9 @@ export type DashboardTab = {
 
 export type DashboardState = {
   tabs: DashboardTab[];
+  tools: DashboardUserTool[];
   archivedWidgetCount: number;
+  archivedToolCount: number;
+  archivedItemCount: number;
   hasDashboard: boolean;
 };

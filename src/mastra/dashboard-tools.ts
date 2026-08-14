@@ -4,10 +4,18 @@ import { z } from "zod";
 import {
   archiveDashboardTab,
   archiveDashboardWidget,
+  deleteDashboardTab,
+  deleteDashboardWidget,
   listDashboard,
   upsertDashboardWidget,
 } from "@/lib/dashboard-store";
-import { dashboardWidgetDraftSchema } from "@/lib/dashboard-spec";
+import {
+  deleteDashboardUserTool,
+  setDashboardUserToolArchived,
+  upsertDashboardUserTool,
+} from "@/lib/dashboard-user-tool-store";
+import { dashboardUserToolDraftSchema, dashboardWidgetDraftSchema } from "@/lib/dashboard-spec";
+import { executeDashboardUserTool } from "@/lib/dashboard-user-tool-runtime";
 import { runDashboardWidget } from "@/mastra/dashboard-refresh";
 
 function resourceId(context: { agent?: { resourceId?: string } }) {
@@ -41,19 +49,56 @@ export const dashboardListTool = createTool({
     listDashboard(resourceId(context), { includeArchived }),
 });
 
+export const dashboardUpsertUserTool = createTool({
+  id: "dashboard_upsert_tool",
+  description: `Create or update a reusable deterministic dashboard tool. Write Monty Python that reads the JSON-compatible args variable and returns any JSON-compatible value. It may call declared built-in or user tools with await tool_call("tool_name", {input fields}); url_fetch is available by default. cacheTtlSeconds automatically caches each distinct input with PostgreSQL advisory-lock protection, so do not write cache plumbing in the program. Tool calls may compose or recurse with changing inputs, bounded to six levels and 32 calls. Use a stable toolId when editing.`,
+  inputSchema: dashboardUserToolDraftSchema.extend({
+    testInput: z.unknown().optional(),
+    runNow: z.boolean().default(true),
+  }),
+  outputSchema: z.record(z.string(), z.unknown()),
+  execute: async ({ runNow, testInput, ...draft }, context) => {
+    const scope = resourceId(context);
+    const tool = await upsertDashboardUserTool(scope, draft);
+    if (!runNow) return { created: true, tool };
+    return { created: true, tool, output: await executeDashboardUserTool(scope, tool.name, testInput ?? {}) };
+  },
+});
+
+export const dashboardRunUserTool = createTool({
+  id: "dashboard_run_tool",
+  description: "Run a saved dashboard tool directly with JSON input. Cached results are reused according to the tool's TTL.",
+  inputSchema: z.object({ name: z.string().min(1), input: z.unknown().default({}) }),
+  outputSchema: z.unknown(),
+  execute: async ({ name, input }, context) => executeDashboardUserTool(resourceId(context), name, input),
+});
+
 export const dashboardArchiveTool = createTool({
   id: "dashboard_archive",
-  description: "Archive or restore a dashboard widget or an entire tab.",
+  description: "Archive or restore a dashboard widget, tab, or reusable tool.",
   inputSchema: z.object({
-    kind: z.enum(["widget", "tab"]),
+    kind: z.enum(["widget", "tab", "tool"]),
     id: z.string().min(1),
     archived: z.boolean().default(true),
   }),
   outputSchema: z.record(z.string(), z.unknown()),
   execute: async ({ archived, id, kind }, context) => {
     const scope = resourceId(context);
-    return kind === "widget"
-      ? archiveDashboardWidget(scope, id, archived)
-      : archiveDashboardTab(scope, id, archived);
+    if (kind === "widget") return archiveDashboardWidget(scope, id, archived);
+    if (kind === "tab") return archiveDashboardTab(scope, id, archived);
+    return setDashboardUserToolArchived(scope, id, archived);
+  },
+});
+
+export const dashboardDeleteTool = createTool({
+  id: "dashboard_delete",
+  description: "Permanently delete an archived dashboard widget, tab, or reusable tool. Active items must be archived first.",
+  inputSchema: z.object({ kind: z.enum(["widget", "tab", "tool"]), id: z.string().min(1) }),
+  outputSchema: z.record(z.string(), z.unknown()),
+  execute: async ({ id, kind }, context) => {
+    const scope = resourceId(context);
+    if (kind === "widget") return deleteDashboardWidget(scope, id);
+    if (kind === "tab") return deleteDashboardTab(scope, id);
+    return deleteDashboardUserTool(scope, id);
   },
 });

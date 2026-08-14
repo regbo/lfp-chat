@@ -3,6 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { Pool, type PoolClient } from "pg";
 
 import { serverConfig } from "@/lib/config";
+import { listDashboardUserTools } from "@/lib/dashboard-user-tool-store";
 import {
   dashboardCapabilitySchema,
   dashboardWidgetDraftSchema,
@@ -143,11 +144,11 @@ function tabFromRow(row: DashboardTabRow, widgets: DashboardWidget[]): Dashboard
 
 export async function dashboardExists(resourceId: string) {
   await ready();
-  const result = await pool().query<{ exists: boolean }>(
+  const [result, tools] = await Promise.all([pool().query<{ exists: boolean }>(
     "SELECT EXISTS (SELECT 1 FROM lfp_dashboard_widgets WHERE resource_id = $1) AS exists",
     [resourceId],
-  );
-  return result.rows[0]?.exists ?? false;
+  ), listDashboardUserTools(resourceId, true)]);
+  return (result.rows[0]?.exists ?? false) || tools.length > 0;
 }
 
 export async function listDashboard(
@@ -156,7 +157,7 @@ export async function listDashboard(
 ): Promise<DashboardState> {
   await ready();
   const includeArchived = options.includeArchived ?? false;
-  const [tabsResult, widgetsResult, archiveResult, exists] = await Promise.all([
+  const [tabsResult, widgetsResult, archiveResult, tools, exists] = await Promise.all([
     pool().query<DashboardTabRow>(
       `SELECT id, name, position, archived_at, created_at, updated_at
        FROM lfp_dashboard_tabs
@@ -179,6 +180,7 @@ export async function listDashboard(
        WHERE resource_id = $1 AND archived_at IS NOT NULL`,
       [resourceId],
     ),
+    listDashboardUserTools(resourceId, includeArchived),
     dashboardExists(resourceId),
   ]);
   const widgets = widgetsResult.rows.map(widgetFromRow);
@@ -186,7 +188,10 @@ export async function listDashboard(
     tabs: tabsResult.rows.map((tab) =>
       tabFromRow(tab, widgets.filter((widget) => widget.tabId === tab.id)),
     ),
+    tools,
     archivedWidgetCount: archiveResult.rows[0]?.count ?? 0,
+    archivedToolCount: tools.filter((tool) => tool.archivedAt).length,
+    archivedItemCount: (archiveResult.rows[0]?.count ?? 0) + tools.filter((tool) => tool.archivedAt).length,
     hasDashboard: exists,
   };
 }
@@ -332,6 +337,7 @@ export type DashboardProgramExecutor = (options: {
   resourceId: string;
   cachedOutput?: import("@/lib/dashboard-spec").DashboardWidgetOutput;
   cacheAgeSeconds?: number;
+  force?: boolean;
 }) => Promise<{ output: import("@/lib/dashboard-spec").DashboardWidgetOutput; durationMs: number }>;
 
 async function refreshWidgetNow(
@@ -394,6 +400,7 @@ async function refreshWidgetNow(
       resourceId,
       ...(previousOutput?.success ? { cachedOutput: previousOutput.data } : {}),
       ...(lastRunAt ? { cacheAgeSeconds: Math.max(0, (Date.now() - lastRunAt) / 1_000) } : {}),
+      force,
     });
     const result = await client.query<DashboardWidgetRow>(
       `UPDATE lfp_dashboard_widgets SET
@@ -446,13 +453,41 @@ export async function archiveDashboardWidget(
   archived: boolean,
 ) {
   await ready();
-  const result = await pool().query<DashboardWidgetRow>(
-    `UPDATE lfp_dashboard_widgets SET archived_at = $3, updated_at = now()
-     WHERE id = $1 AND resource_id = $2 RETURNING *`,
-    [widgetId, resourceId, archived ? new Date() : null],
+  const client = await pool().connect();
+  try {
+    await client.query("BEGIN");
+    const result = await client.query<DashboardWidgetRow>(
+      `UPDATE lfp_dashboard_widgets SET archived_at = $3, updated_at = now()
+       WHERE id = $1 AND resource_id = $2 RETURNING *`,
+      [widgetId, resourceId, archived ? new Date() : null],
+    );
+    if (!result.rows[0]) throw new Error("Dashboard widget was not found.");
+    if (!archived) {
+      await client.query(
+        `UPDATE lfp_dashboard_tabs SET archived_at = NULL, updated_at = now()
+         WHERE id = $1 AND resource_id = $2`,
+        [result.rows[0].tab_id, resourceId],
+      );
+    }
+    await client.query("COMMIT");
+    return widgetFromRow(result.rows[0]);
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+export async function deleteDashboardWidget(resourceId: string, widgetId: string) {
+  await ready();
+  const result = await pool().query<{ id: string }>(
+    `DELETE FROM lfp_dashboard_widgets
+     WHERE id = $1 AND resource_id = $2 AND archived_at IS NOT NULL RETURNING id`,
+    [widgetId, resourceId],
   );
-  if (!result.rows[0]) throw new Error("Dashboard widget was not found.");
-  return widgetFromRow(result.rows[0]);
+  if (!result.rowCount) throw new Error("Archive the dashboard widget before deleting it permanently.");
+  return { deleted: true, id: widgetId };
 }
 
 export async function archiveDashboardTab(
@@ -483,4 +518,15 @@ export async function archiveDashboardTab(
   } finally {
     client.release();
   }
+}
+
+export async function deleteDashboardTab(resourceId: string, tabId: string) {
+  await ready();
+  const result = await pool().query<{ id: string }>(
+    `DELETE FROM lfp_dashboard_tabs
+     WHERE id = $1 AND resource_id = $2 AND archived_at IS NOT NULL RETURNING id`,
+    [tabId, resourceId],
+  );
+  if (!result.rowCount) throw new Error("Archive the dashboard tab before deleting it permanently.");
+  return { deleted: true, id: tabId };
 }

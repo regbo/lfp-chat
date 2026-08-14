@@ -2452,7 +2452,7 @@ export function ChatApp({ branding = DEFAULT_APP_BRANDING, mods = [], plugins = 
           </div>
         )}
         {resourceId && activeView === "search" && <SearchPanel onOpen={(id) => void openThread(id)} threads={activeThreads} />}
-        {resourceId && activeView === "dashboard" && <DashboardPanel resourceId={resourceId} />}
+        {resourceId && activeView === "dashboard" && <DashboardPanel onAvailabilityChange={setHasDashboard} resourceId={resourceId} />}
         {resourceId && activeView === "scheduled" && (
           <SchedulesPanel
             enabledToolIds={enabledToolIds}

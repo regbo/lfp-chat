@@ -16,7 +16,10 @@ import {
 } from "@/mastra/tools";
 import {
   dashboardArchiveTool,
+  dashboardDeleteTool,
   dashboardListTool,
+  dashboardRunUserTool,
+  dashboardUpsertUserTool,
   dashboardUpsertWidgetTool,
 } from "@/mastra/dashboard-tools";
 import { dashboardSqlTool, dashboardWebFetchTool } from "@/mastra/dashboard-source-tools";
@@ -101,8 +104,11 @@ function createMastra() {
         url_fetch: urlFetchTool,
         ...(serverConfig.dashboard.sqlDatabaseUrl ? { sql_query: dashboardSqlTool } : {}),
         dashboard_upsert_widget: dashboardUpsertWidgetTool,
+        dashboard_upsert_tool: dashboardUpsertUserTool,
+        dashboard_run_tool: dashboardRunUserTool,
         dashboard_list: dashboardListTool,
         dashboard_archive: dashboardArchiveTool,
+        dashboard_delete: dashboardDeleteTool,
         task_list: taskListTool,
         task_list_lists: taskListListsTool,
         task_list_create: taskListCreateTool,
@@ -151,7 +157,7 @@ function createMastra() {
         "For render_chart, pass ordered tabular data as columns plus aligned rows. Put the label or time axis first and numeric series after it.";
       return `You are ${serverConfig.appBranding.fullName}, a capable and concise assistant.
 
-The user has enabled these capabilities for this run: ${enabled.join(", ") || "none"}. Only use tools that are enabled. ${scheduledJobInstructions} Use project search for this app's stack, calculator for arithmetic, Monty for isolated Python, web_fetch for a normal bounded URL request, and url_fetch when a specific public page needs browser-like request behavior. url_fetch is not internet search. When the user asks to add, pin, save, cache, or periodically refresh something on their dashboard, use dashboard_upsert_widget. Write a deterministic Monty program that returns one validated chart, metric, table, or text object. In that program call actual Mastra tools with await tool_call("tool_id", {input fields}), and declare exactly those tool IDs in capabilities. The saved program refreshes without an LLM. The dashboard runtime enforces cache TTL; do not add an early cache_get() return merely to implement caching. Use cache_get() only for incremental calculations that actually need the previous output. Set refreshIntervalSeconds only when the user explicitly asks for polling; a cache TTL alone refreshes on the first page load after expiry. Use dashboard_list before changing an existing widget, and dashboard_archive to archive or restore widgets and tabs. When the user asks for work on a time cadence, use schedule_create. Put only the recurring work in its prompt and include the timezone when known. When Code mode is enabled, workspace tools operate directly on the host filesystem and shell; do not read secrets or modify unrelated files unless explicitly asked. ${providerInstructions}
+The user has enabled these capabilities for this run: ${enabled.join(", ") || "none"}. Only use tools that are enabled. ${scheduledJobInstructions} Use project search for this app's stack, calculator for arithmetic, Monty for isolated Python, web_fetch for a normal bounded URL request, and url_fetch when a specific public page needs browser-like request behavior. url_fetch is not internet search. When the user asks for reusable data logic, create a saved tool with dashboard_upsert_tool; it can call declared built-in or saved tools and its distinct inputs are cached automatically. When the user asks to add, pin, save, cache, or periodically refresh a visible result, use dashboard_upsert_widget. Write deterministic Monty programs and declare exactly the tool IDs they call in capabilities. A widget returns one validated chart, metric, table, or text object; a saved tool may return any JSON-compatible value. The saved programs refresh without an LLM. The dashboard runtime enforces cache TTL; do not add an early cache_get() return merely to implement caching. Use cache_get() only for incremental widget calculations that actually need the previous output. Set refreshIntervalSeconds only when the user explicitly asks for polling; a cache TTL alone refreshes on the first page load after expiry. Use dashboard_list before changes, dashboard_archive to archive or restore, and dashboard_delete only when the user explicitly asks to permanently remove an archived item. When the user asks for work on a time cadence, use schedule_create. Put only the recurring work in its prompt and include the timezone when known. When Code mode is enabled, workspace tools operate directly on the host filesystem and shell; do not read secrets or modify unrelated files unless explicitly asked. ${providerInstructions}
 
 ${chartInstructions}
 
@@ -183,8 +189,11 @@ Remember stable user preferences in working memory, but do not store secrets or 
       url_fetch: urlFetchTool,
       ...(serverConfig.dashboard.sqlDatabaseUrl ? { sql_query: dashboardSqlTool } : {}),
       dashboard_upsert_widget: dashboardUpsertWidgetTool,
+      dashboard_upsert_tool: dashboardUpsertUserTool,
+      dashboard_run_tool: dashboardRunUserTool,
       dashboard_list: dashboardListTool,
       dashboard_archive: dashboardArchiveTool,
+      dashboard_delete: dashboardDeleteTool,
       task_list: taskListTool,
       task_list_lists: taskListListsTool,
       task_list_create: taskListCreateTool,

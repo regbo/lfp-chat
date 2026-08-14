@@ -11,7 +11,7 @@ export async function GET(request: Request) {
     });
     return Response.json(
       params.get("summary") === "true"
-        ? { hasDashboard: state.hasDashboard, archivedWidgetCount: state.archivedWidgetCount }
+        ? { hasDashboard: state.hasDashboard, archivedItemCount: state.archivedItemCount }
         : state,
     );
   } catch (error) {
