@@ -26,7 +26,7 @@ const chartRowValueSchema = z.union([
   z.null(),
 ]);
 
-const chartRequestSchema = z.object({
+export const chartRequestSchema = z.object({
   title: z.string().trim().min(1).max(160),
   description: z.string().trim().min(1).max(500).optional(),
   columns: z.array(z.string().trim().min(1).max(80)).min(2).max(16),
