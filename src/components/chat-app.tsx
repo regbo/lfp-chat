@@ -33,6 +33,8 @@ import {
 } from "@/components/ai-elements/reasoning";
 import type { ToolPart } from "@/components/ai-elements/tool";
 import { Button } from "@/components/ui/button";
+import { BrandLockup } from "@/components/brand-lockup";
+import { DashboardPanel } from "@/components/dashboard-panel";
 import {
   Dialog,
   DialogContent,
@@ -58,6 +60,9 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -74,6 +79,7 @@ import {
 } from "@/components/tool-event-summary";
 import { type PendingSteer, SteerQueue } from "@/components/steer-queue";
 import { formatAttachmentLinks } from "@/lib/attachment-links";
+import { DEFAULT_APP_BRANDING, type AppBranding } from "@/lib/app-branding";
 import { isChatChartSpec } from "@/lib/chart-spec";
 import { formatCitationMarkers } from "@/lib/citations";
 import {
@@ -110,6 +116,7 @@ import {
   starterSuggestionSignature,
 } from "@/lib/starter-suggestions";
 import {
+  getThreadFolder,
   isThreadArchived,
   isThreadPinned,
   type ThreadSummary,
@@ -139,13 +146,15 @@ import {
   Blocks,
   Check,
   ChevronDown,
+  ChevronRight,
   Clock3,
   Copy,
   Database,
-  Download,
   FileText,
   Folder,
+  FolderPlus,
   LoaderCircle,
+  LayoutDashboard,
   Menu,
   Mic,
   MoreHorizontal,
@@ -164,6 +173,7 @@ import {
   X,
 } from "lucide-react";
 import {
+  Children,
   useCallback,
   useEffect,
   useMemo,
@@ -180,6 +190,7 @@ const ChatChart = dynamic(
 
 type CoreView =
   | "chat"
+  | "dashboard"
   | "search"
   | "scheduled"
   | "tools"
@@ -189,6 +200,7 @@ type ActiveView = CoreView | `plugin:${string}`;
 
 const pluginView = (id: string): ActiveView => `plugin:${id}`;
 const coreViewRoutes: Record<Exclude<CoreView, "chat">, `/${string}`> = {
+  dashboard: "/dashboard",
   search: "/search",
   scheduled: "/scheduled",
   tools: "/tools",
@@ -199,11 +211,6 @@ const coreViewRoutes: Record<Exclude<CoreView, "chat">, `/${string}`> = {
 function pluginHref(plugin: ChatAppPlugin) {
   return plugin.href ?? `/${plugin.id}`;
 }
-
-type InstallPromptEvent = Event & {
-  prompt: () => Promise<void>;
-  userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
-};
 
 const STARTER_SUGGESTION_CACHE_VERSION = 1;
 
@@ -309,23 +316,34 @@ function useVisualViewportShell(shellRef: RefObject<HTMLElement | null>) {
 
     // iOS may pan the layout viewport when its keyboard opens. Anchor the app
     // shell to the actually visible viewport so its header is never panned away.
+    // Wait for a burst of viewport events to settle: WebKit can expose
+    // intermediate keyboard-animation geometry that briefly collapses the
+    // shell before reporting the final visible viewport.
     let animationFrame = 0;
-    const updateShell = () => {
+    let settleTimer = 0;
+    const commitShell = () => {
       window.cancelAnimationFrame(animationFrame);
       animationFrame = window.requestAnimationFrame(() => {
         shell.style.setProperty("--visual-viewport-height", `${viewport.height}px`);
         shell.style.setProperty("--visual-viewport-top", `${viewport.offsetTop}px`);
       });
     };
+    const scheduleShellUpdate = () => {
+      window.clearTimeout(settleTimer);
+      settleTimer = window.setTimeout(commitShell, 100);
+    };
 
-    updateShell();
-    viewport.addEventListener("resize", updateShell);
-    viewport.addEventListener("scroll", updateShell);
+    commitShell();
+    viewport.addEventListener("resize", scheduleShellUpdate);
+    viewport.addEventListener("scroll", scheduleShellUpdate);
+    viewport.addEventListener("scrollend", commitShell);
 
     return () => {
       window.cancelAnimationFrame(animationFrame);
-      viewport.removeEventListener("resize", updateShell);
-      viewport.removeEventListener("scroll", updateShell);
+      window.clearTimeout(settleTimer);
+      viewport.removeEventListener("resize", scheduleShellUpdate);
+      viewport.removeEventListener("scroll", scheduleShellUpdate);
+      viewport.removeEventListener("scrollend", commitShell);
       shell.style.removeProperty("--visual-viewport-height");
       shell.style.removeProperty("--visual-viewport-top");
     };
@@ -365,6 +383,27 @@ function useComposerClearance(
 
 const makeId = () =>
   `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+
+function promptMessageToUserMessage(
+  message: PromptInputMessage,
+  id = makeId(),
+): UIMessage {
+  return {
+    id,
+    role: "user",
+    parts: [
+      ...message.files.map((file) => ({
+        type: "file" as const,
+        mediaType: file.mediaType,
+        filename: file.filename,
+        url: file.url,
+      })),
+      ...(message.text.trim()
+        ? [{ type: "text" as const, text: message.text.trim() }]
+        : []),
+    ],
+  };
+}
 
 const threadHref = (threadId: string) =>
   `/c/${encodeURIComponent(threadId)}`;
@@ -774,7 +813,7 @@ function ChatComposer({ draft, editingSteerId, modelCatalog, modelSelection, onD
         <AddFilesButton />
         <PromptInputBody>
           <PromptInputTextarea
-            aria-label="Chat with LFP Chat"
+            aria-label="Message"
             className="flex-1"
             onChange={(event) => onDraftChange(event.currentTarget.value)}
             placeholder={editingSteerId ? "Edit steer" : "Ask anything"}
@@ -919,21 +958,7 @@ function ChatSession({
   );
 
   const runMessage = useCallback(async (message: PromptInputMessage) => {
-    const userMessage: UIMessage = {
-      id: makeId(),
-      role: "user",
-      parts: [
-        ...message.files.map((file) => ({
-          type: "file" as const,
-          mediaType: file.mediaType,
-          filename: file.filename,
-          url: file.url,
-        })),
-        ...(message.text.trim()
-          ? [{ type: "text" as const, text: message.text.trim() }]
-          : []),
-      ],
-    };
+    const userMessage = promptMessageToUserMessage(message);
     const assistantId = makeId();
     const runId = makeId();
     const controller = new AbortController();
@@ -1192,7 +1217,7 @@ function ChatSession({
     setDraft(item.message.text);
     window.requestAnimationFrame(() => {
       document
-        .querySelector<HTMLTextAreaElement>('[aria-label="Chat with LFP Chat"]')
+        .querySelector<HTMLTextAreaElement>('[aria-label="Message"]')
         ?.focus();
     });
   }, [steers]);
@@ -1218,7 +1243,26 @@ function ChatSession({
       return;
     }
     setSteerError("");
+    const userMessage = promptMessageToUserMessage(item.message, item.id);
+    updateChatSession(threadId, (current) => ({
+      ...current,
+      messages: current.messages.some((message) => message.id === userMessage.id)
+        ? current.messages
+        : [...current.messages, userMessage],
+    }));
+    setSubmitScrollRequest((current) => current + 1);
     deleteSteer(id);
+    const restoreSteer = () => {
+      updateChatSession(threadId, (current) => ({
+        ...current,
+        messages: current.messages.filter((message) => message.id !== userMessage.id),
+      }));
+      setSteers((current) =>
+        current.some((candidate) => candidate.id === item.id)
+          ? current
+          : [item, ...current],
+      );
+    };
     void fetch(`/api/threads/${encodeURIComponent(threadId)}/steer`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1226,18 +1270,10 @@ function ChatSession({
     }).then(async (response) => {
       if (response.ok) return;
       const data = (await response.json()) as { error?: string };
-      setSteers((current) =>
-        current.some((candidate) => candidate.id === item.id)
-          ? current
-          : [item, ...current],
-      );
+      restoreSteer();
       setSteerError(data.error || "Unable to steer the current response.");
     }).catch(() => {
-      setSteers((current) =>
-        current.some((candidate) => candidate.id === item.id)
-          ? current
-          : [item, ...current],
-      );
+      restoreSteer();
       setSteerError("Unable to reach the chat server to deliver this steer.");
     });
   }, [deleteSteer, resourceId, steers, threadId]);
@@ -1287,7 +1323,7 @@ function ChatSession({
   const isEmpty = renderedMessages.length === 0;
   const hasStreamingAssistant =
     renderedMessages.at(-1)?.role === "assistant";
-  useComposerClearance(chatContainerRef, composerDockRef, !isEmpty);
+  useComposerClearance(chatContainerRef, composerDockRef, true);
 
   return (
     <div
@@ -1305,9 +1341,9 @@ function ChatSession({
         <ConversationContent
           className={cn(
             "chat-conversation-content mx-auto w-full max-w-none pt-4",
-            isEmpty && "pb-6",
+            isEmpty && "min-h-full md:min-h-0",
           )}
-          style={isEmpty ? undefined : { paddingBottom: "var(--chat-composer-clearance, 9.75rem)" }}
+          style={{ paddingBottom: "var(--chat-composer-clearance, 9.75rem)" }}
         >
           {loadingOlder && (
             <div className="chat-meta-text chat-column py-2 text-center text-muted-foreground">
@@ -1315,9 +1351,9 @@ function ChatSession({
             </div>
           )}
           {isEmpty ? (
-            <ConversationEmptyState className="min-h-[calc(100dvh-7rem)] justify-center px-0 pb-8">
-              <div className="chat-column space-y-5">
-                <h1 className="chat-display-text text-balance text-center">
+            <ConversationEmptyState className="h-auto min-h-0 flex-1 justify-stretch px-0 py-0 md:min-h-[calc(100dvh-7rem)] md:justify-center md:pb-8">
+              <div className="chat-column grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)_auto] pb-2 md:block md:flex-none md:space-y-5 md:pb-0">
+                <h1 className="chat-display-text self-center text-balance text-center">
                   What&apos;s on your mind today?
                 </h1>
                 <div className="hidden md:block">
@@ -1384,21 +1420,28 @@ function ChatSession({
 
 function ThreadActionsMenu({
   alwaysVisible = false,
+  folderNames,
   thread,
   onArchive,
+  onCreateFolder,
   onDelete,
+  onMoveToFolder,
   onPin,
   onRename,
 }: {
   alwaysVisible?: boolean;
+  folderNames: readonly string[];
   thread: ThreadSummary;
   onArchive: (thread: ThreadSummary) => void;
+  onCreateFolder: (thread: ThreadSummary) => void;
   onDelete: (thread: ThreadSummary) => void;
+  onMoveToFolder: (thread: ThreadSummary, folder: string | null) => void;
   onPin: (thread: ThreadSummary) => void;
   onRename: (thread: ThreadSummary) => void;
 }) {
   const archived = isThreadArchived(thread);
   const pinned = isThreadPinned(thread);
+  const currentFolder = getThreadFolder(thread);
 
   return (
     <DropdownMenu>
@@ -1422,9 +1465,36 @@ function ThreadActionsMenu({
           <Pencil /> Rename
         </DropdownMenuItem>
         {!archived && (
-          <DropdownMenuItem onClick={() => onPin(thread)}>
-            {pinned ? <PinOff /> : <Pin />} {pinned ? "Unpin" : "Pin"}
-          </DropdownMenuItem>
+          <>
+            <DropdownMenuItem onClick={() => onPin(thread)}>
+              {pinned ? <PinOff /> : <Pin />} {pinned ? "Unpin" : "Pin"}
+            </DropdownMenuItem>
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger>
+                <Folder /> Move to folder
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent className="w-44">
+                {currentFolder && (
+                  <DropdownMenuItem onClick={() => onMoveToFolder(thread, null)}>
+                    Recents
+                  </DropdownMenuItem>
+                )}
+                {folderNames.map((folder) => (
+                  <DropdownMenuItem
+                    key={folder}
+                    onClick={() => onMoveToFolder(thread, folder)}
+                  >
+                    {currentFolder === folder ? <Check /> : <Folder />}
+                    <span className="truncate">{folder}</span>
+                  </DropdownMenuItem>
+                ))}
+                {(currentFolder || folderNames.length > 0) && <DropdownMenuSeparator />}
+                <DropdownMenuItem onClick={() => onCreateFolder(thread)}>
+                  <FolderPlus /> New folder
+                </DropdownMenuItem>
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+          </>
         )}
         <DropdownMenuItem onClick={() => onArchive(thread)}>
           {archived ? <ArchiveRestore /> : <Archive />}
@@ -1436,6 +1506,35 @@ function ThreadActionsMenu({
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+}
+
+function SidebarThreadRow({
+  active,
+  controls,
+  onOpen,
+  onPrefetch,
+  thread,
+}: {
+  active: boolean;
+  controls: React.ReactNode;
+  onOpen: (threadId: string) => void;
+  onPrefetch: (threadId: string) => void;
+  thread: ThreadSummary;
+}) {
+  return (
+    <div className={cn("sidebar-chat-row group flex min-h-8 items-center rounded-lg hover:bg-sidebar-accent", active && "sidebar-chat-link-active")}>
+      <Link
+        className="sidebar-chat-link min-w-0 flex-1"
+        href={threadHref(thread.id)}
+        onClick={(event) => { event.preventDefault(); onOpen(thread.id); }}
+        onFocus={() => onPrefetch(thread.id)}
+        onPointerEnter={() => onPrefetch(thread.id)}
+      >
+        <SidebarChatTitle title={thread.title || "New chat"} />
+      </Link>
+      {controls}
+    </div>
   );
 }
 
@@ -1471,7 +1570,77 @@ function SidebarChatTitle({ title }: { title: string }) {
   );
 }
 
+function SidebarThreadGroup({
+  children,
+  defaultOpen = true,
+  icon,
+  indentChildren = false,
+  label,
+  revealItemIndex = -1,
+}: {
+  children: React.ReactNode;
+  defaultOpen?: boolean;
+  icon?: React.ReactNode;
+  indentChildren?: boolean;
+  label: string;
+  revealItemIndex?: number;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  const [showAll, setShowAll] = useState(false);
+  const items = Children.toArray(children);
+  // Thread queries are newest-first, so entries after this initial window are
+  // the older conversations that should stay behind an explicit disclosure.
+  const initialItemCount = 5;
+  const collapsedItemCount = Math.max(initialItemCount, revealItemIndex + 1);
+  const visibleItems = showAll ? items : items.slice(0, collapsedItemCount);
+  const hasOlderItems = items.length > collapsedItemCount;
+
+  return (
+    <section className="mb-3">
+      <button
+        aria-expanded={open}
+        className={cn(
+          "sidebar-item group/sidebar-heading hover:text-sidebar-foreground",
+          icon ? "text-sidebar-foreground" : "text-muted-foreground/80",
+        )}
+        onClick={() => setOpen((current) => !current)}
+        type="button"
+      >
+        {icon && (
+          <span className="grid size-[18px] shrink-0 place-items-center [&>svg]:size-[18px]">
+            {icon}
+          </span>
+        )}
+        <span className="truncate">{label}</span>
+        <ChevronRight
+          aria-hidden="true"
+          className={cn(
+            "size-3 shrink-0 transition-transform duration-150",
+            open && "rotate-90",
+          )}
+        />
+      </button>
+      {open && (
+        <div className={cn("mt-0.5 space-y-px", indentChildren && "ml-4")}>
+          {visibleItems}
+          {hasOlderItems && (
+            <button
+              className="sidebar-chat-link w-full text-left text-muted-foreground/70 transition-colors hover:text-sidebar-foreground"
+              onClick={() => setShowAll((current) => !current)}
+              type="button"
+            >
+              {showAll ? "Show less" : "Show more"}
+            </button>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
 export type ChatAppProps = {
+  /** Product identity displayed beside the fixed LFP monogram. */
+  branding?: AppBranding;
   /** Views to add to the primary sidebar without changing ChatApp internals. */
   plugins?: readonly ChatAppPlugin[];
   /** App-wide contributions for routes, settings, and host-implemented tools. */
@@ -1484,7 +1653,7 @@ export type ChatAppProps = {
   };
 };
 
-export function ChatApp({ mods = [], plugins = [], user }: ChatAppProps) {
+export function ChatApp({ branding = DEFAULT_APP_BRANDING, mods = [], plugins = [], user }: ChatAppProps) {
   const appShellRef = useRef<HTMLElement>(null);
   useVisualViewportShell(appShellRef);
   const pathname = usePathname();
@@ -1532,6 +1701,7 @@ export function ChatApp({ mods = [], plugins = [], user }: ChatAppProps) {
     [pathname, registeredPlugins],
   );
   const [resourceId, setResourceId] = useState(user?.resourceId ?? "");
+  const [hasDashboard, setHasDashboard] = useState(false);
   const [threadId, setThreadId] = useState(() => initialThreadId || makeId());
   const [sessionSeeds, setSessionSeeds] = useState<Map<string, UIMessage[]>>(
     () => new Map(initialThreadId ? [] : [[threadId, []]]),
@@ -1541,7 +1711,6 @@ export function ChatApp({ mods = [], plugins = [], user }: ChatAppProps) {
   const [threads, setThreads] = useState<ThreadSummary[]>([]);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
-  const [installPrompt, setInstallPrompt] = useState<InstallPromptEvent | null>(null);
   const [enabledToolIds, setEnabledToolIds] = useState<string[]>(
     defaultEnabledToolIds,
   );
@@ -1552,6 +1721,8 @@ export function ChatApp({ mods = [], plugins = [], user }: ChatAppProps) {
   >({});
   const [renamingThread, setRenamingThread] = useState<ThreadSummary | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
+  const [folderingThread, setFolderingThread] = useState<ThreadSummary | null>(null);
+  const [folderDraft, setFolderDraft] = useState("");
   const openRequestId = useRef(0);
   const previousPathname = useRef(pathname);
   const skipNextRootReset = useRef(false);
@@ -1564,6 +1735,22 @@ export function ChatApp({ mods = [], plugins = [], user }: ChatAppProps) {
     getChatSessionRevision,
   );
   const runningThreadIds = getRunningChatThreadIds();
+
+  useEffect(() => {
+    if (!resourceId) return;
+    let cancelled = false;
+    const refresh = async () => {
+      const query = new URLSearchParams({ resourceId, summary: "true" });
+      const response = await fetch(`/api/dashboard?${query}`, { cache: "no-store" }).catch(() => undefined);
+      if (!cancelled && response?.ok) {
+        const summary = await response.json() as { hasDashboard?: boolean };
+        setHasDashboard(summary.hasDashboard === true);
+      }
+    };
+    void refresh();
+    const timer = window.setInterval(() => void refresh(), 10_000);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [resourceId]);
 
   const rememberSession = useCallback((
     id: string,
@@ -1754,15 +1941,6 @@ export function ChatApp({ mods = [], plugins = [], user }: ChatAppProps) {
     return () => window.clearTimeout(timer);
   }, [user?.resourceId]);
 
-  useEffect(() => {
-    const captureInstallPrompt = (event: Event) => {
-      event.preventDefault();
-      setInstallPrompt(event as InstallPromptEvent);
-    };
-    window.addEventListener("beforeinstallprompt", captureInstallPrompt);
-    return () => window.removeEventListener("beforeinstallprompt", captureInstallPrompt);
-  }, []);
-
   const refreshThreads = useCallback(async () => {
     if (!resourceId) return;
     try {
@@ -1878,7 +2056,7 @@ export function ChatApp({ mods = [], plugins = [], user }: ChatAppProps) {
 
   const updateThread = useCallback(async (
     thread: ThreadSummary,
-    change: { title?: string; pinned?: boolean; archived?: boolean },
+    change: { title?: string; pinned?: boolean; archived?: boolean; folder?: string | null },
   ) => {
     const response = await fetch(`/api/threads/${encodeURIComponent(thread.id)}`, {
       method: "PATCH",
@@ -1925,14 +2103,12 @@ export function ChatApp({ mods = [], plugins = [], user }: ChatAppProps) {
     setRenamingThread(null);
   };
 
-  const installApp = async () => {
-    if (!installPrompt) {
-      window.alert("Use your browser menu and choose Add to Home Screen or Install app.");
-      return;
-    }
-    await installPrompt.prompt();
-    const choice = await installPrompt.userChoice;
-    if (choice.outcome === "accepted") setInstallPrompt(null);
+  const submitFolder = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const folder = folderDraft.trim();
+    if (!folderingThread || !folder) return;
+    await updateThread(folderingThread, { folder });
+    setFolderingThread(null);
   };
 
   const threadsWithBackgroundRuns = useMemo(() => {
@@ -1958,6 +2134,24 @@ export function ChatApp({ mods = [], plugins = [], user }: ChatAppProps) {
   const recentThreads = useMemo(
     () => activeThreads.filter((thread) => !isThreadPinned(thread)),
     [activeThreads],
+  );
+  const availableFolderNames = useMemo(
+    () => Array.from(new Set(activeThreads.flatMap((thread) => {
+      const folder = getThreadFolder(thread);
+      return folder ? [folder] : [];
+    }))).sort((left, right) => left.localeCompare(right)),
+    [activeThreads],
+  );
+  const folderGroups = useMemo(
+    () => availableFolderNames.flatMap((name) => {
+      const folderThreads = recentThreads.filter((thread) => getThreadFolder(thread) === name);
+      return folderThreads.length > 0 ? [{ name, threads: folderThreads }] : [];
+    }),
+    [availableFolderNames, recentThreads],
+  );
+  const unfiledRecentThreads = useMemo(
+    () => recentThreads.filter((thread) => !getThreadFolder(thread)),
+    [recentThreads],
   );
   const recentSuggestionTitles = useMemo(
     () => recentThreads.map((thread) => thread.title || "").filter(Boolean).slice(0, 8),
@@ -1993,15 +2187,27 @@ export function ChatApp({ mods = [], plugins = [], user }: ChatAppProps) {
   }, [refreshThreads, threadId]);
   const mountedSessionIds = useMemo(() => [threadId], [threadId]);
 
+  const moveThreadToFolder = useCallback((thread: ThreadSummary, folder: string | null) => {
+    void updateThread(thread, { folder });
+  }, [updateThread]);
+
+  const createFolderForThread = useCallback((thread: ThreadSummary) => {
+    setFolderingThread(thread);
+    setFolderDraft("");
+  }, []);
+
   const renderThreadActions = useCallback((thread: ThreadSummary) => (
     <ThreadActionsMenu
+      folderNames={availableFolderNames}
       onArchive={(target) => void archiveThread(target)}
+      onCreateFolder={createFolderForThread}
       onDelete={(target) => void deleteThread(target)}
+      onMoveToFolder={moveThreadToFolder}
       onPin={(target) => void pinThread(target)}
       onRename={beginRename}
       thread={thread}
     />
-  ), [archiveThread, beginRename, deleteThread, pinThread]);
+  ), [archiveThread, availableFolderNames, beginRename, createFolderForThread, deleteThread, moveThreadToFolder, pinThread]);
 
   const renderSidebarThreadControls = useCallback((thread: ThreadSummary) => {
     const running = runningThreadIds.has(thread.id);
@@ -2023,8 +2229,8 @@ export function ChatApp({ mods = [], plugins = [], user }: ChatAppProps) {
   const sidebar = (
     <aside className="app-sidebar flex h-full w-[244px] shrink-0 flex-col bg-sidebar px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-[max(0.4rem,env(safe-area-inset-top))] text-sidebar-foreground">
       <div className="mb-1.5 flex items-center justify-between px-1">
-        <button className="chat-ui-emphasis flex items-baseline gap-1 rounded-lg px-2 py-1.5 tracking-[-0.005em] hover:bg-sidebar-accent" onClick={newChat} type="button">
-          LFP Chat
+        <button aria-label={`${branding.fullName}: new chat`} className="chat-ui-emphasis flex items-baseline gap-1 rounded-lg px-2 py-1.5 hover:bg-sidebar-accent" onClick={newChat} type="button">
+          <BrandLockup branding={branding} />
         </button>
         <Button
           aria-label="Close sidebar"
@@ -2043,6 +2249,9 @@ export function ChatApp({ mods = [], plugins = [], user }: ChatAppProps) {
         <Link className={cn("sidebar-item", activeView === "search" && "bg-sidebar-accent")} href={coreViewRoutes.search} onClick={() => setMobileSidebarOpen(false)}>
           <Search className="size-[18px]" /> Search
         </Link>
+        {hasDashboard && <Link className={cn("sidebar-item", activeView === "dashboard" && "bg-sidebar-accent")} href={coreViewRoutes.dashboard} onClick={() => setMobileSidebarOpen(false)}>
+          <LayoutDashboard className="size-[18px]" /> Dashboard
+        </Link>}
         <Link className={cn("sidebar-item", activeView === "scheduled" && "bg-sidebar-accent")} href={coreViewRoutes.scheduled} onClick={() => setMobileSidebarOpen(false)}>
           <Clock3 className="size-[18px]" /> Scheduled
         </Link>
@@ -2078,31 +2287,56 @@ export function ChatApp({ mods = [], plugins = [], user }: ChatAppProps) {
             <p className="chat-meta-text px-2 pb-1 font-medium text-muted-foreground/80">Pinned</p>
             <div className="mb-3 space-y-px">
               {pinnedThreads.map((thread) => (
-                <div className={cn("sidebar-chat-row group flex min-h-8 items-center rounded-lg hover:bg-sidebar-accent", thread.id === threadId && "sidebar-chat-link-active")} key={`pinned-${thread.id}`}>
-                  <Link className="sidebar-chat-link min-w-0 flex-1" href={threadHref(thread.id)} onFocus={() => void prefetchThread(thread.id)} onPointerEnter={() => void prefetchThread(thread.id)} onClick={(event) => { event.preventDefault(); void openThread(thread.id); }}>
-                    <SidebarChatTitle title={thread.title || "New chat"} />
-                  </Link>
-                  {renderSidebarThreadControls(thread)}
-                </div>
+                <SidebarThreadRow
+                  active={thread.id === threadId}
+                  controls={renderSidebarThreadControls(thread)}
+                  key={`pinned-${thread.id}`}
+                  onOpen={(id) => void openThread(id)}
+                  onPrefetch={(id) => void prefetchThread(id)}
+                  thread={thread}
+                />
               ))}
             </div>
           </>
         )}
-        <p className="chat-meta-text px-2 pb-1 font-medium text-muted-foreground/80">Recents</p>
-        <div className="space-y-px">
-          {recentThreads.map((thread) => (
-            <div className={cn("sidebar-chat-row group flex min-h-8 items-center rounded-lg hover:bg-sidebar-accent", thread.id === threadId && "sidebar-chat-link-active")} key={thread.id}>
-              <Link className="sidebar-chat-link min-w-0 flex-1" href={threadHref(thread.id)} onFocus={() => void prefetchThread(thread.id)} onPointerEnter={() => void prefetchThread(thread.id)} onClick={(event) => { event.preventDefault(); void openThread(thread.id); }}>
-                <SidebarChatTitle title={thread.title || "New chat"} />
-              </Link>
-              {renderSidebarThreadControls(thread)}
-            </div>
-          ))}
-        </div>
+        {folderGroups.map((folder) => (
+          <SidebarThreadGroup
+            icon={<Folder />}
+            indentChildren
+            key={folder.name}
+            label={folder.name}
+            revealItemIndex={folder.threads.findIndex((thread) => thread.id === threadId)}
+          >
+              {folder.threads.map((thread) => (
+                <SidebarThreadRow
+                  active={thread.id === threadId}
+                  controls={renderSidebarThreadControls(thread)}
+                  key={thread.id}
+                  onOpen={(id) => void openThread(id)}
+                  onPrefetch={(id) => void prefetchThread(id)}
+                  thread={thread}
+                />
+              ))}
+          </SidebarThreadGroup>
+        ))}
+        {unfiledRecentThreads.length > 0 && (
+          <SidebarThreadGroup
+            label="Recents"
+            revealItemIndex={unfiledRecentThreads.findIndex((thread) => thread.id === threadId)}
+          >
+              {unfiledRecentThreads.map((thread) => (
+                <SidebarThreadRow
+                  active={thread.id === threadId}
+                  controls={renderSidebarThreadControls(thread)}
+                  key={thread.id}
+                  onOpen={(id) => void openThread(id)}
+                  onPrefetch={(id) => void prefetchThread(id)}
+                  thread={thread}
+                />
+              ))}
+          </SidebarThreadGroup>
+        )}
       </div>
-      <button className="sidebar-item mt-2" onClick={() => void installApp()} type="button">
-        <Download className="size-[18px]" /> Install app
-      </button>
       <div className="mt-1.5 flex items-center gap-2.5 rounded-xl p-1.5 hover:bg-sidebar-accent">
         <span className="chat-meta-text grid size-7 place-items-center rounded-full bg-foreground font-semibold text-background">R</span>
         <div className="min-w-0 flex-1">
@@ -2172,8 +2406,11 @@ export function ChatApp({ mods = [], plugins = [], user }: ChatAppProps) {
           {activeView === "chat" && activeThread && (
             <ThreadActionsMenu
               alwaysVisible
+              folderNames={availableFolderNames}
               onArchive={(target) => void archiveThread(target)}
+              onCreateFolder={createFolderForThread}
               onDelete={(target) => void deleteThread(target)}
+              onMoveToFolder={moveThreadToFolder}
               onPin={(target) => void pinThread(target)}
               onRename={beginRename}
               thread={activeThread}
@@ -2215,6 +2452,7 @@ export function ChatApp({ mods = [], plugins = [], user }: ChatAppProps) {
           </div>
         )}
         {resourceId && activeView === "search" && <SearchPanel onOpen={(id) => void openThread(id)} threads={activeThreads} />}
+        {resourceId && activeView === "dashboard" && <DashboardPanel resourceId={resourceId} />}
         {resourceId && activeView === "scheduled" && (
           <SchedulesPanel
             enabledToolIds={enabledToolIds}
@@ -2266,6 +2504,27 @@ export function ChatApp({ mods = [], plugins = [], user }: ChatAppProps) {
           <DialogFooter className="mt-4">
             <Button disabled={!renameDraft.trim()} type="submit">Save</Button>
             <Button onClick={() => setRenamingThread(null)} type="button" variant="ghost">Cancel</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+    <Dialog onOpenChange={(open) => !open && setFolderingThread(null)} open={Boolean(folderingThread)}>
+      <DialogContent>
+        <form onSubmit={(event) => void submitFolder(event)}>
+          <DialogHeader>
+            <DialogTitle>New folder</DialogTitle>
+            <DialogDescription>Name the folder for this conversation.</DialogDescription>
+          </DialogHeader>
+          <Input
+            autoFocus
+            className="mt-4"
+            maxLength={48}
+            onChange={(event) => setFolderDraft(event.target.value)}
+            value={folderDraft}
+          />
+          <DialogFooter className="mt-4">
+            <Button disabled={!folderDraft.trim()} type="submit">Create</Button>
+            <Button onClick={() => setFolderingThread(null)} type="button" variant="ghost">Cancel</Button>
           </DialogFooter>
         </form>
       </DialogContent>

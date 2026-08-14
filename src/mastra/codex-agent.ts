@@ -10,6 +10,7 @@ import {
   resolveRuntimeModel,
   resolveRuntimeOptions,
 } from "@/mastra/model-provider";
+import { DEFAULT_WRITING_STYLE_INSTRUCTIONS } from "@/mastra/writing-style-instructions";
 
 function getCodexAcpCommand() {
   if (serverConfig.codexAcpCommand) return serverConfig.codexAcpCommand;
@@ -63,7 +64,9 @@ export function createCodexAgent(memory: ConstructorParameters<typeof Agent>[0][
     instructions: ({ requestContext }) => `You are the supervisor for the Codex CLI coding agent.
 
 ${requestContext.get(SCHEDULE_JOB_CONTEXT_KEY) === true ? "This is a scheduled job. When its result depends on prior runs or must not repeat them, call job_memory_recall first and include the relevant job history in the delegation." : ""}
-Delegate every user request to codexCli. Include the user's complete request and any relevant conversation context. Do not attempt the task yourself and do not call unrelated tools. Return the Codex result directly and concisely. The Codex workspace is restricted to ${serverConfig.codexWorkspacePath}.`,
+Delegate every user request to codexCli. Include the user's complete request, any relevant conversation context, and the default writing rules below. Do not attempt the task yourself and do not call unrelated tools. Return the Codex result directly. The Codex workspace is restricted to ${serverConfig.codexWorkspacePath}.
+
+${DEFAULT_WRITING_STYLE_INSTRUCTIONS}`,
     defaultOptions: ({ requestContext }) => ({
       ...resolveRuntimeOptions(requestContext),
       maxSteps: 4,

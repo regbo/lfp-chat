@@ -7,6 +7,7 @@ import { cors } from "hono/cors";
 import { serverConfig } from "@/lib/config";
 import { mastra } from "@/mastra";
 import { getModelCatalog } from "@/mastra/model-provider";
+import { runDashboardWidget } from "@/mastra/dashboard-refresh";
 
 const app = new Hono();
 
@@ -32,6 +33,20 @@ app.get("/models", async (context) => {
   return context.json(catalog);
 });
 
+app.post("/dashboard/widgets/:widgetId/run", async (context) => {
+  const input = await context.req.json<{ resourceId?: string; force?: boolean }>();
+  if (!input.resourceId) return context.json({ error: "resourceId is required." }, 400);
+  try {
+    return context.json(await runDashboardWidget(
+      input.resourceId,
+      context.req.param("widgetId"),
+      { force: input.force ?? false },
+    ));
+  } catch (error) {
+    return context.json({ error: error instanceof Error ? error.message : "Could not refresh the widget." }, 500);
+  }
+});
+
 const server = new MastraServer({ app, mastra });
 await server.init();
 await mastra.startWorkers();
@@ -39,7 +54,7 @@ await mastra.startWorkers();
 const port = Number(process.env.MASTRA_PORT ?? 4111);
 
 console.info(
-  `LFP Chat Mastra Server listening on http://${serverConfig.mastraHost}:${port}`,
+  `${serverConfig.appBranding.fullName} Mastra server listening on http://${serverConfig.mastraHost}:${port}`,
 );
 
 const bunServer = {

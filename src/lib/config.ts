@@ -1,5 +1,7 @@
 import { readFileSync } from "node:fs";
 
+import { createAppBranding } from "@/lib/app-branding";
+
 const LOCAL_DATABASE_URL =
   "postgresql://mastra:mastra@localhost:5432/mastra";
 
@@ -77,6 +79,25 @@ if (!["local", "header", "jwt"].includes(userScopeMode)) {
   );
 }
 
+const appBranding = createAppBranding({
+  shortName:
+    process.env.APP_SHORT_NAME?.trim() ||
+    process.env.APP_NAME?.trim() ||
+    "chat",
+  fullName: process.env.APP_FULL_NAME?.trim(),
+  faviconUrl: process.env.APP_FAVICON_URL?.trim(),
+});
+
+function optionalHttpUrl(name: string) {
+  const value = process.env[name]?.trim();
+  if (!value) return undefined;
+  const url = new URL(value);
+  if (!['http:', 'https:'].includes(url.protocol)) {
+    throw new Error(`${name} must use HTTP or HTTPS.`);
+  }
+  return value.replace(/\/+$/, "");
+}
+
 if (userScopeMode === "jwt") {
   for (const name of ["USER_SCOPE_JWT_JWKS_URL", "USER_SCOPE_JWT_ISSUER"]) {
     if (!process.env[name]?.trim()) {
@@ -91,18 +112,9 @@ export const publicConfig = {
 } as const;
 
 export const serverConfig = {
+  appBranding,
   databaseUrl:
     secretValue("DATABASE_URL", "DATABASE_URL_FILE") ?? LOCAL_DATABASE_URL,
-  familyDatabaseUrl: secretValue(
-    "FAMILY_DATABASE_URL",
-    "FAMILY_DATABASE_URL_FILE",
-  ),
-  graphitiApiUrl: process.env.GRAPHITI_API_URL?.trim(),
-  familyContextApiUrl: process.env.FAMILY_CONTEXT_API_URL?.trim(),
-  familyContextApiKey: secretValue(
-    "FAMILY_CONTEXT_API_KEY",
-    "FAMILY_CONTEXT_API_KEY_FILE",
-  ),
   vikunjaApiUrl: process.env.VIKUNJA_API_URL?.trim(),
   vikunjaApiToken: secretValue(
     "VIKUNJA_API_TOKEN",
@@ -116,48 +128,40 @@ export const serverConfig = {
     "WEB_PUSH_PRIVATE_KEY",
     "WEB_PUSH_PRIVATE_KEY_FILE",
   ),
-  familyGraphGroupId:
-    process.env.FAMILY_GRAPH_GROUP_ID?.trim() || "family-home",
-  familyEmbeddingBaseUrl: (
-    process.env.FAMILY_EMBEDDING_BASE_URL?.trim() ||
-    "http://127.0.0.1:11436/v1"
-  ).replace(/\/+$/, ""),
-  familyEmbeddingModel:
-    process.env.FAMILY_EMBEDDING_MODEL?.trim() || "qwen3-embedding:0.6b",
-  familyEmbeddingDimensions: boundedInteger(
-    "FAMILY_EMBEDDING_DIMENSIONS",
-    1_024,
-    1,
-    16_384,
-  ),
-  familyGraphTimeoutMs: boundedInteger(
-    "FAMILY_GRAPH_TIMEOUT_MS",
-    8_000,
-    1_000,
-    900_000,
-  ),
-  familySqlStatementTimeoutMs: boundedInteger(
-    "FAMILY_SQL_STATEMENT_TIMEOUT_MS",
-    60_000,
-    1_000,
-    300_000,
-  ),
-  familySqlConnectionTimeoutMs: boundedInteger(
-    "FAMILY_SQL_CONNECTION_TIMEOUT_MS",
-    15_000,
-    1_000,
-    60_000,
-  ),
+  dashboard: {
+    sqlDatabaseUrl: secretValue(
+      "DASHBOARD_SQL_DATABASE_URL",
+      "DASHBOARD_SQL_DATABASE_URL_FILE",
+    ),
+    sqlSchemaDescription:
+      process.env.DASHBOARD_SQL_SCHEMA_DESCRIPTION?.trim(),
+    sqlStatementTimeoutMs: boundedInteger(
+      "DASHBOARD_SQL_STATEMENT_TIMEOUT_MS",
+      30_000,
+      1_000,
+      300_000,
+    ),
+    sqlConnectionTimeoutMs: boundedInteger(
+      "DASHBOARD_SQL_CONNECTION_TIMEOUT_MS",
+      15_000,
+      1_000,
+      60_000,
+    ),
+  },
   agentMaxSteps: boundedInteger("MASTRA_AGENT_MAX_STEPS", 16, 1, 40),
   openaiApiKey: secretValue("OPENAI_API_KEY", "OPENAI_API_KEY_FILE"),
   localModelBaseUrl: (
     process.env.OLLAMA_MODEL_BASE_URL?.trim() ||
     process.env.SCHEDULED_MODEL_BASE_URL?.trim() ||
-    "http://ollama-graphiti-auth-bridge:8080/v1"
+    "http://127.0.0.1:11434/v1"
   ).replace(/\/+$/, ""),
   scheduledModelName: process.env.SCHEDULED_MODEL_NAME?.trim() || "qwen3:8b",
-  chartModelName:
-    process.env.CHART_MODEL_NAME?.trim() || "gpt-5.6-luna",
+  phoenix: {
+    collectorEndpoint: optionalHttpUrl("PHOENIX_COLLECTOR_ENDPOINT"),
+    apiKey: secretValue("PHOENIX_API_KEY", "PHOENIX_API_KEY_FILE"),
+    projectName: process.env.PHOENIX_PROJECT_NAME?.trim() || appBranding.fullName,
+    serviceName: process.env.PHOENIX_SERVICE_NAME?.trim() || appBranding.fullName,
+  },
   mastraHost: process.env.MASTRA_HOST?.trim() || "127.0.0.1",
   mastraApiUrl: process.env.MASTRA_API_URL ?? LOCAL_MASTRA_API_URL,
   modelProvider,

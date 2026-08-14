@@ -30,6 +30,11 @@
   --color-chart-3: var(--chart-3);
   --color-chart-2: var(--chart-2);
   --color-chart-1: var(--chart-1);
+  --color-chart-6: var(--chart-6);
+  --color-chart-7: var(--chart-7);
+  --color-chart-8: var(--chart-8);
+  --color-chart-9: var(--chart-9);
+  --color-chart-10: var(--chart-10);
   --color-ring: var(--ring);
   --color-input: var(--input);
   --color-border: var(--border);
@@ -56,47 +61,63 @@
 }
 
 :root {
+  /* Source: lfpconnect-assets/tokens/brand.css. Product UI tokens below are
+     composed from this small brand surface so the palette changes as one. */
+  --lfp-coral: #ff6f61;
+  --lfp-coral-hover: #e85c50;
+  --lfp-ink: #0b1426;
+  --lfp-warm-white: #fff9f5;
+  --lfp-soft-coral: #fff0ec;
+  --lfp-font-wordmark: var(--font-inter), Inter, ui-sans-serif, system-ui, sans-serif;
+  --lfp-wordmark-weight: 520;
+  --lfp-wordmark-tracking: -0.026em;
   --font-ui-sans: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
-  --background: oklch(0.982 0.008 250);
-  --foreground: oklch(0.235 0.035 255);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.235 0.035 255);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.235 0.035 255);
-  --primary: oklch(0.56 0.18 257);
-  --primary-foreground: oklch(0.99 0.004 250);
-  --secondary: oklch(0.945 0.025 250);
-  --secondary-foreground: oklch(0.285 0.045 255);
-  --muted: oklch(0.955 0.014 250);
-  --muted-foreground: oklch(0.5 0.035 255);
-  --accent: oklch(0.925 0.045 250);
-  --accent-foreground: oklch(0.31 0.095 257);
+  --background: var(--lfp-warm-white);
+  --foreground: var(--lfp-ink);
+  --card: color-mix(in srgb, white 72%, var(--lfp-warm-white));
+  --card-foreground: var(--lfp-ink);
+  --popover: color-mix(in srgb, white 76%, var(--lfp-warm-white));
+  --popover-foreground: var(--lfp-ink);
+  --primary: var(--lfp-coral);
+  --primary-foreground: var(--lfp-ink);
+  --secondary: color-mix(in srgb, var(--lfp-soft-coral) 76%, var(--lfp-warm-white));
+  --secondary-foreground: var(--lfp-ink);
+  --muted: color-mix(in srgb, var(--lfp-soft-coral) 58%, var(--lfp-warm-white));
+  --muted-foreground: color-mix(in srgb, var(--lfp-ink) 66%, var(--lfp-warm-white));
+  --accent: var(--lfp-soft-coral);
+  --accent-foreground: var(--lfp-ink);
   --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.89 0.025 250);
-  --input: oklch(0.87 0.03 250);
-  --ring: oklch(0.62 0.16 257);
-  --chart-1: oklch(0.57 0.2 257);
+  --border: color-mix(in srgb, var(--lfp-ink) 14%, var(--lfp-warm-white));
+  --input: color-mix(in srgb, var(--lfp-ink) 18%, var(--lfp-warm-white));
+  --ring: var(--lfp-coral);
+  --chart-1: var(--lfp-coral);
   --chart-2: oklch(0.61 0.15 180);
   --chart-3: oklch(0.7 0.16 75);
   --chart-4: oklch(0.63 0.19 27);
   --chart-5: oklch(0.59 0.17 310);
+  --chart-6: oklch(0.58 0.13 230);
+  --chart-7: oklch(0.67 0.16 140);
+  --chart-8: oklch(0.62 0.16 345);
+  --chart-9: oklch(0.66 0.13 55);
+  --chart-10: oklch(0.56 0.12 265);
   --radius: 0.75rem;
-  --sidebar: oklch(0.955 0.018 250);
-  --sidebar-foreground: oklch(0.285 0.04 255);
-  --sidebar-primary: oklch(0.56 0.18 257);
-  --sidebar-primary-foreground: oklch(0.99 0.004 250);
-  --sidebar-accent: oklch(0.92 0.035 250);
-  --sidebar-selected: oklch(0.885 0.06 252);
-  --sidebar-accent-foreground: oklch(0.27 0.07 257);
-  --sidebar-border: oklch(0.87 0.03 250);
-  --sidebar-ring: oklch(0.62 0.16 257);
+  --sidebar: color-mix(in srgb, var(--lfp-soft-coral) 64%, var(--lfp-warm-white));
+  --sidebar-foreground: var(--lfp-ink);
+  --sidebar-primary: var(--lfp-coral);
+  --sidebar-primary-foreground: var(--lfp-ink);
+  --sidebar-accent: var(--lfp-soft-coral);
+  --sidebar-selected: color-mix(in srgb, var(--lfp-coral) 20%, var(--lfp-warm-white));
+  --sidebar-accent-foreground: var(--lfp-ink);
+  --sidebar-border: color-mix(in srgb, var(--lfp-ink) 15%, var(--lfp-warm-white));
+  --sidebar-ring: var(--lfp-coral);
   --sidebar-title-fade-rest: 0.625rem;
   --sidebar-title-fade-action: 1.75rem;
   --chat-column-width: 54rem;
   --chat-inline-gutter: clamp(1rem, 3vw, 2.5rem);
   --chat-turn-gap: 0.625rem;
-  --chat-composer-shadow: 0 16px 40px -24px rgb(28 53 91 / 34%), 0 1px 3px rgb(28 53 91 / 10%);
-  --chart-surface-shadow: 0 18px 44px -34px rgb(28 53 91 / 38%);
+  --chat-surface-border: color-mix(in srgb, var(--lfp-ink) 6%, transparent);
+  --chat-composer-shadow: 0 10px 32px rgb(28 53 91 / 7%), 0 2px 9px rgb(28 53 91 / 4%);
+  --chart-surface-shadow: 0 12px 38px rgb(28 53 91 / 6%);
   /* One compact sizing scale owns app text, controls, menus, and rich output. */
   --text-chat: 0.75rem;
   --text-ui: 0.75rem;
@@ -149,6 +170,22 @@
   --code-block-inset: 0.25rem;
 }
 
+/* Match the more relaxed ChatGPT desktop type scale without changing control,
+   sidebar, composer, or chart dimensions. */
+@media (min-width: 768px) {
+  :root {
+    --text-chat: 0.8125rem;
+    --text-ui: 0.8125rem;
+    --text-ui-emphasis: 0.875rem;
+    --text-meta: 0.75rem;
+    --code-block-font-size: 0.75rem;
+  }
+
+  .lfp-brand-product {
+    font-size: 0.8125rem;
+  }
+}
+
 /* High-density desktop panels can make the compact default scale feel
    undersized. Raising the root by one step keeps every rem-based token in
    proportion without affecting mobile or standard-density displays. */
@@ -160,40 +197,46 @@
 }
 
 .dark {
-    --background: oklch(0.18 0.025 255);
-    --foreground: oklch(0.94 0.012 250);
-    --card: oklch(0.22 0.03 255);
-    --card-foreground: oklch(0.94 0.012 250);
-    --popover: oklch(0.235 0.035 255);
-    --popover-foreground: oklch(0.94 0.012 250);
-    --primary: oklch(0.7 0.14 250);
-    --primary-foreground: oklch(0.17 0.035 257);
-    --secondary: oklch(0.265 0.035 255);
-    --secondary-foreground: oklch(0.92 0.015 250);
-    --muted: oklch(0.255 0.025 255);
-    --muted-foreground: oklch(0.72 0.025 250);
-    --accent: oklch(0.31 0.055 255);
-    --accent-foreground: oklch(0.93 0.02 250);
+    --background: var(--lfp-ink);
+    --foreground: var(--lfp-warm-white);
+    --card: color-mix(in srgb, var(--lfp-warm-white) 7%, var(--lfp-ink));
+    --card-foreground: var(--lfp-warm-white);
+    --popover: color-mix(in srgb, var(--lfp-warm-white) 9%, var(--lfp-ink));
+    --popover-foreground: var(--lfp-warm-white);
+    --primary: var(--lfp-coral);
+    --primary-foreground: var(--lfp-ink);
+    --secondary: color-mix(in srgb, var(--lfp-coral) 9%, var(--lfp-ink));
+    --secondary-foreground: var(--lfp-warm-white);
+    --muted: color-mix(in srgb, var(--lfp-warm-white) 10%, var(--lfp-ink));
+    --muted-foreground: color-mix(in srgb, var(--lfp-warm-white) 68%, var(--lfp-ink));
+    --accent: color-mix(in srgb, var(--lfp-coral) 16%, var(--lfp-ink));
+    --accent-foreground: var(--lfp-warm-white);
     --destructive: oklch(0.704 0.191 22.216);
-    --border: oklch(0.38 0.035 255 / 72%);
-    --input: oklch(0.34 0.04 255);
-    --ring: oklch(0.68 0.14 250);
-    --chart-1: oklch(0.72 0.15 250);
+    --border: color-mix(in srgb, var(--lfp-warm-white) 22%, var(--lfp-ink));
+    --input: color-mix(in srgb, var(--lfp-warm-white) 18%, var(--lfp-ink));
+    --ring: var(--lfp-coral);
+    --chart-1: var(--lfp-coral);
     --chart-2: oklch(0.75 0.13 180);
     --chart-3: oklch(0.8 0.14 80);
     --chart-4: oklch(0.72 0.17 27);
     --chart-5: oklch(0.72 0.15 310);
-    --sidebar: oklch(0.205 0.03 255);
-    --sidebar-foreground: oklch(0.91 0.015 250);
-    --sidebar-primary: oklch(0.7 0.14 250);
-    --sidebar-primary-foreground: oklch(0.17 0.035 257);
-    --sidebar-accent: oklch(0.275 0.04 255);
-    --sidebar-selected: oklch(0.31 0.065 255);
-    --sidebar-accent-foreground: oklch(0.94 0.012 250);
-    --sidebar-border: oklch(0.36 0.035 255 / 70%);
-    --sidebar-ring: oklch(0.68 0.14 250);
-    --chat-composer-shadow: 0 18px 48px -26px rgb(0 0 0 / 72%), 0 1px 3px rgb(0 0 0 / 32%);
-    --chart-surface-shadow: 0 20px 48px -34px rgb(0 0 0 / 78%);
+    --chart-6: oklch(0.72 0.12 230);
+    --chart-7: oklch(0.76 0.14 140);
+    --chart-8: oklch(0.75 0.14 345);
+    --chart-9: oklch(0.78 0.12 55);
+    --chart-10: oklch(0.7 0.12 265);
+    --sidebar: color-mix(in srgb, var(--lfp-coral) 4%, var(--lfp-ink));
+    --sidebar-foreground: var(--lfp-warm-white);
+    --sidebar-primary: var(--lfp-coral);
+    --sidebar-primary-foreground: var(--lfp-ink);
+    --sidebar-accent: color-mix(in srgb, var(--lfp-coral) 12%, var(--lfp-ink));
+    --sidebar-selected: color-mix(in srgb, var(--lfp-coral) 22%, var(--lfp-ink));
+    --sidebar-accent-foreground: var(--lfp-warm-white);
+    --sidebar-border: color-mix(in srgb, var(--lfp-warm-white) 20%, var(--lfp-ink));
+    --sidebar-ring: var(--lfp-coral);
+    --chat-surface-border: color-mix(in srgb, var(--lfp-warm-white) 10%, transparent);
+    --chat-composer-shadow: 0 12px 36px rgb(0 0 0 / 30%), 0 2px 10px rgb(0 0 0 / 16%);
+    --chart-surface-shadow: 0 14px 42px rgb(0 0 0 / 24%);
     --task-canvas: #181818;
     --task-low: #63a895;
     --task-medium: #d7a83d;
@@ -229,6 +272,29 @@
 }
 
 @layer components {
+  .lfp-brand-lockup {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.15rem;
+    color: var(--foreground);
+    font-family: var(--lfp-font-wordmark);
+    font-weight: var(--lfp-wordmark-weight);
+    letter-spacing: var(--lfp-wordmark-tracking);
+    line-height: 1;
+  }
+
+  .lfp-brand-mark {
+    width: auto;
+    height: 1.025rem;
+    flex-shrink: 0;
+    transform: translateY(0.075rem);
+  }
+
+  .lfp-brand-product {
+    font-size: 0.75rem;
+    line-height: 1;
+  }
+
   .app-shell {
     position: fixed;
     top: var(--visual-viewport-top, 0);
@@ -766,7 +832,7 @@
   height: auto;
   min-height: var(--composer-height);
   padding-inline: 0.5rem;
-  border-color: color-mix(in oklab, var(--border) 65%, transparent);
+  border-color: var(--chat-surface-border);
   border-radius: var(--composer-radius);
   background: var(--card) !important;
   box-shadow: var(--chat-composer-shadow);
@@ -777,7 +843,7 @@
 }
 
 .chat-chart-shell {
-  border-color: color-mix(in oklab, var(--border) 82%, transparent);
+  border-color: var(--chat-surface-border);
   background: var(--card);
   box-shadow: var(--chart-surface-shadow);
 }
@@ -954,7 +1020,7 @@
     grid-template-columns:
       var(--control-height-md)
       minmax(0, 1fr)
-      minmax(3.25rem, auto)
+      minmax(6rem, 9rem)
       var(--control-height-md)
       var(--composer-submit-size);
     grid-template-rows: var(--composer-submit-size);
@@ -980,7 +1046,11 @@
     padding: 0.5rem 0.25rem;
   }
 
-  .chat-composer:is([data-expanded="true"], :has([data-attachments])) [data-slot="input-group"] {
+  .chat-composer:is(
+    [data-expanded="true"],
+    :has([data-attachments]),
+    :has([data-slot="input-group-control"]:focus)
+  ) [data-slot="input-group"] {
     grid-template-columns:
       var(--control-height-md)
       minmax(0, 1fr)
@@ -990,7 +1060,11 @@
     min-height: var(--mobile-composer-height);
   }
 
-  .chat-composer:is([data-expanded="true"], :has([data-attachments])) [data-slot="input-group-control"] {
+  .chat-composer:is(
+    [data-expanded="true"],
+    :has([data-attachments]),
+    :has([data-slot="input-group-control"]:focus)
+  ) [data-slot="input-group-control"] {
     grid-row: 2;
     grid-column: 1 / -1;
     align-self: stretch;
@@ -1015,8 +1089,8 @@
     max-width: 100%;
   }
 
-  .chat-composer:not([data-expanded="true"]):not(:has([data-attachments])) .chat-model-trigger span {
-    max-width: 3.5rem;
+  .chat-composer:not([data-expanded="true"]):not(:has([data-attachments])):not(:has([data-slot="input-group-control"]:focus)) .chat-model-trigger span {
+    max-width: 8.5rem;
   }
 
   .chat-composer button[aria-label="Start dictation"] {
@@ -1035,22 +1109,38 @@
     justify-self: center;
   }
 
-  .chat-composer:is([data-expanded="true"], :has([data-attachments])) button[aria-label="Add files"] {
+  .chat-composer:is(
+    [data-expanded="true"],
+    :has([data-attachments]),
+    :has([data-slot="input-group-control"]:focus)
+  ) button[aria-label="Add files"] {
     grid-row: 3;
     grid-column: 1;
   }
 
-  .chat-composer:is([data-expanded="true"], :has([data-attachments])) button[aria-label="Select model, agent, and reasoning"] {
+  .chat-composer:is(
+    [data-expanded="true"],
+    :has([data-attachments]),
+    :has([data-slot="input-group-control"]:focus)
+  ) button[aria-label="Select model, agent, and reasoning"] {
     grid-row: 3;
     grid-column: 2;
   }
 
-  .chat-composer:is([data-expanded="true"], :has([data-attachments])) button[aria-label="Start dictation"] {
+  .chat-composer:is(
+    [data-expanded="true"],
+    :has([data-attachments]),
+    :has([data-slot="input-group-control"]:focus)
+  ) button[aria-label="Start dictation"] {
     grid-row: 3;
     grid-column: 3;
   }
 
-  .chat-composer:is([data-expanded="true"], :has([data-attachments])) .chat-composer-submit {
+  .chat-composer:is(
+    [data-expanded="true"],
+    :has([data-attachments]),
+    :has([data-slot="input-group-control"]:focus)
+  ) .chat-composer-submit {
     grid-row: 3;
     grid-column: 4;
   }

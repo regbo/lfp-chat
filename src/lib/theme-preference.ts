@@ -1,8 +1,8 @@
 export const THEME_STORAGE_KEY = "lfp-chat-theme";
 export const THEME_CHANGE_EVENT = "lfp-chat-theme-change";
 export const THEME_COLORS = {
-  light: "#f7f9fc",
-  dark: "#101827",
+  light: "#fff9f5",
+  dark: "#0b1426",
 } as const;
 
 export type ThemePreference = "auto" | "light" | "dark";

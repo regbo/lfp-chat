@@ -12,9 +12,6 @@ import {
   MODEL_CONTEXT_KEY,
   normalizeModelSelection,
   REASONING_CONTEXT_KEY,
-  reasoningEfforts,
-  TOOL_MODEL_SELECTIONS_CONTEXT_KEY,
-  type ReasoningEffort,
   type ModelSelection,
 } from "@/lib/model-catalog";
 
@@ -44,46 +41,6 @@ const localOllama = createOpenAI({
 /** Use the inexpensive local model for background UI assistance. */
 export function resolveBackgroundModel() {
   return localOllama.chat(serverConfig.scheduledModelName);
-}
-
-type DedicatedToolModelSelection = {
-  modelId?: unknown;
-  reasoningEffort?: unknown;
-};
-
-function dedicatedToolModelSelection(
-  requestContext: RequestContext | undefined,
-  toolId: string,
-) {
-  const selections = requestContext?.get(TOOL_MODEL_SELECTIONS_CONTEXT_KEY);
-  if (!selections || typeof selections !== "object") return undefined;
-  const selection = (selections as Record<string, unknown>)[toolId];
-  return selection && typeof selection === "object"
-    ? (selection as DedicatedToolModelSelection)
-    : undefined;
-}
-
-/** Use a low-cost hosted model for chart planning without changing chat. */
-export function resolveChartModel(requestContext?: RequestContext) {
-  const selected = dedicatedToolModelSelection(requestContext, "render_chart");
-  const modelId =
-    typeof selected?.modelId === "string" &&
-    /^[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._:-]*$/i.test(selected.modelId)
-      ? selected.modelId
-      : `openai/${serverConfig.chartModelName}`;
-  return modelId as ModelRouterModelId;
-}
-
-export function resolveChartProviderOptions(requestContext?: RequestContext) {
-  const selected = dedicatedToolModelSelection(requestContext, "render_chart");
-  const reasoningEffort = reasoningEfforts.find(
-    (effort) => effort === selected?.reasoningEffort,
-  ) ?? "none";
-  return {
-    openai: {
-      reasoningEffort: reasoningEffort as ReasoningEffort,
-    },
-  };
 }
 
 type OpenAiModelsResponse = {

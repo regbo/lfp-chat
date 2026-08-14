@@ -1,5 +1,5 @@
 export const TOOLS_CONTEXT_KEY = "lfp.tools";
-export const TOOL_CATALOG_VERSION = 3;
+export const TOOL_CATALOG_VERSION = 4;
 
 export const toolCatalog = [
   {
@@ -18,6 +18,18 @@ export const toolCatalog = [
     id: "monty",
     title: "Monty",
     description: "Execute Python in an isolated, resource-limited worker.",
+    defaultEnabled: true,
+  },
+  {
+    id: "url_fetch",
+    title: "URL fetch",
+    description: "Fetch a specific public URL with browser-like request behavior.",
+    defaultEnabled: true,
+  },
+  {
+    id: "dashboard",
+    title: "Dashboard",
+    description: "Create, update, refresh, and archive persisted Monty widgets.",
     defaultEnabled: true,
   },
   {
@@ -73,11 +85,7 @@ export function normalizeEnabledToolIds(value: unknown): string[] {
   if (!Array.isArray(value)) return [...defaultEnabledToolIds];
   return Array.from(
     new Set(
-      value.map((id) => {
-        if (id === "family_sql") return "family_database";
-        if (id === "family_tasks") return "tasks";
-        return id;
-      }).filter((id): id is string =>
+      value.filter((id): id is string =>
         typeof id === "string" && /^[a-z][a-z0-9_-]{0,62}$/.test(id),
       ),
     ),
@@ -92,7 +100,9 @@ export function migrateEnabledToolIds(
   // Scheduling was introduced in catalog v2 and should be available once to
   // people whose saved v1 selection predates the capability. They can still
   // disable it normally after this one-time migration.
-  return storedCatalogVersion < 2
-    ? Array.from(new Set([...normalized, "scheduling" as const]))
-    : normalized;
+  const additions = [
+    ...(storedCatalogVersion < 2 ? ["scheduling"] : []),
+    ...(storedCatalogVersion < 4 ? ["url_fetch", "dashboard"] : []),
+  ];
+  return Array.from(new Set([...normalized, ...additions]));
 }

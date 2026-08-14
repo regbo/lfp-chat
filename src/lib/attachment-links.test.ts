@@ -8,7 +8,7 @@ const attachmentToolOutput = {
 };
 
 const attachmentTool = {
-  type: "tool-family_attachment",
+  type: "tool-file_download",
   state: "output-available",
   input: {},
   output: attachmentToolOutput,
@@ -24,7 +24,7 @@ describe("attachment links", () => {
 
   test("recognizes attachment search results", () => {
     const search = {
-      type: "tool-family_search",
+      type: "tool-document_search",
       state: "output-available",
       input: {},
       output: {

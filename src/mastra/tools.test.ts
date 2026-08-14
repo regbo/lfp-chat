@@ -1,21 +1,15 @@
 import { describe, expect, test } from "bun:test";
 
-import { FAMILY_DATABASE_DESCRIPTION } from "@/mastra/tools";
+import { calculatorTool, montyTool, searchTool } from "@/mastra/tools";
+import { urlFetchTool } from "@/mastra/url-fetch-tool";
 
-describe("family database tool contract", () => {
-  test("publishes the complete financial schema to the agent", () => {
-    for (const table of [
-      "financial_connections",
-      "financial_accounts",
-      "financial_transactions",
-      "financial_sync_runs",
-      "financial_merchant_profiles",
-      "financial_transaction_enrichments",
-      "financial_transaction_context",
-    ]) {
-      expect(FAMILY_DATABASE_DESCRIPTION).toContain(table);
-    }
-    expect(FAMILY_DATABASE_DESCRIPTION).toContain("raw_data JSONB");
-    expect(FAMILY_DATABASE_DESCRIPTION).toContain("provider's signed values");
+describe("generic tool catalog", () => {
+  test("keeps stable IDs for dashboard adaptation", () => {
+    expect([searchTool.id, calculatorTool.id, montyTool.id, urlFetchTool.id]).toEqual([
+      "search",
+      "calculator",
+      "monty",
+      "url_fetch",
+    ]);
   });
 });

@@ -7,13 +7,30 @@ A ChatGPT-inspired Mastra chat application with rich tool events and PostgreSQL-
 The reusable chat client is published as `@regbo/lfp-chat`. It exports the client-side `ChatApp` component and a compiled stylesheet:
 
 ```tsx
-import { ChatApp } from "@regbo/lfp-chat";
+import { ChatApp, createAppBranding } from "@regbo/lfp-chat";
 import "@regbo/lfp-chat/styles.css";
 
 export default function ChatPage() {
   return <ChatApp />;
 }
 ```
+
+Pass `branding={createAppBranding("portal")}` to render the shared coral `lfp`
+monogram with a lowercase `portal` product suffix and use `LFP Portal` throughout
+the rest of the app. A distinct full name and favicon can be supplied when a
+host needs them:
+
+```tsx
+createAppBranding({
+  shortName: "portal",
+  fullName: "Example Portal",
+  faviconUrl: "/example-icon.svg",
+});
+```
+
+At runtime, `APP_SHORT_NAME` defaults to `chat`; `APP_FULL_NAME` defaults to
+`LFP ${TitleCase(APP_SHORT_NAME)}`; and `APP_FAVICON_URL` defaults to the coral
+LFP monogram. The older `APP_NAME` remains an alias for `APP_SHORT_NAME`.
 
 ### Add a menu view
 
@@ -54,24 +71,24 @@ tool IDs are preserved in chat and schedule request context; the host registers
 the matching Mastra tools on its server.
 
 ```tsx
-const homeMod = {
-  id: "home",
+const workspaceMod = {
+  id: "workspace",
   views: [{
     id: "tasks",
     href: "/tasks",
     label: "Tasks",
-    content: <HomeTasks />,
+    content: <WorkspaceTasks />,
   }],
   settings: <HomeSettings />,
   tools: [{
-    id: "home_task_assignment",
+    id: "workspace_task_assignment",
     title: "Task assignment",
-    description: "Assign tasks using the home directory.",
+    description: "Assign tasks using the workspace directory.",
     defaultEnabled: true,
   }],
 } satisfies ChatAppMod;
 
-<ChatApp mods={[homeMod]} />
+<ChatApp mods={[workspaceMod]} />
 ```
 
 The legacy `plugins` prop remains available for a single routed view.
@@ -154,23 +171,21 @@ is only the backward-compatible default when a list is not specified.
 Assignment and other deployment-specific task fields are intentionally absent;
 a host can register its own `/tasks` `ChatAppPlugin` when it needs those fields.
 
-## Family and financial context
+## Deterministic dashboards
 
-The `family_database` Mastra tool uses the deployment's read-only family PostgreSQL
-connection. In addition to documents, attachments, deadlines, and processing state,
-the tool exposes connected financial institutions, accounts, current balances,
-transactions, and synchronization history. The agent uses these normalized tables
-for exact transaction lookup, merchant/date filters, and spending or cash-flow
-aggregation while retaining provider-native JSON for later refinement.
-Merchant normalization runs once per stable descriptor and exposes canonical merchant
-names, controlled categories, tags, confidence, and review state through the
-`financial_transaction_context` view. Chat prefers that view for transaction lists
-and financial summaries while the normalized base tables remain available for audit.
+The Dashboard menu appears after the first widget is created. A widget stores a
+Monty Python program, its allowed Mastra tool IDs, refresh interval, and cache TTL.
+The model authors that program once; later refreshes execute it without another
+model call. Programs invoke registered tools with `await tool_call("tool_id", input)`
+and return validated chart, metric, table, or text data.
 
-Raw ledger events intentionally remain in PostgreSQL instead of being duplicated
-into Graphiti. PostgreSQL is authoritative for exact amounts, dates, pending state,
-deduplication, and aggregation; Graphiti remains focused on temporal relationships
-derived from ingested household documents, where graph traversal adds more value.
+Dashboard caching lives in PostgreSQL and uses transaction-scoped advisory locks
+with a second cache check after lock acquisition. This prevents multiple web or
+agent replicas from recomputing the same expired widget simultaneously. Hosts can
+adapt any read-safe Mastra tool into the widget runtime. The built-in `url_fetch`
+tool uses browser-like HTTP behavior for a specific public URL and remains distinct
+from provider web search. An optional generic `sql_query` tool is enabled with
+`DASHBOARD_SQL_DATABASE_URL(_FILE)` and a host-owned schema description.
 
 Mastra task creation is idempotent for agents and scheduled jobs. Before a
 write, jobs inspect existing open work and reconcile substantially equivalent
@@ -212,12 +227,21 @@ REASONING_EFFORT=medium
 OPENAI_API_KEY=...
 ```
 
-Chart requests use the read-only family database tool followed by the structured
-`render_chart` Mastra tool. Its private planner uses the OpenAI-compatible Ollama
-endpoint configured by `OLLAMA_MODEL_BASE_URL` and `CHART_MODEL_NAME` (default
-`qwen3:8b`), while the conversation continues to use the OpenAI model selected
-by `MODEL_PROVIDER` and `MODEL_NAME`. The browser receives an ECharts data spec,
+Chart requests can use the structured `render_chart` Mastra tool. It maps the first table column to labels
+and each remaining numeric column to a series directly, so it adds no second
+model call or chart-planning timeout. The browser receives an ECharts data spec,
 not an LLM-generated image.
+
+Mastra tracing can be sent to Arize Phoenix by setting its OTLP/HTTP collector
+endpoint. A blank endpoint disables tracing. `PHOENIX_PROJECT_NAME` and
+`PHOENIX_SERVICE_NAME` default to the configured full app name; authenticated
+collectors can use `PHOENIX_API_KEY` or the preferred `PHOENIX_API_KEY_FILE`.
+
+```env
+PHOENIX_COLLECTOR_ENDPOINT=http://phoenix:6006/v1/traces
+PHOENIX_PROJECT_NAME=LFP Chat
+PHOENIX_SERVICE_NAME=LFP Chat
+```
 
 The composer also lists **Codex CLI** as an agent rather than a model. Mastra runs it through `@mastra/acp` and `@agentclientprotocol/codex-acp`, while PostgreSQL remains the durable conversation store. Codex runs in an isolated ACP session for each request and defaults to workspace-write access without network access. Configure its boundary explicitly when the server should operate on another repository:
 
@@ -237,7 +261,7 @@ Provider-native web search follows the selected OpenAI, Anthropic, Google, or xA
 
 ## Mobile PWA
 
-LFP Chat includes a web app manifest, adaptive icons, safe-area layout, and a network-first service worker. Open the sidebar and choose **Install app**, or use the browser's **Add to Home Screen** action. The application shell is available offline; chat and memory APIs always remain network-only.
+LFP Chat includes a web app manifest, adaptive icons, safe-area layout, and a network-first service worker. Use the browser's **Add to Home Screen** action when desired. The application shell is available offline; chat and memory APIs always remain network-only.
 
 Installed PWAs can receive Web Push notifications when scheduled work finishes,
 and scheduled agents have a scoped notification tool for explicit alerts.

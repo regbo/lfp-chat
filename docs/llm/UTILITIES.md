@@ -3,14 +3,22 @@
 - `src/lib/browser-mastra-client.ts` — browser-facing Mastra client and per-call agent streaming with explicit run, thread, resource, and abort identity.
 - `src/lib/chat-session-store.ts` — shared per-thread transcript/run registry; keeps background streams alive across route and chat selection changes.
 - `src/lib/chat-app-plugins.ts` — public plugin contract and registration validation for adding self-contained views to the primary ChatApp menu.
+- `src/lib/app-branding.ts` — centralized short/full product naming, favicon configuration, and the palette mirrored from `lfpconnect-assets`; `ChatApp`, metadata, manifests, and agent identity consume its typed branding object.
 - `src/lib/tool-output.ts` — centralized head/tail truncation for tool values before they enter the visible transcript or model history.
 - `src/lib/model-catalog.ts` — model selection, reasoning-effort normalization, and request-context keys.
 - `src/lib/tool-catalog.ts` — selectable tool definitions, defaults, and request-context keys.
 - `src/lib/schedules.ts` — shared schedule deduplication, timezone context, and safe scheduled-run request-context construction.
-- `src/lib/vikunja.ts` — centralized server-only household task client used by chat tools and the Tasks menu.
-- `src/mastra/tools.ts` — safe built-in tools, including read-only family and financial SQL plus document-derived Graphiti search with bounded outputs and timeouts.
+- `src/lib/vikunja.ts` — centralized server-only task client used by chat tools and the Tasks menu.
+- `src/lib/dashboard-spec.ts` — persisted widget and validated render-output contracts.
+- `src/lib/dashboard-store.ts` — dashboard/tab persistence plus PostgreSQL advisory-lock caching and archive state.
+- `src/lib/dashboard-runtime.ts` — generic adapter from real Mastra tools to Monty's allowlisted `tool_call` bridge.
+- `src/mastra/dashboard-capabilities.ts` — process-local registration of the default read-oriented Mastra capabilities.
+- `src/mastra/dashboard-refresh.ts` — Monty-aware refresh entrypoint kept on the Mastra server side.
+- `src/mastra/url-fetch-tool.ts` — SSRF-protected `got-scraping` fetch for one specific public URL; separate from provider web search.
+- `src/mastra/tools.ts` — host-neutral built-in project search, calculator, and Monty tools.
 - `src/mastra/schedule-tools.ts` — agent-facing list/create scheduling tools with per-resource duplicate prevention and dedicated output threads.
-- `src/lib/thread-state.ts` — thread metadata helpers for pinning and archiving.
+- `src/mastra/writing-style-instructions.ts` — shared default response-writing rules injected into Mastra agents that produce user-visible prose; synchronized with `docs/llm/WRITING_STYLE_INSTRUCTIONS.md` by a focused test.
+- `src/lib/thread-state.ts` — thread metadata helpers for folders, pinning, and archiving.
 - `src/lib/citations.ts` — citation-marker cleanup and formatting for rendered assistant text.
 - `src/lib/mastra-client.ts` — server-only Mastra client used by Next route handlers for memory and thread operations.
 - `src/lib/user-scope.ts` — server-side identity resolver for local development IDs, trusted proxy headers, and JWKS-verified JWT claims; API routes use it to reject cross-user resource IDs.

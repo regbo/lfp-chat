@@ -11,24 +11,21 @@ import {
 } from "@/mastra/model-provider";
 import {
   calculatorTool,
-  familyAttachmentTool,
-  familyAutomationListTool,
-  familyAutomationUpsertTool,
-  familyEmailTool,
-  familyGraphTool,
-  familySearchTool,
-  familyDatabaseTool,
-  taskCreateTool,
-  taskDeleteTool,
-  taskListCreateTool,
-  taskListDeleteTool,
-  taskListListsTool,
-  taskListTool,
-  taskListUpdateTool,
-  taskUpdateTool,
   montyTool,
   searchTool,
 } from "@/mastra/tools";
+import {
+  dashboardArchiveTool,
+  dashboardListTool,
+  dashboardUpsertWidgetTool,
+} from "@/mastra/dashboard-tools";
+import { dashboardSqlTool, dashboardWebFetchTool } from "@/mastra/dashboard-source-tools";
+import { urlFetchTool } from "@/mastra/url-fetch-tool";
+import {
+  taskCreateTool, taskDeleteTool, taskListCreateTool, taskListDeleteTool,
+  taskListListsTool, taskListTool, taskListUpdateTool, taskUpdateTool,
+} from "@/mastra/task-tools";
+import { ensureDashboardCapabilities } from "@/mastra/dashboard-capabilities";
 import { renderChartTool } from "@/mastra/chart-tool";
 import { hostWorkspace } from "@/mastra/host-workspace";
 import { createCodexAgent } from "@/mastra/codex-agent";
@@ -45,6 +42,8 @@ import { jobMemoryRecallTool } from "@/mastra/job-memory-tool";
 import { scheduleParseTool } from "@/mastra/schedule-parser";
 import { notifyResource } from "@/lib/push-notifications";
 import { notificationSendTool } from "@/mastra/notification-tool";
+import { createObservability } from "@/mastra/observability";
+import { DEFAULT_WRITING_STYLE_INSTRUCTIONS } from "@/mastra/writing-style-instructions";
 
 const globalForMastra = globalThis as typeof globalThis & {
   lfpMastra?: {
@@ -78,9 +77,13 @@ function createMastra() {
     },
   });
 
+  // The runtime is generated from real Mastra tools. Only deterministic,
+  // read-oriented tools are exposed to persisted widget programs by default.
+  ensureDashboardCapabilities();
+
   const chatAgent = new Agent({
     id: "chatAgent",
-    name: "LFP Chat",
+    name: serverConfig.appBranding.fullName,
     description: "A concise, tool-capable assistant with persistent memory.",
     model: ({ requestContext }) => resolveRuntimeModel(requestContext),
     memory,
@@ -93,12 +96,13 @@ function createMastra() {
         search: searchTool,
         calculator: calculatorTool,
         monty: montyTool,
-        family_database: familyDatabaseTool,
         render_chart: renderChartTool,
-        family_search: familySearchTool,
-        family_graph: familyGraphTool,
-        family_email: familyEmailTool,
-        family_attachment: familyAttachmentTool,
+        web_fetch: dashboardWebFetchTool,
+        url_fetch: urlFetchTool,
+        ...(serverConfig.dashboard.sqlDatabaseUrl ? { sql_query: dashboardSqlTool } : {}),
+        dashboard_upsert_widget: dashboardUpsertWidgetTool,
+        dashboard_list: dashboardListTool,
+        dashboard_archive: dashboardArchiveTool,
         task_list: taskListTool,
         task_list_lists: taskListListsTool,
         task_list_create: taskListCreateTool,
@@ -107,8 +111,6 @@ function createMastra() {
         task_create: taskCreateTool,
         task_update: taskUpdateTool,
         task_delete: taskDeleteTool,
-        family_automation_list: familyAutomationListTool,
-        family_automation_upsert: familyAutomationUpsertTool,
         schedule_create: scheduleCreateTool,
         schedule_list: scheduleListTool,
         schedule_parse: scheduleParseTool,
@@ -120,8 +122,8 @@ function createMastra() {
         Object.entries(availableTools).filter(
           ([id]) =>
             enabled.has(id) ||
-            (enabled.has("tasks") &&
-              (id.startsWith("task_") || id.startsWith("family_automation_"))) ||
+            (enabled.has("dashboard") && id.startsWith("dashboard_")) ||
+            (enabled.has("tasks") && id.startsWith("task_")) ||
             (enabled.has("scheduling") && id.startsWith("schedule_")) ||
             (isScheduledJob && ["job_memory_recall", "notification_send"].includes(id)),
         ),
@@ -146,12 +148,16 @@ function createMastra() {
           ? "This scheduled run uses local Ollama only."
           : modelProvider.capabilityInstructions;
       const chartInstructions =
-        "For render_chart, pass the ordered tabular result from family_database as columns plus aligned rows, along with a concise description of the intended comparison. The chart tool's private planner chooses labels and series.";
-      return `You are LFP Chat, a capable and concise assistant.
+        "For render_chart, pass ordered tabular data as columns plus aligned rows. Put the label or time axis first and numeric series after it.";
+      return `You are ${serverConfig.appBranding.fullName}, a capable and concise assistant.
 
-The user has enabled these capabilities for this run: ${enabled.join(", ") || "none"}. Only use tools that are enabled. ${scheduledJobInstructions} Use project search for this app's stack, calculator for arithmetic, and Monty for isolated Python. For questions about family email, documents, attachments, deadlines, ingestion, or processing, use family_search for semantic and full-text retrieval and family_database for structured filters or aggregation. For bank accounts, balances, transactions, spending, income, merchants, categories, tags, or cash flow, use family_database and prefer the enriched financial_transaction_context PostgreSQL view; use SQL filters and aggregates instead of family_graph. Use the base financial_* tables when raw provider data, sync state, or enrichment confidence and review status are needed. For spending, treat negative amounts as debits, exclude pending rows unless requested, and aggregate debit magnitude rather than returning negative spend. When the user asks to show, chart, plot, trend, or visually compare data, first retrieve compact aggregates, then call render_chart with ordered labels and numeric series; include missing time buckets as zero. Use family_graph for temporal relationships and derived facts from ingested documents, not raw ledger events. Use family_email and family_attachment only when the user needs actual archived content, a MIME structure, or original bytes; first use family_search or family_database to find the required UUID. Whenever a family tool returns download_markdown for an attachment, use that exact Markdown link when naming the attachment so the user can download it; never expose MinIO credentials or internal object paths. Use task tools whenever the user asks to view, create, complete, move, link, or delete tasks or task lists. Before creating a task, list current open tasks, compare source links plus the title and purpose, and update a substantially equivalent task rather than duplicating it. Treat task_create and task_list_create as idempotent: created=false means the existing record covers the request. List task lists before acting when a list is named and its numeric ID is unknown. When the user says "every time", "whenever ingestion finds", or otherwise asks for ongoing behavior based on newly ingested records, create a persistent extraction directive plus automation rule with family_automation_upsert instead of creating a single task. When the user asks for work on a time cadence (for example every Tuesday, daily, or monthly), use schedule_create. Put only the recurring work in its prompt, and pass the cadence as either the user's plain-language schedule or a cron expression. Include the user's timezone when it is known. New schedules run once immediately unless the user asks to wait or server configuration disables it. The scheduling tool checks for equivalent existing work before creation. Call relevant retrieval tools together when their evidence is complementary. When Code mode is enabled, the workspace tools operate directly on the host filesystem and shell; do not read secrets or modify unrelated files unless the user explicitly asks. ${providerInstructions} When multiple tools are relevant, call them in the same step so the interface can present a grouped tool summary.
+The user has enabled these capabilities for this run: ${enabled.join(", ") || "none"}. Only use tools that are enabled. ${scheduledJobInstructions} Use project search for this app's stack, calculator for arithmetic, Monty for isolated Python, web_fetch for a normal bounded URL request, and url_fetch when a specific public page needs browser-like request behavior. url_fetch is not internet search. When the user asks to add, pin, save, cache, or periodically refresh something on their dashboard, use dashboard_upsert_widget. Write a deterministic Monty program that returns one validated chart, metric, table, or text object. In that program call actual Mastra tools with await tool_call("tool_id", {input fields}), and declare exactly those tool IDs in capabilities. The saved program refreshes without an LLM. Use cache_get() when the requested behavior benefits from the prior output. Use dashboard_list before changing an existing widget, and dashboard_archive to archive or restore widgets and tabs. When the user asks for work on a time cadence, use schedule_create. Put only the recurring work in its prompt and include the timezone when known. When Code mode is enabled, workspace tools operate directly on the host filesystem and shell; do not read secrets or modify unrelated files unless explicitly asked. ${providerInstructions}
 
-${chartInstructions} Be direct and useful. Use short paragraphs and lists only when they improve clarity. Remember stable user preferences in working memory, but do not store secrets or sensitive credentials.`;
+${chartInstructions}
+
+${DEFAULT_WRITING_STYLE_INSTRUCTIONS}
+
+Remember stable user preferences in working memory, but do not store secrets or sensitive credentials.`;
     },
     defaultOptions: ({ requestContext }) =>
       resolveRuntimeOptions(requestContext),
@@ -160,8 +166,10 @@ ${chartInstructions} Be direct and useful. Use short paragraphs and lists only w
   const codexAgent = serverConfig.codexAgentEnabled
     ? createCodexAgent(memory)
     : undefined;
+  const observability = createObservability();
 
   const mastra = new Mastra({
+    ...(observability ? { observability } : {}),
     agents: {
       chatAgent,
       ...(codexAgent ? { codexAgent } : {}),
@@ -170,12 +178,13 @@ ${chartInstructions} Be direct and useful. Use short paragraphs and lists only w
       search: searchTool,
       calculator: calculatorTool,
       monty: montyTool,
-      family_database: familyDatabaseTool,
       render_chart: renderChartTool,
-      family_search: familySearchTool,
-      family_graph: familyGraphTool,
-      family_email: familyEmailTool,
-      family_attachment: familyAttachmentTool,
+      web_fetch: dashboardWebFetchTool,
+      url_fetch: urlFetchTool,
+      ...(serverConfig.dashboard.sqlDatabaseUrl ? { sql_query: dashboardSqlTool } : {}),
+      dashboard_upsert_widget: dashboardUpsertWidgetTool,
+      dashboard_list: dashboardListTool,
+      dashboard_archive: dashboardArchiveTool,
       task_list: taskListTool,
       task_list_lists: taskListListsTool,
       task_list_create: taskListCreateTool,
@@ -184,8 +193,6 @@ ${chartInstructions} Be direct and useful. Use short paragraphs and lists only w
       task_create: taskCreateTool,
       task_update: taskUpdateTool,
       task_delete: taskDeleteTool,
-      family_automation_list: familyAutomationListTool,
-      family_automation_upsert: familyAutomationUpsertTool,
       schedule_create: scheduleCreateTool,
       schedule_list: scheduleListTool,
       schedule_parse: scheduleParseTool,

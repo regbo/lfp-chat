@@ -12,10 +12,11 @@ const updateThreadSchema = z
     title: z.string().trim().min(1).max(100).optional(),
     pinned: z.boolean().optional(),
     archived: z.boolean().optional(),
+    folder: z.string().trim().min(1).max(48).nullable().optional(),
   })
   .refine(
-    ({ title, pinned, archived }) =>
-      title !== undefined || pinned !== undefined || archived !== undefined,
+    ({ title, pinned, archived, folder }) =>
+      title !== undefined || pinned !== undefined || archived !== undefined || folder !== undefined,
     { message: "At least one thread change is required." },
   );
 
@@ -114,6 +115,10 @@ export async function PATCH(
 
     const metadata = { ...(details.metadata || {}) };
     if (parsed.data.pinned !== undefined) metadata.pinned = parsed.data.pinned;
+    if (parsed.data.folder !== undefined) {
+      if (parsed.data.folder === null) delete metadata.folder;
+      else metadata.folder = parsed.data.folder;
+    }
     if (parsed.data.archived !== undefined) {
       metadata.archived = parsed.data.archived;
       if (parsed.data.archived) metadata.pinned = false;

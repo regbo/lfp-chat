@@ -1,0 +1,21 @@
+import { serverConfig } from "@/lib/config";
+import { registerDashboardMastraTools } from "@/lib/dashboard-runtime";
+import { dashboardSqlTool, dashboardWebFetchTool } from "@/mastra/dashboard-source-tools";
+import { calculatorTool, montyTool, searchTool } from "@/mastra/tools";
+import { urlFetchTool } from "@/mastra/url-fetch-tool";
+
+let registered = false;
+
+/** Register the default read-oriented Mastra tools in this server process. */
+export function ensureDashboardCapabilities() {
+  if (registered) return;
+  registerDashboardMastraTools({
+    search: searchTool,
+    calculator: calculatorTool,
+    monty: montyTool,
+    web_fetch: dashboardWebFetchTool,
+    url_fetch: urlFetchTool,
+    ...(serverConfig.dashboard.sqlDatabaseUrl ? { sql_query: dashboardSqlTool } : {}),
+  });
+  registered = true;
+}

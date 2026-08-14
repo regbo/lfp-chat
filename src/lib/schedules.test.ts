@@ -69,10 +69,10 @@ describe("schedule duplicate detection", () => {
 
 test("scheduled runs keep work tools but cannot recursively schedule", () => {
   expect(scheduleRequestContext({
-    enabledToolIds: ["family_search", "scheduling"],
+    enabledToolIds: ["search", "scheduling"],
     timezone: "America/New_York",
   })).toEqual({
-    "lfp.tools": ["family_search"],
+    "lfp.tools": ["search"],
     "lfp.timezone": "America/New_York",
     "lfp.schedule-job": true,
   });

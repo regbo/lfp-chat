@@ -51,6 +51,7 @@ for (const relativePath of [
   "index.d.ts",
   "components/chat-app.d.ts",
   "components/tasks-panel.d.ts",
+  "lib/app-branding.d.ts",
   "lib/chat-app-plugins.d.ts",
   "lib/tasks.d.ts",
 ]) {

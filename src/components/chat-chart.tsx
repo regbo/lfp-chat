@@ -37,7 +37,7 @@ function chartFormatter(spec: ChatChartSpec) {
   });
 }
 
-export function ChatChart({ spec }: { spec: ChatChartSpec }) {
+export function ChatChart({ spec, bare = false }: { spec: ChatChartSpec; bare?: boolean }) {
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -46,7 +46,9 @@ export function ChatChart({ spec }: { spec: ChatChartSpec }) {
     const formatter = chartFormatter(spec);
     const chart = init(container, undefined, {
       renderer: "canvas",
-      useDirtyRect: true,
+      // ECharts can under-invalidate line segments during axis-tooltip hover.
+      // A full canvas repaint keeps every series intact as the pointer moves.
+      useDirtyRect: false,
     });
     const render = () => {
       const styles = getComputedStyle(container);
@@ -54,7 +56,7 @@ export function ChatChart({ spec }: { spec: ChatChartSpec }) {
       const muted = styles.getPropertyValue("--muted-foreground").trim();
       const border = styles.getPropertyValue("--border").trim();
       const card = styles.getPropertyValue("--card").trim();
-      const colors = [1, 2, 3, 4, 5].map((index) =>
+      const colors = Array.from({ length: 10 }, (_, index) => index + 1).map((index) =>
         styles.getPropertyValue(`--chart-${index}`).trim(),
       );
       const option: EChartsCoreOption = {
@@ -63,12 +65,16 @@ export function ChatChart({ spec }: { spec: ChatChartSpec }) {
         color: colors,
         grid: { left: 12, right: 16, top: 48, bottom: 38, containLabel: true },
         legend: {
+          type: "scroll",
           top: 8,
+          left: 24,
+          right: 24,
           itemGap: 18,
           textStyle: { color: muted, fontWeight: 500 },
         },
         tooltip: {
           trigger: "axis",
+          axisPointer: { animation: false, type: "line" },
           backgroundColor: card,
           borderColor: border,
           textStyle: { color: foreground },
@@ -97,7 +103,8 @@ export function ChatChart({ spec }: { spec: ChatChartSpec }) {
           name: series.name,
           type: spec.chartType,
           data: series.values,
-          emphasis: { focus: "series" },
+          // Tooltips remain interactive without changing or obscuring a series.
+          emphasis: { disabled: true },
           ...(spec.chartType === "line"
             ? {
                 connectNulls: false,
@@ -141,10 +148,10 @@ export function ChatChart({ spec }: { spec: ChatChartSpec }) {
   }, [spec]);
 
   return (
-    <figure className="chat-chart-shell not-prose my-3 overflow-hidden rounded-2xl border p-3.5">
-      <figcaption className="mb-1 px-1 text-sm font-medium text-foreground">
+    <figure className={bare ? "not-prose overflow-hidden" : "chat-chart-shell not-prose my-3 overflow-hidden rounded-2xl border p-3.5"}>
+      {!bare && <figcaption className="mb-1 px-1 text-sm font-medium text-foreground">
         {spec.title}
-      </figcaption>
+      </figcaption>}
       <div
         aria-label={spec.title}
         className="chat-chart-canvas h-80 w-full"

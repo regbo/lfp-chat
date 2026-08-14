@@ -1,14 +1,19 @@
 import type { MetadataRoute } from "next";
 
+import { LFP_BRAND_COLORS } from "@/lib/app-branding";
+import { serverConfig } from "@/lib/config";
+
+export const dynamic = "force-dynamic";
+
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "LFP Chat",
-    short_name: "LFP Chat",
+    name: serverConfig.appBranding.fullName,
+    short_name: serverConfig.appBranding.fullName,
     description: "A tool-capable Mastra chat with persistent memory.",
     start_url: "/",
     display: "standalone",
-    background_color: "#ffffff",
-    theme_color: "#ffffff",
+    background_color: LFP_BRAND_COLORS.warmWhite,
+    theme_color: LFP_BRAND_COLORS.warmWhite,
     orientation: "portrait-primary",
     categories: ["productivity", "utilities"],
     icons: [

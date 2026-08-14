@@ -686,7 +686,7 @@ export function SchedulesPanel({
             </DialogHeader>
             <div className="space-y-3">
               <Input aria-label="Schedule name" onChange={(event) => setName(event.target.value)} placeholder="Name (optional)" value={name} />
-              <Textarea aria-label="Schedule prompt" className="min-h-24" onChange={(event) => setPrompt(event.target.value)} placeholder="What should LFP Chat do?" required value={prompt} />
+              <Textarea aria-label="Schedule prompt" className="min-h-24" onChange={(event) => setPrompt(event.target.value)} placeholder="What should this chat do?" required value={prompt} />
             </div>
             <div className="space-y-1.5">
               <label className="chat-ui-text font-medium" htmlFor="new-schedule-cadence">Schedule</label>
@@ -813,6 +813,8 @@ const toolIcons: Record<SelectableToolId, LucideIcon> = {
   search: Search,
   calculator: Calculator,
   monty: Code2,
+  url_fetch: Globe2,
+  dashboard: Blocks,
   scheduling: Clock3,
   web_search: Globe2,
   code_interpreter: Code2,
@@ -1019,7 +1021,7 @@ export function SettingsPanel({
         <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-muted"><MoonStar className="size-4" /></span>
         <div className="min-w-0">
           <p className="chat-ui-emphasis">Appearance</p>
-          <p className="chat-ui-text mt-1 text-muted-foreground">Choose how LFP Chat looks on this device.</p>
+          <p className="chat-ui-text mt-1 text-muted-foreground">Choose how the app looks on this device.</p>
         </div>
         <Select value={themePreference} onValueChange={(value) => changeTheme(value as ThemePreference)}>
           <SelectTrigger aria-label="Color theme" className="settings-row-action w-36">
@@ -1038,7 +1040,7 @@ export function SettingsPanel({
           <div className="min-w-0">
             <p className="chat-ui-emphasis">Notifications</p>
             <p className="chat-ui-text mt-1 text-muted-foreground">
-              {notificationState === "install" ? "Add LFP Chat to your Home Screen first, then turn on notifications here." : notificationState === "unconfigured" ? "Notifications aren't available yet." : notificationState === "on" ? "This device receives updates from LFP Chat." : "Get alerts when background work finishes or something needs your attention."}
+              {notificationState === "install" ? "Add the app to your Home Screen first, then turn on notifications here." : notificationState === "unconfigured" ? "Notifications aren't available yet." : notificationState === "on" ? "This device receives app updates." : "Get alerts when background work finishes or something needs your attention."}
             </p>
             {notificationError && <p className="chat-meta-text mt-2 text-destructive">{notificationError}</p>}
           </div>

@@ -1,9 +1,10 @@
 import type { Metadata, Viewport } from "next";
-import { Geist_Mono } from "next/font/google";
+import { Geist_Mono, Inter } from "next/font/google";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { PwaRegister } from "@/components/pwa-register";
 import { ThemeSync } from "@/components/theme-sync";
 import { THEME_BOOTSTRAP_SCRIPT, THEME_COLORS } from "@/lib/theme-preference";
+import { serverConfig } from "@/lib/config";
 import "@regbo/lfp-chat/styles.css";
 import "./globals.css";
 
@@ -12,19 +13,29 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-export const metadata: Metadata = {
-  title: "LFP Chat",
-  description: "A Mastra chat interface with PostgreSQL-backed memory.",
-  applicationName: "LFP Chat",
-  appleWebApp: {
-    capable: true,
-    statusBarStyle: "default",
-    title: "LFP Chat",
-  },
-  icons: {
-    apple: "/apple-touch-icon.png",
-  },
-};
+const inter = Inter({
+  variable: "--font-inter",
+  subsets: ["latin"],
+});
+
+export const dynamic = "force-dynamic";
+
+export function generateMetadata(): Metadata {
+  return {
+    title: serverConfig.appBranding.fullName,
+    description: "A Mastra chat interface with PostgreSQL-backed memory.",
+    applicationName: serverConfig.appBranding.fullName,
+    appleWebApp: {
+      capable: true,
+      statusBarStyle: "default",
+      title: serverConfig.appBranding.fullName,
+    },
+    icons: {
+      icon: serverConfig.appBranding.faviconUrl,
+      apple: "/apple-touch-icon.png",
+    },
+  };
+}
 
 export const viewport: Viewport = {
   width: "device-width",
@@ -44,7 +55,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`${geistMono.variable} h-full antialiased`}
+      className={`${geistMono.variable} ${inter.variable} h-full antialiased`}
       suppressHydrationWarning
     >
       <head>
