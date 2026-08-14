@@ -154,6 +154,20 @@ is only the backward-compatible default when a list is not specified.
 Assignment and other deployment-specific task fields are intentionally absent;
 a host can register its own `/tasks` `ChatAppPlugin` when it needs those fields.
 
+## Family and financial context
+
+The `family_database` Mastra tool uses the deployment's read-only family PostgreSQL
+connection. In addition to documents, attachments, deadlines, and processing state,
+the tool exposes connected financial institutions, accounts, current balances,
+transactions, and synchronization history. The agent uses these normalized tables
+for exact transaction lookup, merchant/date filters, and spending or cash-flow
+aggregation while retaining provider-native JSON for later refinement.
+
+Raw ledger events intentionally remain in PostgreSQL instead of being duplicated
+into Graphiti. PostgreSQL is authoritative for exact amounts, dates, pending state,
+deduplication, and aggregation; Graphiti remains focused on temporal relationships
+derived from ingested household documents, where graph traversal adds more value.
+
 Mastra task creation is idempotent for agents and scheduled jobs. Before a
 write, jobs inspect existing open work and reconcile substantially equivalent
 tasks. The tool layer also blocks normalized title duplicates in the same list,

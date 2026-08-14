@@ -20,9 +20,9 @@ const mods = [{
   ],
   settings: <GmailSettings />,
   tools: [
-    { id: "family_database", title: "Family database", description: "Search and summarize structured family records safely.", icon: <Database />, defaultEnabled: true },
+    { id: "family_database", title: "Family database", description: "Query family records, accounts, balances, and transactions safely.", icon: <Database />, defaultEnabled: true },
     { id: "family_search", title: "Family search", description: "Search email and attachments using semantic and full-text retrieval.", icon: <Search />, defaultEnabled: true },
-    { id: "family_graph", title: "Family graph", description: "Search temporal family facts and relationships.", icon: <Share2 />, defaultEnabled: true },
+    { id: "family_graph", title: "Family graph", description: "Search document-derived temporal facts and relationships.", icon: <Share2 />, defaultEnabled: true },
     { id: "family_email", title: "Family email", description: "Retrieve original emails and inspect parsed content.", icon: <Mail />, defaultEnabled: true },
     { id: "family_attachment", title: "Family attachment", description: "Retrieve attachment text, metadata, or original bytes.", icon: <Paperclip />, defaultEnabled: true },
     { id: "tasks", title: "Tasks", description: "Create, organize, update, and review tasks.", icon: <ListTodo />, defaultEnabled: true },

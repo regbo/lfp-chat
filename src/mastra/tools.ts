@@ -203,10 +203,22 @@ function getFamilySqlPool() {
   }));
 }
 
+export const FAMILY_DATABASE_DESCRIPTION = `Look up structured family and financial records using one generated read-only database query.
+Available public tables:
+- documents (ingest_id, family_id, source, external_id, title, body_text, metadata JSONB, labels JSONB, occurred_at, ingested_at, processed_at)
+- attachments (attachment_id, ingest_id, filename, content_type, size, extracted_text, labels JSONB, metadata JSONB, processed_at)
+- deadlines (title, due_at, evidence, confidence, status)
+- source_cursors and processing_events (source, stage, status, detail JSONB, created_at)
+- graph_outbox (attempts, delivered_at, last_error)
+- financial_connections (provider, external_id, name, institution_id, institution_name, institution_url, raw_data JSONB, first_seen_at, last_seen_at)
+- financial_accounts (provider, external_id, connection_external_id, name, currency, balance, available_balance, balance_at, raw_data JSONB, first_seen_at, last_seen_at)
+- financial_transactions (provider, account_external_id, external_id, posted_at, transacted_at, amount, description, payee, memo, pending, raw_data JSONB, first_seen_at, last_seen_at)
+- financial_sync_runs (run_id, provider, status, window_start, fetched_at, completed_at, connection_count, account_count, transaction_count, provider_errors JSONB)
+Join financial_transactions to financial_accounts on provider plus account_external_id = external_id, then join financial_accounts to financial_connections on provider plus connection_external_id = external_id when account or institution names are needed. Financial amounts retain the provider's signed values. Use JSONB operators for labels, metadata, or raw provider fields. Always select only the columns needed and add a LIMIT to row-returning queries.`;
+
 export const familyDatabaseTool = createTool({
   id: "family_database",
-  description: `Look up structured family records using one generated read-only database query.
-Available public tables: documents (ingest_id, family_id, source, external_id, title, body_text, metadata JSONB, labels JSONB, occurred_at, ingested_at, processed_at), attachments (attachment_id, ingest_id, filename, content_type, size, extracted_text, labels JSONB, metadata JSONB, processed_at), deadlines (title, due_at, evidence, confidence, status), source_cursors, processing_events (source, stage, status, detail JSONB, created_at), and graph_outbox (attempts, delivered_at, last_error). Use JSONB operators for labels or metadata. Always select only the columns needed and add a LIMIT.`,
+  description: FAMILY_DATABASE_DESCRIPTION,
   inputSchema: z.object({
     sql: z
       .string()
@@ -364,7 +376,7 @@ export const familySearchTool = createTool({
 export const familyGraphTool = createTool({
   id: "family_graph",
   description:
-    "Search Graphiti's temporal family knowledge graph for entities, relationships, and facts derived from ingested family context. Use alongside family_database when both structured records and semantic relationships can help.",
+    "Search Graphiti's temporal family knowledge graph for entities, relationships, and facts derived from ingested documents. Raw financial accounts and ledger transactions remain authoritative in PostgreSQL and are not copied into the graph; use family_database for them.",
   inputSchema: z.object({
     query: z.string().min(1).max(2_000),
     maxFacts: z.number().int().min(1).max(25).default(10),

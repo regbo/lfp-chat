@@ -8,7 +8,7 @@
 - `src/lib/tool-catalog.ts` — selectable tool definitions, defaults, and request-context keys.
 - `src/lib/schedules.ts` — shared schedule deduplication, timezone context, and safe scheduled-run request-context construction.
 - `src/lib/vikunja.ts` — centralized server-only household task client used by chat tools and the Tasks menu.
-- `src/mastra/tools.ts` — safe built-in tools, including read-only family SQL and Graphiti search with bounded outputs and timeouts.
+- `src/mastra/tools.ts` — safe built-in tools, including read-only family and financial SQL plus document-derived Graphiti search with bounded outputs and timeouts.
 - `src/mastra/schedule-tools.ts` — agent-facing list/create scheduling tools with per-resource duplicate prevention and dedicated output threads.
 - `src/lib/thread-state.ts` — thread metadata helpers for pinning and archiving.
 - `src/lib/citations.ts` — citation-marker cleanup and formatting for rendered assistant text.
