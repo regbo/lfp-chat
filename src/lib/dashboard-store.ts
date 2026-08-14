@@ -442,6 +442,22 @@ export async function archiveDashboardWidget(
   }
 }
 
+export async function updateDashboardWidgetMetadata(
+  resourceId: string,
+  widgetId: string,
+  metadata: { title: string; description: string },
+) {
+  await ready();
+  const result = await pool().query<DashboardWidgetRow>(
+    `UPDATE lfp_dashboard_widgets
+     SET title = $3, description = NULLIF($4, ''), updated_at = now()
+     WHERE id = $1 AND resource_id = $2 RETURNING *`,
+    [widgetId, resourceId, metadata.title.trim(), metadata.description.trim()],
+  );
+  if (!result.rows[0]) throw new Error("Dashboard widget was not found.");
+  return widgetFromRow(result.rows[0]);
+}
+
 export async function deleteDashboardWidget(resourceId: string, widgetId: string) {
   await ready();
   const result = await pool().query<{ id: string }>(

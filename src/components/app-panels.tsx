@@ -813,10 +813,8 @@ export function SchedulesPanel({
 
 const toolIcons: Record<SelectableToolId, LucideIcon> = {
   url_fetch: Globe2,
-  dashboard: Blocks,
   scheduling: Clock3,
   web_search: Globe2,
-  code_interpreter: Code2,
   image_generation: ImageIcon,
   code_mode: Terminal,
 };
@@ -875,7 +873,7 @@ export function ToolsPanel({
   };
 
   return (
-    <PanelShell title="Tools" description="Choose which capabilities are available to new chat runs and schedules.">
+    <PanelShell title="Tools" description="Disable optional capabilities when you want to reduce tool-token usage.">
       <div className="space-y-2">
         {tools.map((detail) => {
           const Icon = toolIcons[detail.id as SelectableToolId] ?? Blocks;
@@ -938,7 +936,7 @@ export function ToolsPanel({
       )}
       <p className="chat-meta-text mt-4 text-muted-foreground">Code mode is disabled by default. When enabled, its Mastra workspace can read and modify the host filesystem and execute local commands.</p>
       <Dialog onOpenChange={(open) => { if (!open) setSelectedTool(undefined); }} open={Boolean(selectedTool)}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="min-w-0 sm:w-[min(64rem,calc(100vw-2rem))] sm:max-w-none">
           <DialogHeader>
             <DialogTitle>{selectedTool?.title}</DialogTitle>
             <DialogDescription>{selectedTool?.description}</DialogDescription>
@@ -946,7 +944,7 @@ export function ToolsPanel({
           {selectedTool && (
             <div className="min-w-0 space-y-4">
               <p className="chat-meta-text text-muted-foreground"><span className="font-mono text-foreground">{selectedTool.name}</span> · cache {selectedTool.cacheTtlSeconds}s · calls {selectedTool.capabilities.join(", ") || "none"}</p>
-              <CodeBlock className="max-h-[50vh] overflow-auto" code={selectedTool.code} language="python" showLineNumbers />
+              <CodeBlock className="max-h-[60vh] w-full min-w-0 max-w-full overflow-auto" code={selectedTool.code} language="python" showLineNumbers />
             </div>
           )}
           <DialogFooter>

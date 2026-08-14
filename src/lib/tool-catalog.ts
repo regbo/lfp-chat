@@ -1,17 +1,22 @@
 export const TOOLS_CONTEXT_KEY = "lfp.tools";
-export const TOOL_CATALOG_VERSION = 5;
+export const TOOL_CATALOG_VERSION = 6;
+
+export const hiddenMandatoryToolIds = [
+  "monty",
+  "cache",
+  "dashboard",
+  "code_interpreter",
+] as const;
+
+export function isMandatoryAgentToolId(id: string) {
+  return id === "monty" || id === "cache" || id === "code_interpreter" || id.startsWith("dashboard_");
+}
 
 export const toolCatalog = [
   {
     id: "url_fetch",
     title: "URL fetch",
     description: "Fetch a specific public URL with browser-like request behavior.",
-    defaultEnabled: true,
-  },
-  {
-    id: "dashboard",
-    title: "Dashboard",
-    description: "Create reusable data tools and tool-backed dashboard views.",
     defaultEnabled: true,
   },
   {
@@ -24,12 +29,6 @@ export const toolCatalog = [
     id: "web_search",
     title: "Web search",
     description: "Search current information with the model provider's hosted tool.",
-    defaultEnabled: true,
-  },
-  {
-    id: "code_interpreter",
-    title: "Code interpreter",
-    description: "Analyze files and data in OpenAI's hosted Python sandbox.",
     defaultEnabled: true,
   },
   {
@@ -84,9 +83,9 @@ export function migrateEnabledToolIds(
   // disable it normally after this one-time migration.
   const additions = [
     ...(storedCatalogVersion < 2 ? ["scheduling"] : []),
-    ...(storedCatalogVersion < 4 ? ["url_fetch", "dashboard"] : []),
+    ...(storedCatalogVersion < 4 ? ["url_fetch"] : []),
   ];
   return Array.from(new Set([...normalized, ...additions])).filter(
-    (id) => !["calculator", "monty", "search", "cache"].includes(id),
+    (id) => !["calculator", "search", ...hiddenMandatoryToolIds].includes(id),
   );
 }

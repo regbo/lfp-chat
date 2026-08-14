@@ -1,11 +1,11 @@
 "use client";
 
-import { Archive, ArchiveRestore, LoaderCircle, RefreshCw, Trash2 } from "lucide-react";
+import { Archive, ArchiveRestore, LoaderCircle, Pencil, RefreshCw, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { ChatChart } from "@/components/chat-chart";
 import { Button } from "@/components/ui/button";
-import type { CSSProperties } from "react";
+import type { CSSProperties, KeyboardEvent } from "react";
 import type { DashboardState, DashboardWidget } from "@/lib/dashboard-spec";
 import { cn } from "@/lib/utils";
 
@@ -40,6 +40,65 @@ function WidgetContent({ widget }: { widget: DashboardWidget }) {
     return <p className="whitespace-pre-wrap text-sm leading-6" style={style}>{output.text}</p>;
   }
   return <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr>{output.columns.map((column) => <th className="border-b px-2 py-2 font-medium" key={column}>{column}</th>)}</tr></thead><tbody>{output.rows.map((row, index) => <tr key={index}>{row.map((cell, cellIndex) => <td className="border-b border-border/50 px-2 py-2" key={cellIndex}>{formatMetric(cell)}</td>)}</tr>)}</tbody></table></div>;
+}
+
+function EditableWidgetMetadata({
+  onSave,
+  widget,
+}: {
+  onSave: (title: string, description: string) => Promise<void>;
+  widget: DashboardWidget;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [title, setTitle] = useState(widget.title);
+  const [description, setDescription] = useState(widget.description ?? "");
+
+  const cancel = () => {
+    setTitle(widget.title);
+    setDescription(widget.description ?? "");
+    setEditing(false);
+  };
+  const save = async () => {
+    setEditing(false);
+    const nextTitle = title.trim();
+    const nextDescription = description.trim();
+    if (nextTitle === widget.title && nextDescription === (widget.description ?? "")) return;
+    await onSave(nextTitle, nextDescription);
+  };
+  const keyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      cancel();
+    } else if (event.key === "Enter") {
+      event.preventDefault();
+      event.currentTarget.blur();
+    }
+  };
+
+  if (editing) {
+    return (
+      <div
+        className="min-w-0 flex-1 space-y-1"
+        onBlur={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) void save();
+        }}
+      >
+        <input aria-label="Widget title" autoFocus className="w-full rounded-md bg-muted/60 px-2 py-1 font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring" onChange={(event) => setTitle(event.target.value)} onKeyDown={keyDown} value={title} />
+        <input aria-label="Widget description" className="w-full rounded-md bg-muted/60 px-2 py-1 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring" onChange={(event) => setDescription(event.target.value)} onKeyDown={keyDown} value={description} />
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex min-w-0 flex-1 items-start gap-1">
+      <div className="min-w-0 flex-1">
+        {widget.title && <button className="block max-w-full truncate text-left font-medium" onClick={() => setEditing(true)}>{widget.title}</button>}
+        {widget.description && <button className="mt-0.5 block max-w-full truncate text-left text-xs text-muted-foreground" onClick={() => setEditing(true)}>{widget.description}</button>}
+        <p className="mt-1 text-xs text-muted-foreground">{updatedLabel(widget.lastRunAt)} · {widget.toolName}</p>
+      </div>
+      <Button aria-label="Edit widget title and description" onClick={() => setEditing(true)} size="icon-sm" variant="ghost"><Pencil className="size-3.5" /></Button>
+    </div>
+  );
 }
 
 export function DashboardPanel({ resourceId, onAvailabilityChange }: { resourceId: string; onAvailabilityChange?: (available: boolean) => void }) {
@@ -90,6 +149,7 @@ export function DashboardPanel({ resourceId, onAvailabilityChange }: { resourceI
     await load();
   };
   const archiveWidget = (widget: DashboardWidget, archived: boolean) => mutate(`/api/dashboard/widgets/${widget.id}`, "PATCH", { archived });
+  const updateWidgetMetadata = (widget: DashboardWidget, title: string, description: string) => mutate(`/api/dashboard/widgets/${widget.id}`, "PATCH", { title, description });
   const permanentlyDelete = async (kind: "widgets" | "tools", id: string, title: string) => {
     if (!window.confirm(`Permanently delete “${title}”? This cannot be undone.`)) return;
     await mutate(`/api/dashboard/${kind}/${id}`, "DELETE", {});
@@ -105,8 +165,8 @@ export function DashboardPanel({ resourceId, onAvailabilityChange }: { resourceI
       {view === "dashboard" && activeTabs.length > 1 && <div className="flex gap-1">{activeTabs.map((tab) => <button className={cn("rounded-lg px-3 py-1.5 text-sm", activeTab?.id === tab.id && "bg-muted")} key={tab.id} onClick={() => setActiveTabId(tab.id)}>{tab.name}</button>)}</div>}
     </div>
 
-    {view === "dashboard" && (!activeTab?.widgets.filter((widget) => !widget.archivedAt).length ? <p className="py-20 text-center text-sm text-muted-foreground">No active widgets. Ask the assistant to add one.</p> : <div className="grid gap-4 lg:grid-cols-2">{activeTab.widgets.filter((widget) => !widget.archivedAt).map((widget) => <section className="rounded-2xl border border-border/60 bg-card p-4 shadow-[0_8px_28px_rgba(0,0,0,0.045)]" key={widget.id}><header className="mb-3 flex items-start gap-2"><div className="min-w-0 flex-1"><h2 className="font-medium">{widget.title}</h2>{widget.description && <p className="mt-0.5 text-xs text-muted-foreground">{widget.description}</p>}<p className="mt-1 text-xs text-muted-foreground">{updatedLabel(widget.lastRunAt)} · {widget.toolName}</p></div><Button aria-label="Refresh widget" disabled={running.has(widget.id)} onClick={() => void run(widget, true)} size="icon-sm" variant="ghost">{running.has(widget.id) ? <LoaderCircle className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}</Button><Button aria-label="Archive widget" onClick={() => void archiveWidget(widget, true)} size="icon-sm" variant="ghost"><Archive className="size-4" /></Button></header>{widget.lastError ? <p className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive">{widget.lastError}</p> : <WidgetContent widget={widget} />}</section>)}</div>)}
+    {view === "dashboard" && (!activeTab?.widgets.filter((widget) => !widget.archivedAt).length ? <p className="py-20 text-center text-sm text-muted-foreground">No active widgets. Ask the assistant to add one.</p> : <div className="grid gap-4 lg:grid-cols-2">{activeTab.widgets.filter((widget) => !widget.archivedAt).map((widget) => <section className="rounded-2xl border border-border/60 bg-card p-4 shadow-[0_8px_28px_rgba(0,0,0,0.045)]" key={widget.id}><header className="mb-3 flex items-start gap-2"><EditableWidgetMetadata onSave={(title, description) => updateWidgetMetadata(widget, title, description)} widget={widget} /><Button aria-label="Refresh widget" disabled={running.has(widget.id)} onClick={() => void run(widget, true)} size="icon-sm" variant="ghost">{running.has(widget.id) ? <LoaderCircle className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}</Button><Button aria-label="Archive widget" onClick={() => void archiveWidget(widget, true)} size="icon-sm" variant="ghost"><Archive className="size-4" /></Button></header>{widget.lastError ? <p className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive">{widget.lastError}</p> : <WidgetContent widget={widget} />}</section>)}</div>)}
 
-    {view === "archive" && <div className="divide-y">{archivedWidgets.map((widget) => <div className="flex items-center gap-3 py-4" key={widget.id}><div className="min-w-0 flex-1"><p className="font-medium">{widget.title}</p><p className="text-sm text-muted-foreground">Widget</p></div><Button onClick={() => void archiveWidget(widget, false)} size="sm" variant="ghost"><ArchiveRestore className="size-4" /> Restore</Button><Button aria-label="Delete permanently" onClick={() => void permanentlyDelete("widgets", widget.id, widget.title)} size="icon-sm" variant="ghost"><Trash2 className="size-4" /></Button></div>)}</div>}
+    {view === "archive" && <div className="divide-y">{archivedWidgets.map((widget) => <div className="flex items-center gap-3 py-4" key={widget.id}><div className="min-w-0 flex-1">{widget.title && <p className="font-medium">{widget.title}</p>}{widget.description && <p className="text-sm text-muted-foreground">{widget.description}</p>}{!widget.title && !widget.description && <p className="font-mono text-sm text-muted-foreground">{widget.toolName}</p>}</div><Button onClick={() => void archiveWidget(widget, false)} size="sm" variant="ghost"><ArchiveRestore className="size-4" /> Restore</Button><Button aria-label="Delete permanently" onClick={() => void permanentlyDelete("widgets", widget.id, widget.title || widget.toolName)} size="icon-sm" variant="ghost"><Trash2 className="size-4" /></Button></div>)}</div>}
   </div></div>;
 }
