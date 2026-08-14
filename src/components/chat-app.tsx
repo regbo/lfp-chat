@@ -146,7 +146,6 @@ import {
   Archive,
   ArchiveRestore,
   Blocks,
-  Brain,
   Check,
   ChevronDown,
   ChevronRight,
@@ -170,6 +169,7 @@ import {
   PinOff,
   Search,
   Settings,
+  SlidersHorizontal,
   SquarePen,
   Trash2,
   Wrench,
@@ -544,14 +544,15 @@ function ChatSubmitButton({
     attachments.files.length > 0;
   const emphasizeSubmit = hasPendingSubmission || status === "submitted" || status === "streaming";
   const isGenerating = status === "submitted" || status === "streaming";
+  const shouldStop = isGenerating && !hasPendingSubmission;
 
   return (
     <PromptInputSubmit
-      aria-label={status === "submitted" || status === "streaming" ? "Stop response" : "Send message"}
+      aria-label={shouldStop ? "Stop response" : "Send message"}
       className="chat-composer-submit bg-foreground text-background hover:bg-foreground/85"
       data-emphasized={emphasizeSubmit}
-      onStop={onStop}
-      status={isGenerating ? status : hasPendingSubmission ? "ready" : status}
+      onStop={shouldStop ? onStop : undefined}
+      status={shouldStop ? status : hasPendingSubmission ? "ready" : status}
     />
   );
 }
@@ -707,7 +708,7 @@ function ModelSelector({
         onClick={() => setOpen(true)}
         tooltip="Model or agent"
       >
-        <Brain aria-hidden="true" className="chat-model-compact-icon size-4" />
+        <SlidersHorizontal aria-hidden="true" className="chat-model-compact-icon size-4" />
         <span className="chat-model-label truncate">{label}</span>
         <ChevronDown className="chat-model-chevron size-3.5 shrink-0" />
       </PromptInputButton>
@@ -1164,6 +1165,57 @@ function ChatSession({
     getChatSession(threadId)?.abortController?.abort();
   }, [threadId]);
 
+  const deliverSteer = useCallback((item: PendingSteer) => {
+    const runId = getChatSession(threadId)?.runId;
+    if (!runId) {
+      setSteers((current) =>
+        current.some((candidate) => candidate.id === item.id)
+          ? current
+          : [item, ...current],
+      );
+      setSteerError("The active run is no longer available to steer.");
+      return;
+    }
+    setSteerError("");
+    const userMessage = promptMessageToUserMessage(item.message, item.id);
+    updateChatSession(threadId, (current) => ({
+      ...current,
+      messages: current.messages.some((message) => message.id === userMessage.id)
+        ? current.messages
+        : [...current.messages, userMessage],
+    }));
+    setSubmitScrollRequest((current) => current + 1);
+    setSteers((current) => current.filter((candidate) => candidate.id !== item.id));
+    const restoreSteer = () => {
+      updateChatSession(threadId, (current) => ({
+        ...current,
+        messages: current.messages.filter((message) => message.id !== userMessage.id),
+      }));
+      setSteers((current) =>
+        current.some((candidate) => candidate.id === item.id)
+          ? current
+          : [item, ...current],
+      );
+    };
+    void fetch(`/api/threads/${encodeURIComponent(threadId)}/steer`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        resourceId,
+        text: item.message.text,
+        files: item.message.files,
+      }),
+    }).then(async (response) => {
+      if (response.ok) return;
+      const data = (await response.json()) as { error?: string };
+      restoreSteer();
+      setSteerError(data.error || "Unable to steer the current response.");
+    }).catch(() => {
+      restoreSteer();
+      setSteerError("Unable to reach the chat server to deliver this steer.");
+    });
+  }, [resourceId, threadId]);
+
   const submit = useCallback(
     async ({ text, files }: PromptInputMessage) => {
       if (!text.trim() && files.length === 0) return;
@@ -1186,14 +1238,14 @@ function ChatSession({
         return;
       }
       if (isStreaming) {
-        setSteers((current) => [...current, { id: makeId(), message: { text, files } }]);
+        deliverSteer({ id: makeId(), message: { text, files } });
         setDraft("");
         return;
       }
       setDraft("");
       void runMessage({ text, files });
     },
-    [editingSteerId, isStreaming, runMessage],
+    [deliverSteer, editingSteerId, isStreaming, runMessage],
   );
 
   useEffect(() => {
@@ -1241,46 +1293,8 @@ function ChatSession({
   const steer = useCallback((id: string) => {
     const item = steers.find((candidate) => candidate.id === id);
     if (!item) return;
-    const runId = getChatSession(threadId)?.runId;
-    if (!runId) {
-      setSteerError("The active run is no longer available to steer.");
-      return;
-    }
-    setSteerError("");
-    const userMessage = promptMessageToUserMessage(item.message, item.id);
-    updateChatSession(threadId, (current) => ({
-      ...current,
-      messages: current.messages.some((message) => message.id === userMessage.id)
-        ? current.messages
-        : [...current.messages, userMessage],
-    }));
-    setSubmitScrollRequest((current) => current + 1);
-    deleteSteer(id);
-    const restoreSteer = () => {
-      updateChatSession(threadId, (current) => ({
-        ...current,
-        messages: current.messages.filter((message) => message.id !== userMessage.id),
-      }));
-      setSteers((current) =>
-        current.some((candidate) => candidate.id === item.id)
-          ? current
-          : [item, ...current],
-      );
-    };
-    void fetch(`/api/threads/${encodeURIComponent(threadId)}/steer`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ resourceId, text: item.message.text, files: item.message.files }),
-    }).then(async (response) => {
-      if (response.ok) return;
-      const data = (await response.json()) as { error?: string };
-      restoreSteer();
-      setSteerError(data.error || "Unable to steer the current response.");
-    }).catch(() => {
-      restoreSteer();
-      setSteerError("Unable to reach the chat server to deliver this steer.");
-    });
-  }, [deleteSteer, resourceId, steers, threadId]);
+    deliverSteer(item);
+  }, [deliverSteer, steers]);
 
   const composerProps = {
     draft,
