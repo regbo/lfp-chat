@@ -930,6 +930,8 @@ type ChatSessionProps = {
   threadId: string;
   resourceId: string;
   initialMessages: UIMessage[];
+  autoFocusComposer: boolean;
+  onAutoFocusComposer: () => void;
   onConversationChange: (threadId: string) => void;
   onThreadListChange: () => void;
   modelCatalog: ModelCatalogResponse | null;
@@ -944,11 +946,13 @@ function ChatSession({
   threadId,
   resourceId,
   initialMessages,
+  autoFocusComposer,
   modelCatalog,
   modelSelection,
   enabledToolIds,
   toolModelSelections,
   recentSuggestionTitles,
+  onAutoFocusComposer,
   onModelSelectionChange,
   onConversationChange,
   onThreadListChange,
@@ -979,16 +983,19 @@ function ChatSession({
     renderedMessages.at(-1)?.role === "assistant";
 
   useEffect(() => {
-    if (!isEmpty) return;
+    if (!autoFocusComposer || !isEmpty) return;
     let secondFrame = 0;
     const firstFrame = window.requestAnimationFrame(() => {
-      secondFrame = window.requestAnimationFrame(focusVisibleComposer);
+      secondFrame = window.requestAnimationFrame(() => {
+        focusVisibleComposer();
+        onAutoFocusComposer();
+      });
     });
     return () => {
       window.cancelAnimationFrame(firstFrame);
       window.cancelAnimationFrame(secondFrame);
     };
-  }, [isEmpty, threadId]);
+  }, [autoFocusComposer, isEmpty, onAutoFocusComposer]);
 
   const runMessage = useCallback(async (message: PromptInputMessage) => {
     const userMessage = promptMessageToUserMessage(message);
@@ -1783,6 +1790,7 @@ export function ChatApp({ branding = DEFAULT_APP_BRANDING, mods = [], plugins = 
   const [resourceId, setResourceId] = useState(user?.resourceId ?? "");
   const [hasDashboard, setHasDashboard] = useState(false);
   const [threadId, setThreadId] = useState(() => initialThreadId || makeId());
+  const [composerFocusThreadId, setComposerFocusThreadId] = useState<string | null>(null);
   const [sessionSeeds, setSessionSeeds] = useState<Map<string, UIMessage[]>>(
     () => new Map(initialThreadId ? [] : [[threadId, []]]),
   );
@@ -2086,12 +2094,17 @@ export function ChatApp({ branding = DEFAULT_APP_BRANDING, mods = [], plugins = 
     openRequestId.current += 1;
     const nextThreadId = makeId();
     rememberSession(nextThreadId, []);
+    setComposerFocusThreadId(nextThreadId);
     setThreadId(nextThreadId);
     setThreadLoaded(true);
     setMobileSidebarOpen(false);
     skipNextRootReset.current = pathname !== "/";
     window.history.pushState(null, "", "/");
   }, [pathname, rememberSession]);
+
+  const consumeComposerFocus = useCallback(() => {
+    setComposerFocusThreadId(null);
+  }, []);
 
   const loadThread = useCallback((id: string) => {
     if (!resourceId) return Promise.resolve(null);
@@ -2549,11 +2562,13 @@ export function ChatApp({ branding = DEFAULT_APP_BRANDING, mods = [], plugins = 
               key={sessionId}
             >
               <ChatSession
+                autoFocusComposer={sessionId === composerFocusThreadId}
                 initialMessages={seed}
                 enabledToolIds={enabledToolIds}
                 modelCatalog={modelCatalog}
                 modelSelection={modelSelection}
                 onConversationChange={handleConversationChange}
+                onAutoFocusComposer={consumeComposerFocus}
                 onModelSelectionChange={selectModel}
                 onThreadListChange={refreshThreads}
                 resourceId={resourceId}
