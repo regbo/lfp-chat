@@ -84,6 +84,12 @@ refreshes deliberately bypass a still-valid TTL; the database advisory lock
 still collapses simultaneous browser and server-replica refreshes into one
 computation.
 
+The Refresh button invalidates `cached_output` and `cache_expires_at` inside the
+same advisory-lock transaction before running the program. Monty therefore sees
+`cache_get() == None` during a forced refresh. Generated programs should not
+return `cache_get()` merely to implement TTL; the runtime already owns that
+policy.
+
 ## UI and lifecycle
 
 - Dashboard navigation is hidden until a widget record exists.

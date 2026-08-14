@@ -18,7 +18,7 @@ function resourceId(context: { agent?: { resourceId?: string } }) {
 
 export const dashboardUpsertWidgetTool = createTool({
   id: "dashboard_upsert_widget",
-  description: `Create or update a persisted dashboard widget. Write Monty Python that returns exactly one object with kind chart, metric, table, or text. Call an allowed Mastra tool with await tool_call("tool_id", {input fields}). The program receives now, cache_get(), and cache_age_seconds(). Declare every tool ID it calls in capabilities. cacheTtlSeconds controls reuse on page load; it does not enable polling. Set refreshIntervalSeconds only when the user explicitly requests automatic background refresh. Use a stable widgetId when editing.`,
+  description: `Create or update a persisted dashboard widget. Write Monty Python that returns exactly one object with kind chart, metric, table, or text. Call an allowed Mastra tool with await tool_call("tool_id", {input fields}). The program receives now, cache_get(), and cache_age_seconds(). Declare every tool ID it calls in capabilities. The runtime enforces cacheTtlSeconds, so do not implement TTL by returning cache_get(); reserve cache_get() for genuinely incremental calculations. cacheTtlSeconds controls reuse on page load and does not enable polling. Set refreshIntervalSeconds only when the user explicitly requests automatic background refresh. Use a stable widgetId when editing.`,
   inputSchema: dashboardWidgetDraftSchema.extend({ runNow: z.boolean().default(true) }),
   outputSchema: z.record(z.string(), z.unknown()),
   execute: async ({ runNow, ...draft }, context) => {

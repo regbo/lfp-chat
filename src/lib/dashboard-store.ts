@@ -371,7 +371,18 @@ async function refreshWidgetNow(
       await client.query("COMMIT");
       return { widget: widgetFromRow(lockedRow), cacheHit: true };
     }
-    const previousOutput = lockedRow.cached_output
+    if (force) {
+      // A user-triggered refresh is cache invalidation, not merely a TTL bypass.
+      // Clear inside the advisory-lock transaction so cache_get() cannot return
+      // the value that the user explicitly asked to replace.
+      await client.query(
+        `UPDATE lfp_dashboard_widgets
+         SET cached_output = NULL, cache_expires_at = NULL, updated_at = now()
+         WHERE id = $1 AND resource_id = $2`,
+        [widgetId, resourceId],
+      );
+    }
+    const previousOutput = !force && lockedRow.cached_output
       ? dashboardWidgetOutputSchema.safeParse(lockedRow.cached_output)
       : undefined;
     const lastRunAt = lockedRow.last_run_at
