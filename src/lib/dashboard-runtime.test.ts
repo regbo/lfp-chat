@@ -1,33 +1,41 @@
 import { describe, expect, test } from "bun:test";
-import { createTool } from "@mastra/core/tools";
-import { z } from "zod";
 
-import { executeDashboardProgram, registerDashboardMastraTools } from "./dashboard-runtime";
+import { executeDashboardProgram } from "./dashboard-runtime";
+import { dashboardToolCacheKey } from "./dashboard-user-tool-store";
 
-describe("dashboard Monty runtime", () => {
-  test("adapts a real Mastra tool and returns validated widget data", async () => {
-    registerDashboardMastraTools({
-      test_sum: createTool({
-        id: "test_sum",
-        description: "Add two values.",
-        inputSchema: z.object({ left: z.number(), right: z.number() }),
-        outputSchema: z.object({ result: z.number() }),
-        execute: async ({ left, right }) => ({ result: left + right }),
-      }),
-    });
+describe("dashboard presentation runtime", () => {
+  test("presents one saved tool result without tool access", async () => {
     const result = await executeDashboardProgram({
-      resourceId: "test-resource",
-      capabilities: ["test_sum"],
-      code: 'value = await tool_call("test_sum", {"left": 4, "right": 6})\n{"kind":"metric", "title":"Total", "value":value["result"]}',
+      data: { quote: "Hello" },
+      toolInput: { category: "plain" },
+      code: '{"kind":"text", "title":"Quote", "text":data["quote"], "css":{"fontWeight":"bold"}}',
     });
-    expect(result.output).toEqual({ kind: "metric", title: "Total", value: 10 });
+    expect(result.output).toEqual({
+      kind: "text",
+      title: "Quote",
+      text: "Hello",
+      css: { fontWeight: "bold" },
+    });
   });
 
-  test("rejects tools omitted from the persisted allowlist", async () => {
+  test("rejects presentation output outside the display schema", async () => {
     expect(executeDashboardProgram({
-      resourceId: "test-resource",
-      capabilities: [],
-      code: 'await tool_call("test_sum", {"left": 1, "right": 2})',
-    })).rejects.toThrow("did not declare");
+      data: {},
+      toolInput: {},
+      code: '{"kind":"html", "html":"<script>bad()</script>"}',
+    })).rejects.toThrow();
+  });
+});
+
+describe("dashboard tool cache keys", () => {
+  test("deeply nested object order does not change the key", () => {
+    const left = { filters: { merchant: "Amazon", range: { end: 2, start: 1 } }, groups: [{ z: 3, a: 1 }] };
+    const right = { groups: [{ a: 1, z: 3 }], filters: { range: { start: 1, end: 2 }, merchant: "Amazon" } };
+    expect(dashboardToolCacheKey(left)).toBe(dashboardToolCacheKey(right));
+  });
+
+  test("different nested inputs produce different keys", () => {
+    expect(dashboardToolCacheKey({ filters: { merchant: "Amazon" } }))
+      .not.toBe(dashboardToolCacheKey({ filters: { merchant: "Target" } }));
   });
 });

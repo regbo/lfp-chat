@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import { Pool } from "pg";
+import stringify from "safe-stable-stringify";
 
 import { serverConfig } from "@/lib/config";
 import {
@@ -67,6 +68,14 @@ async function ready() {
       created_at timestamptz NOT NULL DEFAULT now(),
       PRIMARY KEY (resource_id, tool_id, cache_key)
     );
+    CREATE TABLE IF NOT EXISTS lfp_dashboard_named_cache (
+      resource_id text NOT NULL,
+      key text NOT NULL,
+      value jsonb NOT NULL,
+      expires_at timestamptz NOT NULL,
+      updated_at timestamptz NOT NULL DEFAULT now(),
+      PRIMARY KEY (resource_id, key)
+    );
   `).then(() => undefined);
   return globals.lfpDashboardToolReady;
 }
@@ -91,17 +100,6 @@ function fromRow(row: ToolRow): DashboardUserTool {
     createdAt: iso(row.created_at)!,
     updatedAt: iso(row.updated_at)!,
   };
-}
-
-function stableJson(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
-  if (value && typeof value === "object") {
-    return `{${Object.entries(value as Record<string, unknown>)
-      .toSorted(([left], [right]) => left.localeCompare(right))
-      .map(([key, item]) => `${JSON.stringify(key)}:${stableJson(item)}`)
-      .join(",")}}`;
-  }
-  return JSON.stringify(value) ?? "null";
 }
 
 export async function listDashboardUserTools(resourceId: string, includeArchived = false) {
@@ -165,6 +163,41 @@ export async function deleteDashboardUserTool(resourceId: string, id: string) {
   return { deleted: true, id };
 }
 
+export function dashboardToolCacheKey(input: unknown) {
+  return createHash("sha256").update(stringify(input) ?? "null").digest("hex");
+}
+
+export async function getDashboardNamedCache(resourceId: string, key: string) {
+  await ready();
+  const result = await pool().query<{ value: unknown }>(
+    `SELECT value FROM lfp_dashboard_named_cache
+     WHERE resource_id=$1 AND key=$2 AND expires_at>now()`,
+    [resourceId, key],
+  );
+  return result.rows[0] ? { hit: true, value: result.rows[0].value } : { hit: false, value: null };
+}
+
+export async function setDashboardNamedCache(resourceId: string, key: string, value: unknown, ttlSeconds: number) {
+  await ready();
+  await pool().query(
+    `INSERT INTO lfp_dashboard_named_cache (resource_id,key,value,expires_at)
+     VALUES ($1,$2,$3::jsonb,now()+($4*interval '1 second'))
+     ON CONFLICT (resource_id,key) DO UPDATE SET
+       value=EXCLUDED.value, expires_at=EXCLUDED.expires_at, updated_at=now()`,
+    [resourceId, key, JSON.stringify(value), ttlSeconds],
+  );
+  return { stored: true, key, ttlSeconds };
+}
+
+export async function deleteDashboardNamedCache(resourceId: string, key: string) {
+  await ready();
+  const result = await pool().query(
+    "DELETE FROM lfp_dashboard_named_cache WHERE resource_id=$1 AND key=$2",
+    [resourceId, key],
+  );
+  return { deleted: Boolean(result.rowCount), key };
+}
+
 export async function cachedDashboardToolCall<T>(options: {
   resourceId: string;
   tool: DashboardUserTool;
@@ -174,7 +207,7 @@ export async function cachedDashboardToolCall<T>(options: {
 }) {
   await ready();
   if (options.tool.cacheTtlSeconds === 0) return { value: await options.compute(), cacheHit: false };
-  const cacheKey = createHash("sha256").update(stableJson(options.input)).digest("hex");
+  const cacheKey = dashboardToolCacheKey(options.input);
   const fast = options.force ? undefined : await pool().query<{ value: T }>(
     `SELECT value FROM lfp_dashboard_tool_cache
      WHERE resource_id=$1 AND tool_id=$2 AND cache_key=$3 AND expires_at>now()`,

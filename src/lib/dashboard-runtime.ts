@@ -5,18 +5,12 @@ import { executeMontyCode } from "@/lib/monty-runtime";
 import {
   dashboardCapabilitySchema,
   dashboardWidgetOutputSchema,
-  type DashboardCapabilityName,
-  type DashboardWidgetOutput,
 } from "@/lib/dashboard-spec";
 
 type DashboardExecutionOptions = {
   code: string;
-  capabilities: DashboardCapabilityName[];
-  resourceId: string;
-  cachedOutput?: DashboardWidgetOutput;
-  cacheAgeSeconds?: number;
-  userToolCall?: (id: string, input: unknown, budget: DashboardCallBudget) => Promise<unknown>;
-  budget?: DashboardCallBudget;
+  data: unknown;
+  toolInput: unknown;
 };
 
 export type DashboardCallBudget = {
@@ -63,7 +57,7 @@ export async function callRegisteredDashboardTool(id: string, input: unknown, re
 
 /**
  * Adapt real Mastra tools for deterministic Monty programs. Hosts decide which
- * tools are safe to expose; the widget itself must also persist an allowlist.
+ * tools are safe to expose; each saved user tool persists its own allowlist.
  */
 export function registerDashboardMastraTools(
   tools: Record<string, MastraToolAdapterSource>,
@@ -95,36 +89,11 @@ export function dashboardCapabilityDescriptions() {
     .toSorted((left, right) => left.id.localeCompare(right.id));
 }
 
-/** Run a persisted widget program with only its declared Mastra tools. */
+/** Convert one saved tool result into a validated dashboard presentation. */
 export async function executeDashboardProgram(options: DashboardExecutionOptions) {
-  const allowed = new Set(
-    options.capabilities.map((capability) => dashboardCapabilitySchema.parse(capability)),
-  );
-  const toolCall = async (toolName: unknown, input: unknown) => {
-    const id = dashboardCapabilitySchema.parse(toolName);
-    if (!allowed.has(id)) {
-      throw new Error(`Dashboard program did not declare the ${id} capability.`);
-    }
-    const registered = await callRegisteredDashboardTool(id, input, options.resourceId);
-    if (registered.found) return registered.value;
-    if (options.userToolCall) {
-      return options.userToolCall(id, fromMonty(input), options.budget ?? {
-        depth: 0,
-        counter: { calls: 0 },
-        stack: [],
-      });
-    }
-    throw new Error(`Dashboard capability ${id} is not registered.`);
-  };
-
   const startedAt = performance.now();
   const execution = await executeMontyCode(options.code, {
-    inputs: { now: new Date().toISOString() },
-    externalLookup: {
-      tool_call: toolCall as (...args: never[]) => unknown,
-      cache_get: (() => options.cachedOutput ?? null) as (...args: never[]) => unknown,
-      cache_age_seconds: (() => options.cacheAgeSeconds ?? null) as (...args: never[]) => unknown,
-    },
+    inputs: { data: options.data, input: options.toolInput, now: new Date().toISOString() },
     maxDurationSecs: 8,
   });
   const output = dashboardWidgetOutputSchema.parse(fromMonty(execution.result));

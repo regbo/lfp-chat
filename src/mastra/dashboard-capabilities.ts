@@ -3,6 +3,7 @@ import { registerDashboardMastraTools } from "@/lib/dashboard-runtime";
 import { dashboardSqlTool, dashboardWebFetchTool } from "@/mastra/dashboard-source-tools";
 import { calculatorTool, montyTool, searchTool } from "@/mastra/tools";
 import { urlFetchTool } from "@/mastra/url-fetch-tool";
+import { dashboardCacheTool } from "@/mastra/dashboard-cache-tool";
 
 let registered = false;
 
@@ -15,6 +16,7 @@ export function ensureDashboardCapabilities() {
     monty: montyTool,
     web_fetch: dashboardWebFetchTool,
     url_fetch: urlFetchTool,
+    cache: dashboardCacheTool,
     ...(serverConfig.dashboard.sqlDatabaseUrl ? { sql_query: dashboardSqlTool } : {}),
   });
   registered = true;

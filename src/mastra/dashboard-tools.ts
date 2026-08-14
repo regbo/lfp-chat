@@ -26,13 +26,13 @@ function resourceId(context: { agent?: { resourceId?: string } }) {
 
 export const dashboardUpsertWidgetTool = createTool({
   id: "dashboard_upsert_widget",
-  description: `Create or update a persisted dashboard widget. Write Monty Python that returns exactly one object with kind chart, metric, table, or text. Call an allowed Mastra tool with await tool_call("tool_id", {input fields}). The program receives now, cache_get(), and cache_age_seconds(). Declare every tool ID it calls in capabilities. The runtime enforces cacheTtlSeconds, so do not implement TTL by returning cache_get(); reserve cache_get() for genuinely incremental calculations. cacheTtlSeconds controls reuse on page load and does not enable polling. Set refreshIntervalSeconds only when the user explicitly requests automatic background refresh. Use a stable widgetId when editing.`,
+  description: `Create or update a dashboard presentation backed by exactly one saved user tool. Set toolName and the fixed JSON-compatible toolInput used on every dashboard load. Write Monty Python that receives data (the saved tool output), input (the fixed tool input), and now, then returns exactly one validated chart, metric, table, or text object. Text output may include css with fontWeight, fontStyle, or textAlign. Widgets do not cache, fetch, poll, or call tools; the saved tool owns all data access, composition, and caching. Use a stable widgetId when editing.`,
   inputSchema: dashboardWidgetDraftSchema.extend({ runNow: z.boolean().default(true) }),
   outputSchema: z.record(z.string(), z.unknown()),
   execute: async ({ runNow, ...draft }, context) => {
     const scope = resourceId(context);
     const saved = await upsertDashboardWidget(scope, draft);
-    if (runNow && !draft.lazy) {
+    if (runNow) {
       const refreshed = await runDashboardWidget(scope, saved.widget.id, { force: true });
       return { ...saved, widget: refreshed.widget, cacheHit: refreshed.cacheHit };
     }
@@ -51,7 +51,7 @@ export const dashboardListTool = createTool({
 
 export const dashboardUpsertUserTool = createTool({
   id: "dashboard_upsert_tool",
-  description: `Create or update a reusable deterministic dashboard tool. Write Monty Python that reads the JSON-compatible args variable and returns any JSON-compatible value. It may call declared built-in or user tools with await tool_call("tool_name", {input fields}); url_fetch is available by default. cacheTtlSeconds automatically caches each distinct input with PostgreSQL advisory-lock protection, so do not write cache plumbing in the program. Tool calls may compose or recurse with changing inputs, bounded to six levels and 32 calls. Use a stable toolId when editing.`,
+  description: `Create or update a reusable deterministic dashboard tool. Write Monty Python that reads the JSON-compatible args variable and returns any JSON-compatible value. It may call declared built-in or user tools with await tool_call("tool_name", {input fields}); url_fetch and cache are available by default. The cache tool supports resource-scoped get, set, and delete operations for intermediate values. cacheTtlSeconds automatically caches the complete output for each deeply stable input with PostgreSQL advisory-lock protection. Tool calls may compose or recurse with changing inputs, bounded to six levels and 32 calls. Use a stable toolId when editing.`,
   inputSchema: dashboardUserToolDraftSchema.extend({
     testInput: z.unknown().optional(),
     runNow: z.boolean().default(true),

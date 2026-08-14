@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { MessageResponse } from "@/components/ai-elements/message";
+import { CodeBlock } from "@/components/ai-elements/code-block";
 import { cn } from "@/lib/utils";
 import { cleanTaskTitle } from "@/lib/task-metadata";
 import type { Task, TaskList } from "@/lib/tasks";
@@ -39,6 +40,7 @@ import {
   type SelectableToolId,
 } from "@/lib/tool-catalog";
 import type { ChatAppToolContribution } from "@/lib/chat-app-plugins";
+import type { DashboardState, DashboardUserTool } from "@/lib/dashboard-spec";
 import {
   readThemePreference,
   saveThemePreference,
@@ -54,6 +56,7 @@ import {
   Code2,
   Globe2,
   ImageIcon,
+  Info,
   LoaderCircle,
   ListTodo,
   MessageSquare,
@@ -826,15 +829,55 @@ export function ToolsPanel({
   contributedTools,
   enabledToolIds,
   onToggle,
+  resourceId,
 }: {
   contributedTools?: readonly ChatAppToolContribution[];
   enabledToolIds: string[];
   onToggle: (toolId: string) => void;
+  resourceId: string;
 }) {
+  const [savedTools, setSavedTools] = useState<DashboardUserTool[]>([]);
+  const [selectedTool, setSelectedTool] = useState<DashboardUserTool>();
   const tools = orderToolsWithCodeModeLast([
     ...toolCatalog,
     ...(contributedTools ?? []),
   ]);
+  const loadSavedTools = useCallback(async () => {
+    const query = new URLSearchParams({ resourceId, includeArchived: "true" });
+    const response = await fetch(`/api/dashboard?${query}`, { cache: "no-store" });
+    if (!response.ok) return;
+    const state = await response.json() as DashboardState;
+    setSavedTools(state.tools);
+  }, [resourceId]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => void loadSavedTools(), 0);
+    return () => window.clearTimeout(timer);
+  }, [loadSavedTools]);
+
+  const archiveSavedTool = async (tool: DashboardUserTool) => {
+    const response = await fetch(`/api/dashboard/tools/${tool.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ resourceId, archived: !tool.archivedAt }),
+    });
+    if (!response.ok) return;
+    setSelectedTool(undefined);
+    await loadSavedTools();
+  };
+
+  const deleteSavedTool = async (tool: DashboardUserTool) => {
+    if (!window.confirm(`Permanently delete “${tool.title}”? This cannot be undone.`)) return;
+    const response = await fetch(`/api/dashboard/tools/${tool.id}`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ resourceId }),
+    });
+    if (!response.ok) return;
+    setSelectedTool(undefined);
+    await loadSavedTools();
+  };
+
   return (
     <PanelShell title="Tools" description="Choose which capabilities are available to new chat runs and schedules.">
       <div className="space-y-2">
@@ -867,7 +910,56 @@ export function ToolsPanel({
           );
         })}
       </div>
+      {savedTools.some((tool) => !tool.archivedAt) && (
+        <div className="mt-7">
+          <h2 className="chat-ui-text font-medium">Saved tools</h2>
+          <div className="mt-2 divide-y">
+            {savedTools.filter((tool) => !tool.archivedAt).map((tool) => (
+              <div className="flex items-center gap-3 py-3" key={tool.id}>
+                <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-muted"><Code2 className="size-4" /></span>
+                <span className="min-w-0 flex-1">
+                  <span className="chat-ui-text block font-medium">{tool.title}</span>
+                  <span className="chat-meta-text block truncate text-muted-foreground">{tool.description}</span>
+                </span>
+                <Button aria-label={`Information about ${tool.title}`} onClick={() => setSelectedTool(tool)} size="icon-sm" variant="ghost"><Info className="size-4" /></Button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {savedTools.some((tool) => tool.archivedAt) && (
+        <div className="mt-7">
+          <h2 className="chat-ui-text font-medium">Archived tools</h2>
+          <div className="mt-2 divide-y">
+            {savedTools.filter((tool) => tool.archivedAt).map((tool) => (
+              <div className="flex items-center gap-3 py-3" key={tool.id}>
+                <span className="min-w-0 flex-1"><span className="chat-ui-text block font-medium">{tool.title}</span><span className="chat-meta-text block truncate text-muted-foreground">{tool.description}</span></span>
+                <Button aria-label={`Information about ${tool.title}`} onClick={() => setSelectedTool(tool)} size="icon-sm" variant="ghost"><Info className="size-4" /></Button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       <p className="chat-meta-text mt-4 text-muted-foreground">Code mode is disabled by default. When enabled, its Mastra workspace can read and modify the host filesystem and execute local commands.</p>
+      <Dialog onOpenChange={(open) => { if (!open) setSelectedTool(undefined); }} open={Boolean(selectedTool)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>{selectedTool?.title}</DialogTitle>
+            <DialogDescription>{selectedTool?.description}</DialogDescription>
+          </DialogHeader>
+          {selectedTool && (
+            <div className="min-w-0 space-y-4">
+              <p className="chat-meta-text text-muted-foreground"><span className="font-mono text-foreground">{selectedTool.name}</span> · cache {selectedTool.cacheTtlSeconds}s · calls {selectedTool.capabilities.join(", ") || "none"}</p>
+              <CodeBlock className="max-h-[50vh] overflow-auto" code={selectedTool.code} language="python" showLineNumbers />
+            </div>
+          )}
+          <DialogFooter>
+            {selectedTool?.archivedAt && <Button onClick={() => void deleteSavedTool(selectedTool)} variant="destructive">Delete permanently</Button>}
+            {selectedTool && <Button onClick={() => void archiveSavedTool(selectedTool)} variant="outline">{selectedTool.archivedAt ? "Restore" : "Archive"}</Button>}
+            <Button onClick={() => setSelectedTool(undefined)}>Done</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </PanelShell>
   );
 }

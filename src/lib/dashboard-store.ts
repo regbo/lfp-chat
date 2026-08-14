@@ -29,6 +29,8 @@ type DashboardWidgetRow = {
   title: string;
   description: string | null;
   code: string;
+  tool_name: string | null;
+  tool_input: unknown;
   capabilities: string[];
   cache_ttl_seconds: number;
   refresh_interval_seconds: number | null;
@@ -77,6 +79,8 @@ async function ready() {
       title text NOT NULL,
       description text,
       code text NOT NULL,
+      tool_name text,
+      tool_input jsonb NOT NULL DEFAULT '{}',
       capabilities text[] NOT NULL DEFAULT '{}',
       cache_ttl_seconds integer NOT NULL DEFAULT 300,
       refresh_interval_seconds integer,
@@ -93,6 +97,8 @@ async function ready() {
     );
     CREATE INDEX IF NOT EXISTS lfp_dashboard_widgets_resource_idx
       ON lfp_dashboard_widgets (resource_id, tab_id, position, created_at);
+    ALTER TABLE lfp_dashboard_widgets ADD COLUMN IF NOT EXISTS tool_name text;
+    ALTER TABLE lfp_dashboard_widgets ADD COLUMN IF NOT EXISTS tool_input jsonb NOT NULL DEFAULT '{}';
   `).then(() => undefined);
   return globalForDashboard.lfpDashboardReady;
 }
@@ -111,16 +117,11 @@ function widgetFromRow(row: DashboardWidgetRow): DashboardWidget {
     tabId: row.tab_id,
     title: row.title,
     ...(row.description ? { description: row.description } : {}),
+    toolName: row.tool_name ?? "missing_saved_tool",
+    toolInput: dashboardWidgetDraftSchema.shape.toolInput.parse(row.tool_input ?? {}),
     code: row.code,
-    capabilities: row.capabilities.map((value) => dashboardCapabilitySchema.parse(value)),
-    cacheTtlSeconds: row.cache_ttl_seconds,
-    ...(row.refresh_interval_seconds
-      ? { refreshIntervalSeconds: row.refresh_interval_seconds }
-      : {}),
-    lazy: row.lazy,
     position: row.position,
     ...(output?.success ? { output: output.data } : {}),
-    ...(iso(row.cache_expires_at) ? { cacheExpiresAt: iso(row.cache_expires_at) } : {}),
     ...(iso(row.last_run_at) ? { lastRunAt: iso(row.last_run_at) } : {}),
     ...(row.last_duration_ms !== null ? { lastDurationMs: row.last_duration_ms } : {}),
     ...(row.last_error ? { lastError: row.last_error } : {}),
@@ -144,11 +145,11 @@ function tabFromRow(row: DashboardTabRow, widgets: DashboardWidget[]): Dashboard
 
 export async function dashboardExists(resourceId: string) {
   await ready();
-  const [result, tools] = await Promise.all([pool().query<{ exists: boolean }>(
+  const result = await pool().query<{ exists: boolean }>(
     "SELECT EXISTS (SELECT 1 FROM lfp_dashboard_widgets WHERE resource_id = $1) AS exists",
     [resourceId],
-  ), listDashboardUserTools(resourceId, true)]);
-  return (result.rows[0]?.exists ?? false) || tools.length > 0;
+  );
+  return result.rows[0]?.exists ?? false;
 }
 
 export async function listDashboard(
@@ -166,7 +167,7 @@ export async function listDashboard(
       [resourceId, includeArchived],
     ),
     pool().query<DashboardWidgetRow>(
-      `SELECT id, tab_id, title, description, code, capabilities,
+      `SELECT id, tab_id, title, description, code, tool_name, tool_input, capabilities,
               cache_ttl_seconds, refresh_interval_seconds, lazy, position,
               cached_output, cache_expires_at, last_run_at, last_duration_ms,
               last_error, archived_at, created_at, updated_at
@@ -191,7 +192,7 @@ export async function listDashboard(
     tools,
     archivedWidgetCount: archiveResult.rows[0]?.count ?? 0,
     archivedToolCount: tools.filter((tool) => tool.archivedAt).length,
-    archivedItemCount: (archiveResult.rows[0]?.count ?? 0) + tools.filter((tool) => tool.archivedAt).length,
+    archivedItemCount: archiveResult.rows[0]?.count ?? 0,
     hasDashboard: exists,
   };
 }
@@ -273,18 +274,16 @@ export async function upsertDashboardWidget(
     const id = existing?.id ?? randomUUID();
     const result = await client.query<DashboardWidgetRow>(
       `INSERT INTO lfp_dashboard_widgets (
-         id, resource_id, tab_id, title, description, code, capabilities,
-         cache_ttl_seconds, refresh_interval_seconds, lazy, position
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+         id, resource_id, tab_id, title, description, code, tool_name, tool_input,
+         capabilities, cache_ttl_seconds, refresh_interval_seconds, lazy, position
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, '{}', 0, NULL, false, $9)
        ON CONFLICT (id) DO UPDATE SET
          tab_id = EXCLUDED.tab_id,
          title = EXCLUDED.title,
          description = EXCLUDED.description,
          code = EXCLUDED.code,
-         capabilities = EXCLUDED.capabilities,
-         cache_ttl_seconds = EXCLUDED.cache_ttl_seconds,
-         refresh_interval_seconds = EXCLUDED.refresh_interval_seconds,
-         lazy = EXCLUDED.lazy,
+         tool_name = EXCLUDED.tool_name,
+         tool_input = EXCLUDED.tool_input,
          cached_output = NULL,
          cache_expires_at = NULL,
          last_error = NULL,
@@ -298,10 +297,8 @@ export async function upsertDashboardWidget(
         draft.title,
         draft.description ?? null,
         draft.code,
-        draft.capabilities,
-        draft.cacheTtlSeconds,
-        draft.refreshIntervalSeconds ?? null,
-        draft.lazy,
+        draft.toolName,
+        JSON.stringify(draft.toolInput),
         position,
       ],
     );
@@ -333,10 +330,9 @@ export type DashboardRefreshResult = {
 
 export type DashboardProgramExecutor = (options: {
   code: string;
-  capabilities: string[];
+  toolName: string;
+  toolInput: unknown;
   resourceId: string;
-  cachedOutput?: import("@/lib/dashboard-spec").DashboardWidgetOutput;
-  cacheAgeSeconds?: number;
   force?: boolean;
 }) => Promise<{ output: import("@/lib/dashboard-spec").DashboardWidgetOutput; durationMs: number }>;
 
@@ -349,11 +345,6 @@ async function refreshWidgetNow(
   await ready();
   const row = await widgetRow(pool(), resourceId, widgetId);
   if (!row) throw new Error("Dashboard widget was not found.");
-  const expiresAt = row.cache_expires_at ? new Date(row.cache_expires_at).getTime() : 0;
-  if (!force && row.cached_output && expiresAt > Date.now()) {
-    return { widget: widgetFromRow(row), cacheHit: true };
-  }
-
   const client = await pool().connect();
   try {
     await client.query("BEGIN");
@@ -364,55 +355,27 @@ async function refreshWidgetNow(
       .toString();
     await client.query("SELECT pg_advisory_xact_lock($1::bigint)", [lockId]);
 
-    // Double-check after waiting: another replica may have filled the cache.
     const lockedRow = await widgetRow(client, resourceId, widgetId);
     if (!lockedRow) throw new Error("Dashboard widget was not found.");
-    const lockedExpiry = lockedRow.cache_expires_at
-      ? new Date(lockedRow.cache_expires_at).getTime()
-      : 0;
-    const observedRunAt = row.last_run_at ? new Date(row.last_run_at).getTime() : 0;
-    const lockedRunAt = lockedRow.last_run_at ? new Date(lockedRow.last_run_at).getTime() : 0;
-    const anotherReplicaRefreshed = force && lockedRunAt > observedRunAt;
-    if ((anotherReplicaRefreshed || !force) && lockedRow.cached_output && lockedExpiry > Date.now()) {
-      await client.query("COMMIT");
-      return { widget: widgetFromRow(lockedRow), cacheHit: true };
-    }
-    if (force) {
-      // A user-triggered refresh is cache invalidation, not merely a TTL bypass.
-      // Clear inside the advisory-lock transaction so cache_get() cannot return
-      // the value that the user explicitly asked to replace.
-      await client.query(
-        `UPDATE lfp_dashboard_widgets
-         SET cached_output = NULL, cache_expires_at = NULL, updated_at = now()
-         WHERE id = $1 AND resource_id = $2`,
-        [widgetId, resourceId],
-      );
-    }
-    const previousOutput = !force && lockedRow.cached_output
-      ? dashboardWidgetOutputSchema.safeParse(lockedRow.cached_output)
-      : undefined;
-    const lastRunAt = lockedRow.last_run_at
-      ? new Date(lockedRow.last_run_at).getTime()
-      : undefined;
+    if (!lockedRow.tool_name) throw new Error("This legacy widget must be updated to use a saved tool.");
     const execution = await executeProgram({
       code: lockedRow.code,
-      capabilities: lockedRow.capabilities.map((value) => dashboardCapabilitySchema.parse(value)),
+      toolName: dashboardCapabilitySchema.parse(lockedRow.tool_name),
+      toolInput: lockedRow.tool_input ?? {},
       resourceId,
-      ...(previousOutput?.success ? { cachedOutput: previousOutput.data } : {}),
-      ...(lastRunAt ? { cacheAgeSeconds: Math.max(0, (Date.now() - lastRunAt) / 1_000) } : {}),
       force,
     });
     const result = await client.query<DashboardWidgetRow>(
       `UPDATE lfp_dashboard_widgets SET
          cached_output = $3::jsonb,
-         cache_expires_at = now() + ($4 * interval '1 second'),
+         cache_expires_at = NULL,
          last_run_at = now(),
-         last_duration_ms = $5,
+         last_duration_ms = $4,
          last_error = NULL,
          updated_at = now()
        WHERE id = $1 AND resource_id = $2
        RETURNING *`,
-      [widgetId, resourceId, JSON.stringify(execution.output), lockedRow.cache_ttl_seconds, execution.durationMs],
+      [widgetId, resourceId, JSON.stringify(execution.output), execution.durationMs],
     );
     await client.query("COMMIT");
     return { widget: widgetFromRow(result.rows[0]!), cacheHit: false };

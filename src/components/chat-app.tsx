@@ -2464,7 +2464,7 @@ export function ChatApp({ branding = DEFAULT_APP_BRANDING, mods = [], plugins = 
           />
         )}
         {resourceId && activeView === "tools" && (
-          <ToolsPanel contributedTools={contributedTools} enabledToolIds={enabledToolIds} onToggle={toggleTool} />
+          <ToolsPanel contributedTools={contributedTools} enabledToolIds={enabledToolIds} onToggle={toggleTool} resourceId={resourceId} />
         )}
         {resourceId && activeView === "archived" && (
           <ArchivedPanel

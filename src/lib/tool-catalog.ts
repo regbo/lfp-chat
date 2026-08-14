@@ -29,7 +29,7 @@ export const toolCatalog = [
   {
     id: "dashboard",
     title: "Dashboard",
-    description: "Create, update, refresh, and archive persisted Monty widgets.",
+    description: "Create reusable data tools and tool-backed dashboard views.",
     defaultEnabled: true,
   },
   {

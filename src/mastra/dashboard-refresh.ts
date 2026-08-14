@@ -12,10 +12,16 @@ export function runDashboardWidget(
   return refreshDashboardWidget(
     resourceId,
     widgetId,
-    (program) => executeDashboardProgram({
-      ...program,
-      userToolCall: (id, input, budget) => executeDashboardUserTool(resourceId, id, input, budget, { force: program.force }),
-    }),
+    async (program) => {
+      const data = await executeDashboardUserTool(
+        resourceId,
+        program.toolName,
+        program.toolInput,
+        undefined,
+        { force: program.force },
+      );
+      return executeDashboardProgram({ code: program.code, data, toolInput: program.toolInput });
+    },
     options,
   );
 }

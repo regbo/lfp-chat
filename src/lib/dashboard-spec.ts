@@ -67,6 +67,11 @@ export const dashboardWidgetOutputSchema = z.union([
     kind: z.literal("text"),
     title: z.string().trim().min(1).max(160),
     text: z.string().trim().min(1).max(20_000),
+    css: z.object({
+      fontWeight: z.enum(["normal", "medium", "semibold", "bold"]).optional(),
+      fontStyle: z.enum(["normal", "italic"]).optional(),
+      textAlign: z.enum(["left", "center", "right"]).optional(),
+    }).optional(),
   }),
 ]);
 
@@ -77,11 +82,9 @@ export const dashboardWidgetDraftSchema = z.object({
   tabName: z.string().trim().min(1).max(80).optional(),
   title: z.string().trim().min(1).max(160),
   description: z.string().trim().max(500).optional(),
+  toolName: dashboardCapabilitySchema,
+  toolInput: z.json().default({}),
   code: z.string().trim().min(1).max(30_000),
-  capabilities: z.array(dashboardCapabilitySchema).max(32).default([]),
-  cacheTtlSeconds: z.number().int().min(0).max(604_800).default(300),
-  refreshIntervalSeconds: z.number().int().min(30).max(604_800).optional(),
-  lazy: z.boolean().default(false),
 });
 
 export type DashboardWidgetDraft = z.infer<typeof dashboardWidgetDraftSchema>;
@@ -92,7 +95,7 @@ export const dashboardUserToolDraftSchema = z.object({
   title: z.string().trim().min(1).max(160),
   description: z.string().trim().min(1).max(500),
   code: z.string().trim().min(1).max(30_000),
-  capabilities: z.array(dashboardCapabilitySchema).max(32).default(["url_fetch"]),
+  capabilities: z.array(dashboardCapabilitySchema).max(32).default(["url_fetch", "cache"]),
   cacheTtlSeconds: z.number().int().min(0).max(604_800).default(300),
 });
 
@@ -113,7 +116,6 @@ export type DashboardWidget = DashboardWidgetDraft & {
   tabId: string;
   position: number;
   output?: DashboardWidgetOutput;
-  cacheExpiresAt?: string;
   lastRunAt?: string;
   lastDurationMs?: number;
   lastError?: string;
