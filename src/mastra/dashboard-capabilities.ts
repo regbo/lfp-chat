@@ -1,7 +1,7 @@
 import { serverConfig } from "@/lib/config";
 import { registerDashboardMastraTools } from "@/lib/dashboard-runtime";
 import { dashboardSqlTool, dashboardWebFetchTool } from "@/mastra/dashboard-source-tools";
-import { calculatorTool, montyTool, searchTool } from "@/mastra/tools";
+import { montyTool } from "@/mastra/tools";
 import { urlFetchTool } from "@/mastra/url-fetch-tool";
 import { dashboardCacheTool } from "@/mastra/dashboard-cache-tool";
 
@@ -11,8 +11,6 @@ let registered = false;
 export function ensureDashboardCapabilities() {
   if (registered) return;
   registerDashboardMastraTools({
-    search: searchTool,
-    calculator: calculatorTool,
     monty: montyTool,
     web_fetch: dashboardWebFetchTool,
     url_fetch: urlFetchTool,

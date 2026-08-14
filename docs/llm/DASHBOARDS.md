@@ -42,8 +42,8 @@ schemas, and execute handlers remain authoritative. A saved tool must declare
 every dependency in `capabilities`; registration and the saved allowlist are
 independent checks.
 
-Defaults include project search, calculator, Monty, `web_fetch`, browser-like
-`url_fetch`, `cache`, and optional read-only `sql_query`. `url_fetch` uses
+Defaults include mandatory Monty and `cache`, Mastra `web_fetch`, browser-like
+`url_fetch`, and optional read-only `sql_query`. `url_fetch` uses
 `got-scraping` and blocks private, loopback, link-local, carrier NAT, multicast,
 and reserved destinations on the DNS lookup path.
 

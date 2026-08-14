@@ -1,25 +1,7 @@
 export const TOOLS_CONTEXT_KEY = "lfp.tools";
-export const TOOL_CATALOG_VERSION = 4;
+export const TOOL_CATALOG_VERSION = 5;
 
 export const toolCatalog = [
-  {
-    id: "search",
-    title: "Project search",
-    description: "Search the app's built-in project knowledge.",
-    defaultEnabled: true,
-  },
-  {
-    id: "calculator",
-    title: "Calculator",
-    description: "Run reliable basic arithmetic.",
-    defaultEnabled: true,
-  },
-  {
-    id: "monty",
-    title: "Monty",
-    description: "Execute Python in an isolated, resource-limited worker.",
-    defaultEnabled: true,
-  },
   {
     id: "url_fetch",
     title: "URL fetch",
@@ -104,5 +86,7 @@ export function migrateEnabledToolIds(
     ...(storedCatalogVersion < 2 ? ["scheduling"] : []),
     ...(storedCatalogVersion < 4 ? ["url_fetch", "dashboard"] : []),
   ];
-  return Array.from(new Set([...normalized, ...additions]));
+  return Array.from(new Set([...normalized, ...additions])).filter(
+    (id) => !["calculator", "monty", "search", "cache"].includes(id),
+  );
 }

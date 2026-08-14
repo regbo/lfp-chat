@@ -9,11 +9,7 @@ import {
   resolveRuntimeModel,
   resolveRuntimeOptions,
 } from "@/mastra/model-provider";
-import {
-  calculatorTool,
-  montyTool,
-  searchTool,
-} from "@/mastra/tools";
+import { montyTool } from "@/mastra/tools";
 import {
   dashboardArchiveTool,
   dashboardDeleteTool,
@@ -97,8 +93,6 @@ function createMastra() {
       );
       const isScheduledJob = requestContext.get(SCHEDULE_JOB_CONTEXT_KEY) === true;
       const availableTools = {
-        search: searchTool,
-        calculator: calculatorTool,
         monty: montyTool,
         render_chart: renderChartTool,
         web_fetch: dashboardWebFetchTool,
@@ -129,7 +123,7 @@ function createMastra() {
       return Object.fromEntries(
         Object.entries(availableTools).filter(
           ([id]) =>
-            enabled.has(id) ||
+            id === "monty" || id === "cache" || enabled.has(id) ||
             (enabled.has("dashboard") && (id.startsWith("dashboard_") || id === "cache")) ||
             (enabled.has("tasks") && id.startsWith("task_")) ||
             (enabled.has("scheduling") && id.startsWith("schedule_")) ||
@@ -159,7 +153,7 @@ function createMastra() {
         "For render_chart, pass ordered tabular data as columns plus aligned rows. Put the label or time axis first and numeric series after it.";
       return `You are ${serverConfig.appBranding.fullName}, a capable and concise assistant.
 
-The user has enabled these capabilities for this run: ${enabled.join(", ") || "none"}. Only use tools that are enabled. ${scheduledJobInstructions} Use project search for this app's stack, calculator for arithmetic, Monty for isolated Python, web_fetch for a normal bounded URL request, and url_fetch when a specific public page needs browser-like request behavior. url_fetch is not internet search. Create reusable data logic with dashboard_upsert_tool; saved tools may call declared built-in or saved tools, and each distinct deeply ordered input is cached automatically for its TTL. Create visible results with dashboard_upsert_widget only after the backing saved tool exists. A widget names exactly one saved tool, supplies fixed JSON input, and converts the returned data into one chart, metric, table, or text presentation. Widgets never fetch, call arbitrary tools, cache, or poll. Text presentations may use the validated css fields for fontWeight, fontStyle, and textAlign. Saved programs run without an LLM. Use dashboard_list before changes, dashboard_archive to archive or restore, and dashboard_delete only when the user explicitly asks to permanently remove an archived item. When the user asks for work on a time cadence, use schedule_create. Put only the recurring work in its prompt and include the timezone when known. When Code mode is enabled, workspace tools operate directly on the host filesystem and shell; do not read secrets or modify unrelated files unless explicitly asked. ${providerInstructions}
+The user has enabled these optional capabilities for this run: ${enabled.join(", ") || "none"}. Monty and cache are always available as internal capabilities. Only use other tools when they are enabled. ${scheduledJobInstructions} Use Monty for isolated Python, web_fetch for a normal bounded URL request, and url_fetch when a specific public page needs browser-like request behavior. url_fetch is not internet search. Create reusable data logic with dashboard_upsert_tool; saved tools may call declared built-in or saved tools, and each distinct deeply ordered input is cached automatically for its TTL. Create visible results with dashboard_upsert_widget only after the backing saved tool exists. A widget names exactly one saved tool, supplies fixed JSON input, and converts the returned data into one chart, metric, table, or text presentation. Widgets never fetch, call arbitrary tools, cache, or poll. Text presentations may use the validated css fields for fontWeight, fontStyle, and textAlign. Saved programs run without an LLM. Use dashboard_list before changes, dashboard_archive to archive or restore, and dashboard_delete only when the user explicitly asks to permanently remove an archived item. When the user asks for work on a time cadence, use schedule_create. Put only the recurring work in its prompt and include the timezone when known. When Code mode is enabled, workspace tools operate directly on the host filesystem and shell; do not read secrets or modify unrelated files unless explicitly asked. ${providerInstructions}
 
 ${chartInstructions}
 
@@ -183,8 +177,6 @@ Remember stable user preferences in working memory, but do not store secrets or 
       ...(codexAgent ? { codexAgent } : {}),
     },
     tools: {
-      search: searchTool,
-      calculator: calculatorTool,
       monty: montyTool,
       render_chart: renderChartTool,
       web_fetch: dashboardWebFetchTool,

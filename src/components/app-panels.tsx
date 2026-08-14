@@ -47,7 +47,6 @@ import {
   type ThemePreference,
 } from "@/lib/theme-preference";
 import {
-  Calculator,
   Bell,
   Blocks,
   Check,
@@ -813,9 +812,6 @@ export function SchedulesPanel({
 }
 
 const toolIcons: Record<SelectableToolId, LucideIcon> = {
-  search: Search,
-  calculator: Calculator,
-  monty: Code2,
   url_fetch: Globe2,
   dashboard: Blocks,
   scheduling: Clock3,
