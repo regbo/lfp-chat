@@ -492,6 +492,7 @@ function ChatSubmitButton({
     draft.trim().length > 0 ||
     attachments.files.length > 0;
   const emphasizeSubmit = hasPendingSubmission || status === "submitted" || status === "streaming";
+  const isGenerating = status === "submitted" || status === "streaming";
 
   return (
     <PromptInputSubmit
@@ -499,7 +500,7 @@ function ChatSubmitButton({
       className="chat-composer-submit bg-foreground text-background hover:bg-foreground/85"
       data-emphasized={emphasizeSubmit}
       onStop={onStop}
-      status={hasPendingSubmission ? "ready" : status}
+      status={isGenerating ? status : hasPendingSubmission ? "ready" : status}
     />
   );
 }
