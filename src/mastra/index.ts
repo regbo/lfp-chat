@@ -53,6 +53,17 @@ const globalForMastra = globalThis as typeof globalThis & {
   };
 };
 
+const configuredTaskTools = {
+  task_list: taskListTool,
+  task_list_lists: taskListListsTool,
+  task_list_create: taskListCreateTool,
+  task_list_update: taskListUpdateTool,
+  task_list_delete: taskListDeleteTool,
+  task_create: taskCreateTool,
+  task_update: taskUpdateTool,
+  task_delete: taskDeleteTool,
+};
+
 function createMastra() {
   const storage = new PostgresStore({
     id: "lfp-chat-postgres",
@@ -92,6 +103,7 @@ function createMastra() {
       const enabled = new Set<string>(
         normalizeEnabledToolIds(requestContext.get(TOOLS_CONTEXT_KEY)),
       );
+      if (!serverConfig.taskServiceConfigured) enabled.delete("tasks");
       const isScheduledJob = requestContext.get(SCHEDULE_JOB_CONTEXT_KEY) === true;
       const availableTools = {
         monty: montyTool,
@@ -106,14 +118,7 @@ function createMastra() {
         dashboard_list: dashboardListTool,
         dashboard_archive: dashboardArchiveTool,
         dashboard_delete: dashboardDeleteTool,
-        task_list: taskListTool,
-        task_list_lists: taskListListsTool,
-        task_list_create: taskListCreateTool,
-        task_list_update: taskListUpdateTool,
-        task_list_delete: taskListDeleteTool,
-        task_create: taskCreateTool,
-        task_update: taskUpdateTool,
-        task_delete: taskDeleteTool,
+        ...configuredTaskTools,
         schedule_create: scheduleCreateTool,
         schedule_list: scheduleListTool,
         schedule_parse: scheduleParseTool,
@@ -124,10 +129,12 @@ function createMastra() {
       return Object.fromEntries(
         Object.entries(availableTools).filter(
           ([id]) =>
-            isMandatoryAgentToolId(id) || enabled.has(id) ||
-            (enabled.has("tasks") && id.startsWith("task_")) ||
-            (enabled.has("scheduling") && id.startsWith("schedule_")) ||
-            (isScheduledJob && ["job_memory_recall", "notification_send"].includes(id)),
+            (serverConfig.taskServiceConfigured || !id.startsWith("task_")) && (
+              isMandatoryAgentToolId(id) || enabled.has(id) ||
+              (enabled.has("tasks") && id.startsWith("task_")) ||
+              (enabled.has("scheduling") && id.startsWith("schedule_")) ||
+              (isScheduledJob && ["job_memory_recall", "notification_send"].includes(id))
+            ),
         ),
       );
     },
@@ -140,7 +147,7 @@ function createMastra() {
     instructions: ({ requestContext }) => {
       const enabled = normalizeEnabledToolIds(
         requestContext.get(TOOLS_CONTEXT_KEY),
-      );
+      ).filter((id) => serverConfig.taskServiceConfigured || id !== "tasks");
       const scheduledJobInstructions =
         requestContext.get(SCHEDULE_JOB_CONTEXT_KEY) === true
           ? "This run belongs to a scheduled job with its own private history. Use job_memory_recall before answering whenever the task asks for novelty, non-repetition, continuity, or comparison with prior runs. If this job can create tasks or task lists, inspect the current open tasks and lists before writing. Treat matching source links or substantially equivalent titles and purposes as the same work: update the existing task instead of creating another. Never evade task_create's created=false result by rewording a duplicate. Use notification_send when the job prompt asks for a user alert, keeping the alert concise. Previous outputs are recorded automatically; never use another job or ordinary chat as this job's memory."
@@ -153,7 +160,7 @@ function createMastra() {
         "For render_chart, pass ordered tabular data as columns plus aligned rows. Put the label or time axis first and numeric series after it.";
       return `You are ${serverConfig.appBranding.fullName}, a capable and concise assistant.
 
-The user has enabled these optional capabilities for this run: ${enabled.join(", ") || "none"}. Monty, cache, dashboard orchestration, and hosted code_interpreter are mandatory framework capabilities and always available when supported by the provider. Only use other tools when they are enabled. ${scheduledJobInstructions} Use Monty for isolated Python, web_fetch for a normal bounded URL request, and url_fetch when a specific public page needs browser-like request behavior. url_fetch is not internet search. Create reusable data logic with dashboard_upsert_tool; saved tools may call declared built-in or saved tools, and each distinct deeply ordered input is cached automatically for its TTL. Create visible results with dashboard_upsert_widget only after the backing saved tool exists. A widget names exactly one saved tool, supplies fixed JSON input, and converts the returned data into one chart, metric, table, or text presentation. Widgets never fetch, call arbitrary tools, cache, or poll. Text presentations may use the validated css fields for fontWeight, fontStyle, and textAlign. Saved programs run without an LLM. Use dashboard_list before changes, dashboard_archive to archive or restore, and dashboard_delete only when the user explicitly asks to permanently remove an archived item. When the user asks for work on a time cadence, use schedule_create. Put only the recurring work in its prompt and include the timezone when known. When Code mode is enabled, workspace tools operate directly on the host filesystem and shell; do not read secrets or modify unrelated files unless explicitly asked. ${providerInstructions}
+The user has enabled these optional capabilities for this run: ${enabled.join(", ") || "none"}. Monty, cache, dashboard orchestration, and hosted code_interpreter are mandatory framework capabilities and always available when supported by the provider. Only use other tools when they are enabled. ${scheduledJobInstructions} Use Monty for isolated Python, web_fetch for a normal bounded URL request, and url_fetch when a specific public page needs browser-like request behavior. url_fetch is not internet search. Create reusable data logic with dashboard_upsert_tool; saved tools may call declared built-in or saved tools, and each distinct deeply ordered input is cached automatically for its TTL. During a refresh or expired-cache recomputation, saved tool code receives previous with its prior same-input output, or None on its first run. Explicit cache deletes are soft deletes and get can opt into expired or deleted values. Create visible results with dashboard_upsert_widget only after the backing saved tool exists. A widget names exactly one saved tool, supplies fixed JSON input, and converts the returned data into one chart, metric, table, or text presentation. Widgets never fetch, call arbitrary tools, cache, or poll. Text presentations may use the validated css fields for fontWeight, fontStyle, and textAlign. Saved programs run without an LLM. Use dashboard_list before changes, dashboard_archive to archive or restore, and dashboard_delete only when the user explicitly asks to permanently remove an archived item. When the user asks for work on a time cadence, use schedule_create. Put only the recurring work in its prompt and include the timezone when known. When Code mode is enabled, workspace tools operate directly on the host filesystem and shell; do not read secrets or modify unrelated files unless explicitly asked. ${providerInstructions}
 
 ${chartInstructions}
 
@@ -176,7 +183,7 @@ Remember stable user preferences in working memory, but do not store secrets or 
       chatAgent,
       ...(codexAgent ? { codexAgent } : {}),
     },
-    tools: {
+    tools: Object.fromEntries(Object.entries({
       monty: montyTool,
       render_chart: renderChartTool,
       web_fetch: dashboardWebFetchTool,
@@ -189,20 +196,13 @@ Remember stable user preferences in working memory, but do not store secrets or 
       dashboard_list: dashboardListTool,
       dashboard_archive: dashboardArchiveTool,
       dashboard_delete: dashboardDeleteTool,
-      task_list: taskListTool,
-      task_list_lists: taskListListsTool,
-      task_list_create: taskListCreateTool,
-      task_list_update: taskListUpdateTool,
-      task_list_delete: taskListDeleteTool,
-      task_create: taskCreateTool,
-      task_update: taskUpdateTool,
-      task_delete: taskDeleteTool,
+      ...configuredTaskTools,
       schedule_create: scheduleCreateTool,
       schedule_list: scheduleListTool,
       schedule_parse: scheduleParseTool,
       job_memory_recall: jobMemoryRecallTool,
       notification_send: notificationSendTool,
-    },
+    }).filter(([id]) => serverConfig.taskServiceConfigured || !id.startsWith("task_"))),
     storage,
     scheduler: {
       enabled: true,

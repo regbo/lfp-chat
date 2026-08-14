@@ -55,7 +55,7 @@ export async function executeDashboardUserTool(
       resourceId,
       tool,
       input,
-      compute: async () => {
+      compute: async ({ previous }) => {
         const allowed = new Set(tool.capabilities);
         const toolCall = async (target: unknown, args: unknown) => {
           const id = dashboardCapabilitySchema.parse(target);
@@ -65,7 +65,11 @@ export async function executeDashboardUserTool(
           return executeDashboardUserTool(resourceId, id, fromMonty(args), nextBudget, options);
         };
         const execution = await executeMontyCode(tool.code, {
-          inputs: { args: input, now: new Date().toISOString() },
+          inputs: {
+            args: input,
+            now: new Date().toISOString(),
+            previous: previous?.value ?? null,
+          },
           externalLookup: { tool_call: toolCall as (...args: never[]) => unknown },
           maxDurationSecs: 8,
         });

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { executeDashboardProgram } from "./dashboard-runtime";
-import { dashboardWidgetLayoutSchema } from "./dashboard-spec";
+import { dashboardWidgetDraftSchema, dashboardWidgetLayoutSchema } from "./dashboard-spec";
 import { dashboardToolCacheKey } from "./dashboard-user-tool-store";
 
 describe("dashboard presentation runtime", () => {
@@ -60,5 +60,22 @@ describe("dashboard widget layouts", () => {
       w: 6,
       h: 4,
     })).toThrow("Widget layout must fit within the dashboard grid");
+  });
+});
+
+describe("dashboard widget styling", () => {
+  test("accepts isolated per-widget CSS", () => {
+    const widget = dashboardWidgetDraftSchema.parse({
+      title: "Styled quote",
+      toolName: "quote_fetch",
+      toolInput: {},
+      code: '{"kind":"text","title":"Quote","text":str(data)}',
+      css: "p { font-weight: 700; }",
+      cssIsolation: "shadow",
+    });
+    expect(widget).toMatchObject({
+      css: "p { font-weight: 700; }",
+      cssIsolation: "shadow",
+    });
   });
 });

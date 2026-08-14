@@ -7,15 +7,17 @@ import { TasksPanel } from "@/components/tasks-panel";
 import type { AppBranding } from "@/lib/app-branding";
 import type { UserScope } from "@/lib/user-scope";
 
-const mods = [{
+const coreMods = [{
   id: "workspace",
-  views: [{ id: "tasks", label: "Tasks", href: "/tasks", icon: <ListTodo />, content: <TasksPanel /> }],
-  tools: [
-    { id: "render_chart", title: "Charts", description: "Render interactive charts from retrieved data.", icon: <ChartNoAxesCombined />, defaultEnabled: true },
-    { id: "tasks", title: "Tasks", description: "Create, organize, update, and review tasks.", icon: <ListTodo />, defaultEnabled: true },
-  ],
+  tools: [{ id: "render_chart", title: "Charts", description: "Render interactive charts from retrieved data.", icon: <ChartNoAxesCombined />, defaultEnabled: true }],
 }] as const;
 
-export function WorkspaceChatApp({ branding, user }: { branding: AppBranding; user?: UserScope }) {
-  return <ChatApp branding={branding} mods={mods} user={user} />;
+const taskMods = [{
+  id: "tasks",
+  views: [{ id: "tasks", label: "Tasks", href: "/tasks", icon: <ListTodo />, content: <TasksPanel /> }],
+  tools: [{ id: "tasks", title: "Tasks", description: "Create, organize, update, and review tasks.", icon: <ListTodo />, defaultEnabled: true }],
+}] as const;
+
+export function WorkspaceChatApp({ branding, taskServiceConfigured, user }: { branding: AppBranding; taskServiceConfigured: boolean; user?: UserScope }) {
+  return <ChatApp branding={branding} mods={taskServiceConfigured ? [...coreMods, ...taskMods] : coreMods} user={user} />;
 }

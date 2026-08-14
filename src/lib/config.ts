@@ -98,6 +98,12 @@ function optionalHttpUrl(name: string) {
   return value.replace(/\/+$/, "");
 }
 
+const vikunjaApiUrl = process.env.VIKUNJA_API_URL?.trim();
+const vikunjaApiToken = secretValue(
+  "VIKUNJA_API_TOKEN",
+  "VIKUNJA_API_TOKEN_FILE",
+);
+
 if (userScopeMode === "jwt") {
   for (const name of ["USER_SCOPE_JWT_JWKS_URL", "USER_SCOPE_JWT_ISSUER"]) {
     if (!process.env[name]?.trim()) {
@@ -115,12 +121,10 @@ export const serverConfig = {
   appBranding,
   databaseUrl:
     secretValue("DATABASE_URL", "DATABASE_URL_FILE") ?? LOCAL_DATABASE_URL,
-  vikunjaApiUrl: process.env.VIKUNJA_API_URL?.trim(),
-  vikunjaApiToken: secretValue(
-    "VIKUNJA_API_TOKEN",
-    "VIKUNJA_API_TOKEN_FILE",
-  ),
+  vikunjaApiUrl,
+  vikunjaApiToken,
   vikunjaProjectId: boundedInteger("VIKUNJA_PROJECT_ID", 1, 1, 2_147_483_647),
+  taskServiceConfigured: Boolean(vikunjaApiUrl && vikunjaApiToken),
   scheduleRunImmediately: booleanValue("SCHEDULE_RUN_IMMEDIATELY", true),
   webPushSubject: process.env.WEB_PUSH_SUBJECT?.trim() || "mailto:admin@localhost",
   webPushPublicKey: process.env.WEB_PUSH_PUBLIC_KEY?.trim(),

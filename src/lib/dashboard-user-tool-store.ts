@@ -68,14 +68,30 @@ async function ready() {
       created_at timestamptz NOT NULL DEFAULT now(),
       PRIMARY KEY (resource_id, tool_id, cache_key)
     );
+    CREATE TABLE IF NOT EXISTS lfp_dashboard_tool_cache_history (
+      id bigserial PRIMARY KEY,
+      resource_id text NOT NULL,
+      tool_id text NOT NULL REFERENCES lfp_dashboard_user_tools(id) ON DELETE CASCADE,
+      cache_key text NOT NULL,
+      value jsonb NOT NULL,
+      expires_at timestamptz NOT NULL,
+      archived_at timestamptz NOT NULL DEFAULT now(),
+      created_at timestamptz NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS lfp_dashboard_tool_cache_history_lookup_idx
+      ON lfp_dashboard_tool_cache_history (resource_id, tool_id, cache_key, archived_at DESC);
     CREATE TABLE IF NOT EXISTS lfp_dashboard_named_cache (
       resource_id text NOT NULL,
       key text NOT NULL,
       value jsonb NOT NULL,
       expires_at timestamptz NOT NULL,
+      deleted_at timestamptz,
+      created_at timestamptz NOT NULL DEFAULT now(),
       updated_at timestamptz NOT NULL DEFAULT now(),
       PRIMARY KEY (resource_id, key)
     );
+    ALTER TABLE lfp_dashboard_named_cache ADD COLUMN IF NOT EXISTS deleted_at timestamptz;
+    ALTER TABLE lfp_dashboard_named_cache ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT now();
   `).then(() => undefined);
   return globals.lfpDashboardToolReady;
 }
@@ -167,14 +183,37 @@ export function dashboardToolCacheKey(input: unknown) {
   return createHash("sha256").update(stringify(input) ?? "null").digest("hex");
 }
 
-export async function getDashboardNamedCache(resourceId: string, key: string) {
+export async function getDashboardNamedCache(
+  resourceId: string,
+  key: string,
+  options: { includeDeleted?: boolean; includeExpired?: boolean } = {},
+) {
   await ready();
-  const result = await pool().query<{ value: unknown }>(
-    `SELECT value FROM lfp_dashboard_named_cache
-     WHERE resource_id=$1 AND key=$2 AND expires_at>now()`,
-    [resourceId, key],
+  const result = await pool().query<{
+    value: unknown;
+    expires_at: Date | string;
+    deleted_at: Date | string | null;
+    created_at: Date | string;
+    updated_at: Date | string;
+  }>(
+    `SELECT value, expires_at, deleted_at, created_at, updated_at
+     FROM lfp_dashboard_named_cache
+     WHERE resource_id=$1 AND key=$2
+       AND ($3 OR expires_at>now())
+       AND ($4 OR deleted_at IS NULL)`,
+    [resourceId, key, options.includeExpired ?? false, options.includeDeleted ?? false],
   );
-  return result.rows[0] ? { hit: true, value: result.rows[0].value } : { hit: false, value: null };
+  const row = result.rows[0];
+  return row ? {
+    hit: true,
+    value: row.value,
+    expired: new Date(row.expires_at).getTime() <= Date.now(),
+    deleted: Boolean(row.deleted_at),
+    expiresAt: new Date(row.expires_at).toISOString(),
+    createdAt: new Date(row.created_at).toISOString(),
+    updatedAt: new Date(row.updated_at).toISOString(),
+    ...(row.deleted_at ? { deletedAt: new Date(row.deleted_at).toISOString() } : {}),
+  } : { hit: false, value: null };
 }
 
 export async function setDashboardNamedCache(resourceId: string, key: string, value: unknown, ttlSeconds: number) {
@@ -183,7 +222,8 @@ export async function setDashboardNamedCache(resourceId: string, key: string, va
     `INSERT INTO lfp_dashboard_named_cache (resource_id,key,value,expires_at)
      VALUES ($1,$2,$3::jsonb,now()+($4*interval '1 second'))
      ON CONFLICT (resource_id,key) DO UPDATE SET
-       value=EXCLUDED.value, expires_at=EXCLUDED.expires_at, updated_at=now()`,
+       value=EXCLUDED.value, expires_at=EXCLUDED.expires_at,
+       deleted_at=NULL, updated_at=now()`,
     [resourceId, key, JSON.stringify(value), ttlSeconds],
   );
   return { stored: true, key, ttlSeconds };
@@ -192,21 +232,28 @@ export async function setDashboardNamedCache(resourceId: string, key: string, va
 export async function deleteDashboardNamedCache(resourceId: string, key: string) {
   await ready();
   const result = await pool().query(
-    "DELETE FROM lfp_dashboard_named_cache WHERE resource_id=$1 AND key=$2",
+    `UPDATE lfp_dashboard_named_cache SET deleted_at=now(), updated_at=now()
+     WHERE resource_id=$1 AND key=$2 AND deleted_at IS NULL`,
     [resourceId, key],
   );
-  return { deleted: Boolean(result.rowCount), key };
+  return { deleted: Boolean(result.rowCount), softDeleted: Boolean(result.rowCount), key };
 }
+
+type DashboardToolPrevious<T> = {
+  value: T;
+  createdAt: string;
+  expiresAt: string;
+};
 
 export async function cachedDashboardToolCall<T>(options: {
   resourceId: string;
   tool: DashboardUserTool;
   input: unknown;
-  compute: () => Promise<T>;
+  compute: (context: { previous?: DashboardToolPrevious<T> }) => Promise<T>;
   force?: boolean;
 }) {
   await ready();
-  if (options.tool.cacheTtlSeconds === 0) return { value: await options.compute(), cacheHit: false };
+  if (options.tool.cacheTtlSeconds === 0) return { value: await options.compute({}), cacheHit: false };
   const cacheKey = dashboardToolCacheKey(options.input);
   const fast = options.force ? undefined : await pool().query<{ value: T }>(
     `SELECT value FROM lfp_dashboard_tool_cache
@@ -220,13 +267,6 @@ export async function cachedDashboardToolCall<T>(options: {
     await client.query("BEGIN");
     const lockId = createHash("sha256").update(`dashboard-tool\0${options.resourceId}\0${options.tool.id}\0${cacheKey}`).digest().readBigInt64BE(0).toString();
     await client.query("SELECT pg_advisory_xact_lock($1::bigint)", [lockId]);
-    if (options.force) {
-      await client.query(
-        `DELETE FROM lfp_dashboard_tool_cache
-         WHERE resource_id=$1 AND tool_id=$2 AND cache_key=$3`,
-        [options.resourceId, options.tool.id, cacheKey],
-      );
-    }
     const checked = await client.query<{ value: T }>(
       `SELECT value FROM lfp_dashboard_tool_cache
        WHERE resource_id=$1 AND tool_id=$2 AND cache_key=$3 AND expires_at>now()`,
@@ -236,13 +276,44 @@ export async function cachedDashboardToolCall<T>(options: {
       await client.query("COMMIT");
       return { value: checked.rows[0].value, cacheHit: true };
     }
-    const value = await options.compute();
+    const prior = await client.query<{
+      value: T;
+      expires_at: Date | string;
+      created_at: Date | string;
+    }>(
+      `SELECT value, expires_at, created_at FROM lfp_dashboard_tool_cache
+       WHERE resource_id=$1 AND tool_id=$2 AND cache_key=$3`,
+      [options.resourceId, options.tool.id, cacheKey],
+    );
+    const previous = prior.rows[0] ? {
+      value: prior.rows[0].value,
+      createdAt: new Date(prior.rows[0].created_at).toISOString(),
+      expiresAt: new Date(prior.rows[0].expires_at).toISOString(),
+    } : undefined;
+    const value = await options.compute({ previous });
+    if (prior.rows[0]) {
+      await client.query(
+        `INSERT INTO lfp_dashboard_tool_cache_history
+           (resource_id,tool_id,cache_key,value,expires_at,created_at)
+         VALUES ($1,$2,$3,$4::jsonb,$5,$6)`,
+        [options.resourceId, options.tool.id, cacheKey, JSON.stringify(prior.rows[0].value), prior.rows[0].expires_at, prior.rows[0].created_at],
+      );
+    }
     await client.query(
       `INSERT INTO lfp_dashboard_tool_cache (resource_id,tool_id,cache_key,value,expires_at)
        VALUES ($1,$2,$3,$4::jsonb,now()+($5*interval '1 second'))
        ON CONFLICT (resource_id,tool_id,cache_key) DO UPDATE SET
          value=EXCLUDED.value, expires_at=EXCLUDED.expires_at, created_at=now()`,
       [options.resourceId, options.tool.id, cacheKey, JSON.stringify(value), options.tool.cacheTtlSeconds],
+    );
+    await client.query(
+      `DELETE FROM lfp_dashboard_tool_cache_history
+       WHERE id IN (
+         SELECT id FROM lfp_dashboard_tool_cache_history
+         WHERE resource_id=$1 AND tool_id=$2 AND cache_key=$3
+         ORDER BY archived_at DESC OFFSET 20
+       )`,
+      [options.resourceId, options.tool.id, cacheKey],
     );
     await client.query("COMMIT");
     return { value, cacheHit: false };

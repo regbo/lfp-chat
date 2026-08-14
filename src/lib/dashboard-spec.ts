@@ -97,6 +97,8 @@ export const dashboardWidgetDraftSchema = z.object({
   toolName: dashboardCapabilitySchema,
   toolInput: z.json().default({}),
   code: z.string().trim().min(1).max(30_000),
+  css: z.string().trim().max(20_000).optional(),
+  cssIsolation: z.enum(["shadow", "scoped"]).optional(),
 });
 
 export type DashboardWidgetDraft = z.infer<typeof dashboardWidgetDraftSchema>;

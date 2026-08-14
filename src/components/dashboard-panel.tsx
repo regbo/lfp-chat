@@ -3,6 +3,7 @@
 import { Archive, ArchiveRestore, GripVertical, LoaderCircle, Pencil, RefreshCw, Trash2 } from "lucide-react";
 import ReactGridLayout, { useContainerWidth, type Layout } from "react-grid-layout";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 import { ChatChart } from "@/components/chat-chart";
 import { Button } from "@/components/ui/button";
@@ -41,6 +42,34 @@ function WidgetContent({ widget }: { widget: DashboardWidget }) {
     return <p className="whitespace-pre-wrap text-sm leading-6" style={style}>{output.text}</p>;
   }
   return <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr>{output.columns.map((column) => <th className="border-b px-2 py-2 font-medium" key={column}>{column}</th>)}</tr></thead><tbody>{output.rows.map((row, index) => <tr key={index}>{row.map((cell, cellIndex) => <td className="border-b border-border/50 px-2 py-2" key={cellIndex}>{formatMetric(cell)}</td>)}</tr>)}</tbody></table></div>;
+}
+
+const widgetShadowBaseCss = `
+  :host { display: block; width: 100%; height: 100%; min-height: 0; color: var(--foreground); font-family: var(--font-ui-sans); }
+  *, *::before, *::after { box-sizing: border-box; }
+  .widget-output { width: 100%; height: 100%; min-height: 0; overflow: auto; }
+  p, figure { margin: 0; }
+  figure { display: flex; min-height: 0; height: 100%; flex-direction: column; overflow: hidden; }
+  .chat-chart-canvas { width: 100%; height: 100%; min-height: 0; flex: 1; }
+  table { width: 100%; border-collapse: collapse; text-align: left; font-size: var(--text-ui); }
+  th, td { padding: .5rem; border-bottom: 1px solid var(--border); }
+  th { font-weight: var(--weight-emphasis); }
+`;
+
+function ShadowWidgetContent({ children, css }: { children: React.ReactNode; css: string }) {
+  const [shadowRoot, setShadowRoot] = useState<ShadowRoot>();
+  const attachHost = useCallback((host: HTMLDivElement | null) => {
+    if (!host) return;
+    setShadowRoot((current) => current ?? host.shadowRoot ?? host.attachShadow({ mode: "open" }));
+  }, []);
+  return <div className="h-full min-h-0 w-full" ref={attachHost}>{shadowRoot && createPortal(<><style>{widgetShadowBaseCss}{css}</style><div className="widget-output">{children}</div></>, shadowRoot)}</div>;
+}
+
+function StyledWidgetContent({ widget }: { widget: DashboardWidget }) {
+  const content = <WidgetContent widget={widget} />;
+  if (!widget.css) return content;
+  if (widget.cssIsolation !== "scoped") return <ShadowWidgetContent css={widget.css}>{content}</ShadowWidgetContent>;
+  return <><style>{`@scope (.dashboard-widget-user-content) {${widget.css}}`}</style><div className="dashboard-widget-user-content h-full min-h-0">{content}</div></>;
 }
 
 function EditableWidgetMetadata({
@@ -124,7 +153,7 @@ function WidgetCard({
       <Button aria-label="Refresh widget" disabled={running} onClick={() => void run(widget, true)} size="icon-sm" variant="ghost">{running ? <LoaderCircle className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}</Button>
       <Button aria-label="Archive widget" onClick={() => void archiveWidget(widget, true)} size="icon-sm" variant="ghost"><Archive className="size-4" /></Button>
     </header>
-    <div className="dashboard-widget-content min-h-0 flex-1 overflow-auto">{widget.lastError ? <p className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive">{widget.lastError}</p> : <WidgetContent widget={widget} />}</div>
+    <div className="dashboard-widget-content min-h-0 flex-1 overflow-auto">{widget.lastError ? <p className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive">{widget.lastError}</p> : <StyledWidgetContent widget={widget} />}</div>
   </section>;
 }
 

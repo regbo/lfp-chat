@@ -31,6 +31,8 @@ type DashboardWidgetRow = {
   title: string;
   description: string | null;
   code: string;
+  css: string | null;
+  css_isolation: "shadow" | "scoped";
   tool_name: string | null;
   tool_input: unknown;
   capabilities: string[];
@@ -85,6 +87,8 @@ async function ready() {
       title text NOT NULL,
       description text,
       code text NOT NULL,
+      css text,
+      css_isolation text NOT NULL DEFAULT 'shadow',
       tool_name text,
       tool_input jsonb NOT NULL DEFAULT '{}',
       capabilities text[] NOT NULL DEFAULT '{}',
@@ -109,6 +113,8 @@ async function ready() {
       ON lfp_dashboard_widgets (resource_id, tab_id, position, created_at);
     ALTER TABLE lfp_dashboard_widgets ADD COLUMN IF NOT EXISTS tool_name text;
     ALTER TABLE lfp_dashboard_widgets ADD COLUMN IF NOT EXISTS tool_input jsonb NOT NULL DEFAULT '{}';
+    ALTER TABLE lfp_dashboard_widgets ADD COLUMN IF NOT EXISTS css text;
+    ALTER TABLE lfp_dashboard_widgets ADD COLUMN IF NOT EXISTS css_isolation text NOT NULL DEFAULT 'shadow';
     ALTER TABLE lfp_dashboard_widgets ADD COLUMN IF NOT EXISTS grid_x integer;
     ALTER TABLE lfp_dashboard_widgets ADD COLUMN IF NOT EXISTS grid_y integer;
     ALTER TABLE lfp_dashboard_widgets ADD COLUMN IF NOT EXISTS grid_w integer;
@@ -148,6 +154,8 @@ function widgetFromRow(row: DashboardWidgetRow): DashboardWidget {
     toolName: row.tool_name ?? "missing_saved_tool",
     toolInput: dashboardWidgetDraftSchema.shape.toolInput.parse(row.tool_input ?? {}),
     code: row.code,
+    ...(row.css ? { css: row.css } : {}),
+    cssIsolation: row.css_isolation,
     position: row.position,
     layout: { x: row.grid_x, y: row.grid_y, w: row.grid_w, h: row.grid_h },
     ...(output?.success ? { output: output.data } : {}),
@@ -196,7 +204,7 @@ export async function listDashboard(
       [resourceId, includeArchived],
     ),
     pool().query<DashboardWidgetRow>(
-      `SELECT id, tab_id, title, description, code, tool_name, tool_input, capabilities,
+      `SELECT id, tab_id, title, description, code, css, css_isolation, tool_name, tool_input, capabilities,
               cache_ttl_seconds, refresh_interval_seconds, lazy, position,
               grid_x, grid_y, grid_w, grid_h,
               cached_output, cache_expires_at, last_run_at, last_duration_ms,
@@ -306,15 +314,17 @@ export async function upsertDashboardWidget(
     const defaultGridY = Math.floor(position / 2) * 4;
     const result = await client.query<DashboardWidgetRow>(
       `INSERT INTO lfp_dashboard_widgets (
-         id, resource_id, tab_id, title, description, code, tool_name, tool_input,
+         id, resource_id, tab_id, title, description, code, css, css_isolation, tool_name, tool_input,
          capabilities, cache_ttl_seconds, refresh_interval_seconds, lazy, position,
          grid_x, grid_y, grid_w, grid_h
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, '{}', 0, NULL, false, $9, $10, $11, 6, 4)
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, '{}', 0, NULL, false, $11, $12, $13, 6, 4)
        ON CONFLICT (id) DO UPDATE SET
          tab_id = EXCLUDED.tab_id,
          title = EXCLUDED.title,
          description = EXCLUDED.description,
          code = EXCLUDED.code,
+         css = EXCLUDED.css,
+         css_isolation = EXCLUDED.css_isolation,
          tool_name = EXCLUDED.tool_name,
          tool_input = EXCLUDED.tool_input,
          cached_output = NULL,
@@ -330,6 +340,8 @@ export async function upsertDashboardWidget(
         draft.title,
         draft.description ?? null,
         draft.code,
+        draft.css ?? null,
+        draft.cssIsolation ?? "shadow",
         draft.toolName,
         JSON.stringify(draft.toolInput),
         position,
