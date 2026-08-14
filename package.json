@@ -57,7 +57,7 @@
     "@mastra/pg": "^1.19.0",
     "@pydantic/monty": "^0.0.21",
     "@radix-ui/react-use-controllable-state": "^1.2.6",
-    "@regbo/lfp-chat": "^0.3.8",
+    "@regbo/lfp-chat": "^0.3.9",
     "@streamdown/cjk": "^1.0.3",
     "@streamdown/code": "^1.1.1",
     "@streamdown/math": "^1.0.2",
