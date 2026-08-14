@@ -5,7 +5,6 @@ import { Pool } from "pg";
 import { z } from "zod";
 
 import { serverConfig } from "@/lib/config";
-import { chartKinds, chartUnits } from "@/lib/chart-spec";
 import { familyContextRequest } from "@/lib/family-context-api";
 import { truncateToolText, truncateToolValue } from "@/lib/tool-output";
 import {
@@ -266,67 +265,6 @@ export const familyDatabaseTool = createTool({
       client.release();
     }
   },
-});
-
-const chartSeriesSchema = z.object({
-  name: z.string().min(1).max(80),
-  values: z.array(z.number().finite().nullable()).min(1).max(120),
-});
-
-const chartSchema = z.object({
-  chartType: z.enum(chartKinds),
-  title: z.string().min(1).max(160),
-  labels: z.array(z.string().max(60)).min(1).max(120),
-  series: z.array(chartSeriesSchema).min(1).max(8),
-  unit: z.enum(chartUnits).default("number"),
-  currency: z.string().length(3).optional(),
-  xAxisLabel: z.string().max(80).optional(),
-  yAxisLabel: z.string().max(80).optional(),
-});
-
-export const renderChartTool = createTool({
-  id: "render_chart",
-  description:
-    "Render a line or bar chart in the conversation from already retrieved aggregate data. Use after a data tool for requests to show, plot, chart, trend, or compare numeric values over ordered labels such as months.",
-  strict: true,
-  inputSchema: chartSchema,
-  outputSchema: chartSchema.extend({ kind: z.literal("chart") }),
-  inputExamples: [
-    {
-      input: {
-        chartType: "line",
-        title: "Monthly spending by merchant",
-        labels: ["Jan", "Feb", "Mar"],
-        series: [
-          { name: "Amazon", values: [120, 80, 145] },
-          { name: "Target", values: [60, 95, 40] },
-        ],
-        unit: "currency",
-        currency: "USD",
-        xAxisLabel: "Month",
-        yAxisLabel: "Spend",
-      },
-    },
-  ],
-  mcp: {
-    annotations: {
-      title: "Render chart",
-      readOnlyHint: true,
-      destructiveHint: false,
-      idempotentHint: true,
-      openWorldHint: false,
-    },
-  },
-  execute: async (input) => {
-    if (input.series.some((series) => series.values.length !== input.labels.length)) {
-      throw new Error("Every chart series must have one value per label.");
-    }
-    return { kind: "chart" as const, ...input };
-  },
-  toModelOutput: (output) => ({
-    type: "text",
-    value: `Rendered ${output.title} with ${output.series.length} series and ${output.labels.length} labels.`,
-  }),
 });
 
 async function embedFamilyQuery(query: string) {

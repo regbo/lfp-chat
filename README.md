@@ -212,11 +212,12 @@ REASONING_EFFORT=medium
 OPENAI_API_KEY=...
 ```
 
-For a local OpenAI-compatible Ollama endpoint, use `MODEL_PROVIDER=ollama`, set
-`MODEL_NAME` to an installed model, and configure `OLLAMA_MODEL_BASE_URL`. Chart
-requests use the read-only family database tool followed by the structured
-`render_chart` Mastra tool, so the browser receives chart data rather than an
-LLM-generated image.
+Chart requests use the read-only family database tool followed by the structured
+`render_chart` Mastra tool. Its private planner uses the OpenAI-compatible Ollama
+endpoint configured by `OLLAMA_MODEL_BASE_URL` and `CHART_MODEL_NAME` (default
+`qwen3:8b`), while the conversation continues to use the OpenAI model selected
+by `MODEL_PROVIDER` and `MODEL_NAME`. The browser receives an ECharts data spec,
+not an LLM-generated image.
 
 The composer also lists **Codex CLI** as an agent rather than a model. Mastra runs it through `@mastra/acp` and `@agentclientprotocol/codex-acp`, while PostgreSQL remains the durable conversation store. Codex runs in an isolated ACP session for each request and defaults to workspace-write access without network access. Configure its boundary explicitly when the server should operate on another repository:
 

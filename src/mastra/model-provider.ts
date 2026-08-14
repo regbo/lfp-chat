@@ -43,6 +43,11 @@ export function resolveBackgroundModel() {
   return localOllama.chat(serverConfig.scheduledModelName);
 }
 
+/** Keep chart planning local without changing the model used for chat. */
+export function resolveChartModel() {
+  return localOllama.chat(serverConfig.chartModelName);
+}
+
 type OpenAiModelsResponse = {
   data?: Array<{ id?: string }>;
 };
@@ -116,9 +121,6 @@ export function resolveRuntimeModel(requestContext?: RequestContext) {
     return localOllama.chat(serverConfig.scheduledModelName);
   }
   const selection = selectionFromRequestContext(requestContext);
-  if (selection.modelId.startsWith("ollama/")) {
-    return localOllama.chat(selection.modelId.slice("ollama/".length));
-  }
   return selection.modelId as ModelRouterModelId;
 }
 

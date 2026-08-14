@@ -156,6 +156,7 @@ export const serverConfig = {
     "http://ollama-graphiti-auth-bridge:8080/v1"
   ).replace(/\/+$/, ""),
   scheduledModelName: process.env.SCHEDULED_MODEL_NAME?.trim() || "qwen3:8b",
+  chartModelName: process.env.CHART_MODEL_NAME?.trim() || "qwen3:8b",
   mastraHost: process.env.MASTRA_HOST?.trim() || "127.0.0.1",
   mastraApiUrl: process.env.MASTRA_API_URL ?? LOCAL_MASTRA_API_URL,
   modelProvider,
