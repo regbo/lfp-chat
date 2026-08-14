@@ -147,7 +147,7 @@ export const ReasoningTrigger = memo(
     return (
       <CollapsibleTrigger
         className={cn(
-          "chat-reasoning-trigger flex w-full items-center gap-2 font-normal text-muted-foreground transition-colors hover:text-foreground",
+          "chat-reasoning-trigger flex w-full items-center gap-2 overflow-hidden whitespace-nowrap font-normal text-muted-foreground transition-colors hover:text-foreground",
           !expandable && "cursor-default hover:text-muted-foreground",
           className
         )}
@@ -156,12 +156,14 @@ export const ReasoningTrigger = memo(
       >
         {children ?? (
           <>
-            <BrainIcon className="size-4" />
-            {status ?? getThinkingMessage(isStreaming, duration)}
+            <BrainIcon className="size-4 shrink-0" />
+            <span className="min-w-0 flex-1 truncate text-left">
+              {status ?? getThinkingMessage(isStreaming, duration)}
+            </span>
             {expandable ? (
               <ChevronDownIcon
                 className={cn(
-                  "size-4 transition-transform",
+                  "size-4 shrink-0 transition-transform",
                   isOpen ? "rotate-180" : "rotate-0"
                 )}
               />

@@ -2,6 +2,8 @@ import type { Metadata, Viewport } from "next";
 import { Geist_Mono } from "next/font/google";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { PwaRegister } from "@/components/pwa-register";
+import { ThemeSync } from "@/components/theme-sync";
+import { THEME_BOOTSTRAP_SCRIPT } from "@/lib/theme-preference";
 import "@regbo/lfp-chat/styles.css";
 import "./globals.css";
 
@@ -31,7 +33,11 @@ export const viewport: Viewport = {
   userScalable: false,
   interactiveWidget: "resizes-content",
   viewportFit: "cover",
-  themeColor: "#ffffff",
+  colorScheme: "light dark",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
+    { media: "(prefers-color-scheme: dark)", color: "#252525" },
+  ],
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
@@ -39,9 +45,14 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     <html
       lang="en"
       className={`${geistMono.variable} h-full antialiased`}
+      suppressHydrationWarning
     >
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP_SCRIPT }} />
+      </head>
       <body className="flex min-h-full flex-col">
         <TooltipProvider>{children}</TooltipProvider>
+        <ThemeSync />
         <PwaRegister />
       </body>
     </html>

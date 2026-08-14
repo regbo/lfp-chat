@@ -8,6 +8,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: publish-npm-package
+  cancel-in-progress: true
+
 jobs:
   publish:
     name: Publish tagged version

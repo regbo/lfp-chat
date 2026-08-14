@@ -67,7 +67,10 @@ import {
 import { type PendingSteer, SteerQueue } from "@/components/steer-queue";
 import { formatAttachmentLinks } from "@/lib/attachment-links";
 import { formatCitationMarkers } from "@/lib/citations";
-import { browserMastraClient } from "@/lib/browser-mastra-client";
+import {
+  browserMastraClient,
+  type MastraStreamResponse,
+} from "@/lib/browser-mastra-client";
 import {
   deleteChatSession,
   ensureChatSession,
@@ -404,6 +407,36 @@ function getErrorMessage(error: Error) {
   } catch {
     return error.message;
   }
+}
+
+const MAX_STREAM_RECONNECT_ATTEMPTS = 8;
+
+function waitForStreamReconnect(signal: AbortSignal, attempt: number) {
+  if (signal.aborted) return Promise.resolve();
+
+  return new Promise<void>((resolve) => {
+    let timer: number | undefined;
+    const cleanup = () => {
+      if (timer !== undefined) window.clearTimeout(timer);
+      document.removeEventListener("visibilitychange", checkReady);
+      window.removeEventListener("online", checkReady);
+      signal.removeEventListener("abort", finish);
+    };
+    const finish = () => {
+      cleanup();
+      resolve();
+    };
+    const checkReady = () => {
+      if (document.visibilityState === "visible" && navigator.onLine) finish();
+    };
+
+    document.addEventListener("visibilitychange", checkReady);
+    window.addEventListener("online", checkReady);
+    signal.addEventListener("abort", finish, { once: true });
+    if (document.visibilityState === "visible" && navigator.onLine) {
+      timer = window.setTimeout(finish, Math.min(500 * 2 ** attempt, 5_000));
+    }
+  });
 }
 
 type ChatComposerProps = {
@@ -782,6 +815,7 @@ function ChatSession({
     let reasoning = "";
     const textSegments: string[] = [];
     const toolParts = new Map<string, UIMessage["parts"][number]>();
+    let eventOffset = 0;
     const upsertAssistant = () => {
       const parts: UIMessage["parts"] = [];
       if (reasoning) parts.push({ type: "reasoning", text: reasoning });
@@ -816,8 +850,9 @@ function ChatSession({
             }
           : {}),
       };
-      const stream = await browserMastraClient.streamChat({
-        agentId: modelSelection?.agentId ?? DEFAULT_CHAT_AGENT_ID,
+      const agentId = modelSelection?.agentId ?? DEFAULT_CHAT_AGENT_ID;
+      let stream: MastraStreamResponse | null = await browserMastraClient.streamChat({
+        agentId,
         // Memory is keyed by thread/resource on the server, so only this turn
         // crosses the wire instead of resending the complete transcript.
         messages: [userMessage],
@@ -827,8 +862,9 @@ function ChatSession({
         requestContext,
         signal: controller.signal,
       });
-      await stream.processDataStream({
+      const consumeStream = () => stream?.processDataStream({
         onChunk: (chunk) => {
+          eventOffset += 1;
           const payload = chunk.payload ?? {};
           switch (chunk.type) {
             case "reasoning-delta":
@@ -887,6 +923,32 @@ function ChatSession({
           }
         },
       });
+      let reconnectAttempt = 0;
+      while (!controller.signal.aborted) {
+        try {
+          if (!stream) {
+            stream = await browserMastraClient.observeChat({
+              agentId,
+              runId,
+              offset: eventOffset,
+              signal: controller.signal,
+            });
+          }
+          await consumeStream();
+          break;
+        } catch (streamError) {
+          stream = null;
+          if (
+            controller.signal.aborted ||
+            reconnectAttempt >= MAX_STREAM_RECONNECT_ATTEMPTS
+          ) {
+            throw streamError;
+          }
+          await waitForStreamReconnect(controller.signal, reconnectAttempt);
+          if (controller.signal.aborted) break;
+          reconnectAttempt += 1;
+        }
+      }
       updateChatSession(threadId, (current) => ({
         ...current,
         status: "ready",
@@ -1801,7 +1863,7 @@ export function ChatApp({ mods = [], plugins = [], user }: ChatAppProps) {
         </div>
       )}
       <section className="relative flex min-w-0 flex-1 flex-col">
-        <header className="group relative flex h-[calc(3rem+env(safe-area-inset-top))] shrink-0 items-center gap-2 border-b border-border/50 px-3 pt-[env(safe-area-inset-top)] md:h-12 md:px-4 md:pt-0">
+        <header className="chat-app-header group relative flex h-[calc(3rem+env(safe-area-inset-top))] shrink-0 items-center gap-2 border-b border-border/50 px-3 pt-[env(safe-area-inset-top)] md:h-12 md:px-4 md:pt-0">
           {!sidebarOpen && (
             <Button aria-label="Open sidebar" className="hidden md:inline-flex" onClick={() => setSidebarOpen(true)} size="icon-sm" variant="ghost">
               <PanelLeftOpen className="size-4" />

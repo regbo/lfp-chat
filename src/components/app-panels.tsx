@@ -39,6 +39,11 @@ import {
 } from "@/lib/tool-catalog";
 import type { ChatAppToolContribution } from "@/lib/chat-app-plugins";
 import {
+  readThemePreference,
+  saveThemePreference,
+  type ThemePreference,
+} from "@/lib/theme-preference";
+import {
   Calculator,
   Bell,
   Blocks,
@@ -51,6 +56,7 @@ import {
   LoaderCircle,
   ListTodo,
   MessageSquare,
+  MoonStar,
   Pause,
   Pencil,
   Play,
@@ -826,6 +832,20 @@ export function SettingsPanel({
   const [notificationBusy, setNotificationBusy] = useState(false);
   const [notificationError, setNotificationError] = useState("");
   const [pushPublicKey, setPushPublicKey] = useState("");
+  const [themePreference, setThemePreference] = useState<ThemePreference>("auto");
+
+  useEffect(() => {
+    const timer = window.setTimeout(
+      () => setThemePreference(readThemePreference()),
+      0,
+    );
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  const changeTheme = (preference: ThemePreference) => {
+    setThemePreference(preference);
+    saveThemePreference(preference);
+  };
 
   useEffect(() => {
     let active = true;
@@ -911,12 +931,12 @@ export function SettingsPanel({
   return (
     <PanelShell
       title="Settings"
-      description="Choose defaults for new chats and scheduled jobs."
+      description="Choose defaults and manage app preferences."
     >
       <div className="rounded-2xl border p-4">
         <p className="chat-ui-emphasis">Default intelligence</p>
         <p className="chat-ui-text mt-1 text-muted-foreground">
-          New schedules inherit this selection unless you choose another model for the job.
+          New chats and schedules use this selection unless you choose another model.
         </p>
         <div className="mt-4">
           <ModelSelectionFields
@@ -927,19 +947,38 @@ export function SettingsPanel({
           />
         </div>
       </div>
-      <div className="mt-3 flex items-start gap-3 rounded-2xl border p-4">
-        <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-muted"><Bell className="size-4" /></span>
+      <div className="mt-3 flex items-center gap-3 rounded-2xl border p-4">
+        <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-muted"><MoonStar className="size-4" /></span>
         <div className="min-w-0 flex-1">
-          <p className="chat-ui-emphasis">Schedule notifications</p>
-          <p className="chat-ui-text mt-1 text-muted-foreground">
-            {notificationState === "install" ? "Add LFP Chat to your iPhone or iPad Home Screen, then enable notifications here." : notificationState === "unconfigured" ? "Web Push keys have not been configured on this server." : notificationState === "unsupported" ? "This browser does not support Web Push notifications." : notificationState === "on" ? "This device will be notified when scheduled work finishes." : "Get an alert when scheduled work finishes."}
-          </p>
-          {notificationError && <p className="chat-meta-text mt-2 text-destructive">{notificationError}</p>}
+          <p className="chat-ui-emphasis">Appearance</p>
+          <p className="chat-ui-text mt-1 text-muted-foreground">Use the system setting or choose a fixed theme.</p>
         </div>
-        {(["off", "on"] as const).includes(notificationState as "off" | "on") && (
-          <Button disabled={notificationBusy || !pushPublicKey} onClick={() => void toggleNotifications()} size="sm" variant={notificationState === "on" ? "outline" : "default"}>{notificationBusy && <LoaderCircle className="animate-spin" />}{notificationState === "on" ? "Disable" : "Enable"}</Button>
-        )}
+        <Select value={themePreference} onValueChange={(value) => changeTheme(value as ThemePreference)}>
+          <SelectTrigger aria-label="Appearance" className="w-28">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent align="end">
+            <SelectItem value="auto">Auto</SelectItem>
+            <SelectItem value="light">Light</SelectItem>
+            <SelectItem value="dark">Dark</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
+      {notificationState !== "loading" && notificationState !== "unsupported" && (
+        <div className="mt-3 flex items-start gap-3 rounded-2xl border p-4">
+          <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-muted"><Bell className="size-4" /></span>
+          <div className="min-w-0 flex-1">
+            <p className="chat-ui-emphasis">Notifications</p>
+            <p className="chat-ui-text mt-1 text-muted-foreground">
+              {notificationState === "install" ? "Add LFP Chat to your iPhone or iPad Home Screen, then enable notifications here." : notificationState === "unconfigured" ? "Web Push keys have not been configured on this server." : notificationState === "on" ? "This device can receive notifications from LFP Chat." : "Enable alerts for completed background work and important updates."}
+            </p>
+            {notificationError && <p className="chat-meta-text mt-2 text-destructive">{notificationError}</p>}
+          </div>
+          {(["off", "on"] as const).includes(notificationState as "off" | "on") && (
+            <Button disabled={notificationBusy || !pushPublicKey} onClick={() => void toggleNotifications()} size="sm" variant={notificationState === "on" ? "outline" : "default"}>{notificationBusy && <LoaderCircle className="animate-spin" />}{notificationState === "on" ? "Disable" : "Enable"}</Button>
+          )}
+        </div>
+      )}
       {extensions?.map((extension, index) => (
         <div className="mt-3" key={index}>{extension}</div>
       ))}

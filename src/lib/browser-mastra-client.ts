@@ -14,7 +14,7 @@ export type MastraStreamResponse = Response & {
   }) => Promise<void>;
 };
 
-async function processMastraStream(
+export async function processMastraStream(
   stream: ReadableStream<Uint8Array>,
   signal: AbortSignal,
   onChunk: (chunk: MastraStreamChunk) => void | Promise<void>,
@@ -22,6 +22,7 @@ async function processMastraStream(
   const reader = stream.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
+  let completed = false;
   const abort = () => void reader.cancel();
   signal.addEventListener("abort", abort, { once: true });
 
@@ -36,9 +37,17 @@ async function processMastraStream(
         const line = event.split("\n").find((part) => part.startsWith("data: "));
         if (!line) continue;
         const data = line.slice(6);
-        if (data === "[DONE]") return;
-        await onChunk(JSON.parse(data) as MastraStreamChunk);
+        if (data === "[DONE]") {
+          completed = true;
+          return;
+        }
+        const chunk = JSON.parse(data) as MastraStreamChunk;
+        if (chunk.type === "finish") completed = true;
+        await onChunk(chunk);
       }
+    }
+    if (!signal.aborted && !completed) {
+      throw new Error("Chat stream disconnected before the run finished.");
     }
   } finally {
     signal.removeEventListener("abort", abort);
@@ -72,6 +81,34 @@ class LfpMastraClient extends MastraClient {
           memory: { thread: options.threadId, resource: options.resourceId },
           requestContext: options.requestContext,
         }),
+        signal: options.signal,
+      },
+    );
+    if (!response.ok) {
+      const detail = await response.text();
+      throw new Error(detail || `Mastra returned HTTP ${response.status}.`);
+    }
+    if (!response.body) throw new Error("Mastra returned an empty stream.");
+
+    const streamResponse = response as MastraStreamResponse;
+    streamResponse.processDataStream = ({ onChunk }) =>
+      processMastraStream(response.body!, options.signal, onChunk);
+    return streamResponse;
+  }
+
+  /** Reconnects to Mastra's retained event stream after a browser suspension. */
+  async observeChat(options: {
+    agentId: string;
+    runId: string;
+    offset: number;
+    signal: AbortSignal;
+  }): Promise<MastraStreamResponse> {
+    const response = await fetch(
+      `/api/mastra/agents/${encodeURIComponent(options.agentId)}/observe`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ runId: options.runId, offset: options.offset }),
         signal: options.signal,
       },
     );
