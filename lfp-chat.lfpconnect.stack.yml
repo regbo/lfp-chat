@@ -1,0 +1,202 @@
+version: "3.8"
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: ${LOG_MAX_SIZE:-10m}
+    max-file: ${LOG_MAX_FILES:-5}
+
+x-deploy: &default-deploy
+  replicas: 1
+  placement:
+    constraints:
+      - node.role == worker
+  update_config:
+    parallelism: 1
+    order: start-first
+    failure_action: rollback
+  restart_policy:
+    condition: on-failure
+    delay: 5s
+
+services:
+  web:
+    image: ${LFP_CHAT_WEB_IMAGE?Variable not set}
+    command: ["node", "server.js"]
+    environment:
+      HOSTNAME: 0.0.0.0
+      PORT: "3000"
+      MASTRA_API_URL: http://mastra:4111
+      WEB_ORIGIN: https://home.${DOMAIN?Variable not set}
+      CODEX_AGENT_ENABLED: "false"
+      DEPENDENCY_REFRESH: ${DEPENDENCY_REFRESH:-true}
+      # Traefik's Authentik middleware authenticates the request and forwards
+      # the immutable user id. The app hashes it into its durable resource id.
+      USER_SCOPE_MODE: ${LFP_CHAT_USER_SCOPE_MODE:-header}
+      USER_SCOPE_HEADER: ${LFP_CHAT_USER_SCOPE_HEADER:-x-authentik-uid}
+      USER_SCOPE_NAME_HEADER: ${LFP_CHAT_USER_SCOPE_NAME_HEADER:-x-authentik-name}
+      USER_SCOPE_EMAIL_HEADER: ${LFP_CHAT_USER_SCOPE_EMAIL_HEADER:-x-authentik-email}
+      VIKUNJA_API_URL: http://vikunja_app:3456
+      VIKUNJA_API_TOKEN_FILE: /run/secrets/vikunja_automation_token
+      VIKUNJA_PROJECT_ID: ${VIKUNJA_PROJECT_ID?Variable not set}
+      DATABASE_URL_FILE: /run/secrets/lfp_chat_database_url
+      FAMILY_CONTEXT_API_URL: http://lfp-home-context-api:8001
+      FAMILY_CONTEXT_API_KEY_FILE: /run/secrets/lfp_home_context_api_key
+      WEB_PUSH_SUBJECT: mailto:admin@lfpconnect.io
+      WEB_PUSH_PUBLIC_KEY: ${LFP_CHAT_WEB_PUSH_PUBLIC_KEY?Variable not set}
+      WEB_PUSH_PRIVATE_KEY_FILE: /run/secrets/lfp_chat_web_push_private_key
+    secrets:
+      - vikunja_automation_token
+      - lfp_chat_database_url
+      - lfp_home_context_api_key
+      - lfp_chat_web_push_private_key
+    networks:
+      - lfp-chat
+      - traefik-public
+      - vikunja
+      - stolon
+      - lfp-home-context
+    healthcheck:
+      test: ["CMD", "bun", "-e", "await fetch('http://127.0.0.1:3000').then(r => { if (!r.ok) throw new Error(String(r.status)) })"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 45s
+    logging: *default-logging
+    deploy:
+      <<: *default-deploy
+      resources:
+        limits:
+          memory: ${LFP_CHAT_WEB_MEMORY_LIMIT:-768M}
+        reservations:
+          memory: ${LFP_CHAT_WEB_MEMORY_RESERVATION:-192M}
+      labels:
+        - traefik.enable=true
+        - traefik.docker.network=${TRAEFIK_NETWORK:-traefik-public}
+        - traefik.http.routers.lfp-chat.rule=Host(`home.${DOMAIN?Variable not set}`)
+        - traefik.http.routers.lfp-chat.entrypoints=${TRAEFIK_TLS_ENTRYPOINT:-tcps}
+        - traefik.http.routers.lfp-chat.tls=true
+        - traefik.http.routers.lfp-chat.middlewares=authentik@docker
+        - traefik.http.services.lfp-chat.loadbalancer.server.port=3000
+        # Compatibility only: legacy tabs are redirected to the canonical Home host.
+        - traefik.http.routers.lfp-chat-legacy.rule=Host(`chat.${DOMAIN?Variable not set}`)
+        - traefik.http.routers.lfp-chat-legacy.entrypoints=${TRAEFIK_TLS_ENTRYPOINT:-tcps}
+        - traefik.http.routers.lfp-chat-legacy.tls=true
+        - traefik.http.routers.lfp-chat-legacy.middlewares=lfp-chat-legacy-redirect
+        - traefik.http.routers.lfp-chat-legacy.service=lfp-chat
+        - traefik.http.middlewares.lfp-chat-legacy-redirect.redirectregex.regex=^https://chat\.${DOMAIN?Variable not set}/(.*)
+        - traefik.http.middlewares.lfp-chat-legacy-redirect.redirectregex.replacement=https://home.${DOMAIN?Variable not set}/$${1}
+        - traefik.http.middlewares.lfp-chat-legacy-redirect.redirectregex.permanent=true
+
+  mastra:
+    image: ${LFP_CHAT_MASTRA_IMAGE?Variable not set}
+    command: ["bun", "dist/server/index.js"]
+    environment:
+      MASTRA_HOST: 0.0.0.0
+      MASTRA_PORT: "4111"
+      WEB_ORIGIN: https://home.${DOMAIN?Variable not set}
+      MASTRA_API_URL: http://mastra:4111
+      DATABASE_URL_FILE: /run/secrets/lfp_chat_database_url
+      FAMILY_DATABASE_URL_FILE: /run/secrets/lfp_chat_family_database_url
+      GRAPHITI_API_URL: http://graphiti-api:8000
+      FAMILY_GRAPH_GROUP_ID: ${LFP_CHAT_GRAPH_GROUP_ID:-family-home}
+      FAMILY_EMBEDDING_BASE_URL: http://ollama-cpu-auth-bridge:8080/v1
+      FAMILY_EMBEDDING_MODEL: ${LFP_CHAT_EMBEDDING_MODEL:-qwen3-embedding:0.6b}
+      FAMILY_EMBEDDING_DIMENSIONS: ${LFP_HOME_EMBEDDING_DIMENSIONS:-1024}
+      # Keep graph degradation below the agent stream's idle reset window.
+      FAMILY_GRAPH_TIMEOUT_MS: ${FAMILY_GRAPH_TIMEOUT_MS:-8000}
+      FAMILY_SQL_STATEMENT_TIMEOUT_MS: ${FAMILY_SQL_STATEMENT_TIMEOUT_MS:-60000}
+      FAMILY_SQL_CONNECTION_TIMEOUT_MS: ${FAMILY_SQL_CONNECTION_TIMEOUT_MS:-15000}
+      MASTRA_AGENT_MAX_STEPS: ${MASTRA_AGENT_MAX_STEPS:-16}
+      FAMILY_CONTEXT_API_URL: http://lfp-home-context-api:8001
+      FAMILY_CONTEXT_API_KEY_FILE: /run/secrets/lfp_home_context_api_key
+      OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
+      MODEL_PROVIDER: ${LFP_CHAT_MODEL_PROVIDER:-openai}
+      MODEL_NAME: ${LFP_CHAT_MODEL_NAME:-gpt-5.6-luna}
+      REASONING_EFFORT: ${LFP_CHAT_REASONING_EFFORT:-medium}
+      CODEX_AGENT_ENABLED: "false"
+      DEPENDENCY_REFRESH: ${DEPENDENCY_REFRESH:-true}
+      VIKUNJA_API_URL: http://vikunja_app:3456
+      VIKUNJA_API_TOKEN_FILE: /run/secrets/vikunja_automation_token
+      VIKUNJA_PROJECT_ID: ${VIKUNJA_PROJECT_ID?Variable not set}
+      WEB_PUSH_SUBJECT: mailto:admin@lfpconnect.io
+      WEB_PUSH_PUBLIC_KEY: ${LFP_CHAT_WEB_PUSH_PUBLIC_KEY?Variable not set}
+      WEB_PUSH_PRIVATE_KEY_FILE: /run/secrets/lfp_chat_web_push_private_key
+    secrets:
+      - lfp_chat_database_url
+      - lfp_chat_family_database_url
+      - openai_api_key
+      - lfp_home_context_api_key
+      - vikunja_automation_token
+      - lfp_chat_web_push_private_key
+    networks:
+      - lfp-chat
+      - stolon
+      - graphiti
+      - lfp-home-context
+      # No Traefik labels are attached to Mastra; this supplies outbound
+      # HTTPS for the OpenAI Responses API without publishing port 4111.
+      - traefik-public
+      - vikunja
+    healthcheck:
+      test: ["CMD", "bun", "-e", "await fetch('http://127.0.0.1:4111/health').then(r => { if (!r.ok) throw new Error(String(r.status)) })"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 45s
+    logging: *default-logging
+    deploy:
+      <<: *default-deploy
+      # A failed previous task must not block replacement of the Mastra API.
+      # Stop-first also avoids overlapping two workers against shared state.
+      update_config:
+        parallelism: 1
+        order: stop-first
+        failure_action: pause
+      resources:
+        limits:
+          memory: ${LFP_CHAT_MASTRA_MEMORY_LIMIT:-1G}
+        reservations:
+          memory: ${LFP_CHAT_MASTRA_MEMORY_RESERVATION:-256M}
+
+secrets:
+  lfp_chat_database_url:
+    external: true
+    name: ${LFP_CHAT_DATABASE_URL_SECRET:-lfp_chat_database_url_v1}
+  lfp_chat_family_database_url:
+    external: true
+    name: ${LFP_CHAT_FAMILY_DATABASE_URL_SECRET:-lfp_chat_family_database_url_v1}
+  openai_api_key:
+    external: true
+    name: ${OPENAI_API_KEY_SECRET:-openai_api_key_v2}
+  lfp_home_context_api_key:
+    external: true
+    name: ${LFP_HOME_CONTEXT_API_KEY_SECRET:-lfp_home_context_api_key_v1}
+  vikunja_automation_token:
+    external: true
+    name: ${VIKUNJA_AUTOMATION_TOKEN_SECRET?Variable not set}
+  lfp_chat_web_push_private_key:
+    external: true
+    name: ${LFP_CHAT_WEB_PUSH_PRIVATE_KEY_SECRET?Variable not set}
+
+networks:
+  lfp-chat:
+    driver: overlay
+    driver_opts:
+      encrypted: "true"
+    internal: true
+  stolon:
+    external: true
+    name: ${STOLON_NETWORK:-stolon_stolon-db}
+  graphiti:
+    external: true
+    name: ${GRAPHITI_NETWORK:-graphiti_graphiti}
+  lfp-home-context:
+    external: true
+    name: ${LFP_HOME_CONTEXT_NETWORK:-lfp-home_context}
+  traefik-public:
+    external: true
+    name: ${TRAEFIK_NETWORK:-traefik-public}
+  vikunja:
+    external: true
+    name: ${VIKUNJA_NETWORK:-vikunja_api}
