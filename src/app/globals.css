@@ -765,8 +765,12 @@
   padding-inline: 0.5rem;
   border-color: color-mix(in oklab, var(--border) 65%, transparent);
   border-radius: var(--composer-radius);
-  background: var(--background);
+  background: var(--background) !important;
   box-shadow: var(--chat-composer-shadow);
+  isolation: isolate;
+  opacity: 1;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
 }
 
 .chat-composer [data-slot="input-group-control"] {
@@ -938,7 +942,7 @@
     min-height: 3.25rem;
     padding: var(--mobile-composer-padding-block) var(--mobile-composer-padding-inline);
     border-radius: 1.5rem;
-    background: var(--card);
+    background: var(--background) !important;
   }
 
   .chat-composer [data-attachments] {
