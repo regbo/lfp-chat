@@ -153,7 +153,10 @@ function WidgetCard({
       <Button aria-label="Refresh widget" disabled={running} onClick={() => void run(widget, true)} size="icon-sm" variant="ghost">{running ? <LoaderCircle className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}</Button>
       <Button aria-label="Archive widget" onClick={() => void archiveWidget(widget, true)} size="icon-sm" variant="ghost"><Archive className="size-4" /></Button>
     </header>
-    <div className="dashboard-widget-content min-h-0 flex-1 overflow-auto">{widget.lastError ? <p className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive">{widget.lastError}</p> : <StyledWidgetContent widget={widget} />}</div>
+    <div className={cn(
+      "dashboard-widget-content min-h-0 flex-1 overflow-auto",
+      widget.output?.kind === "chart" && "min-h-64 lg:min-h-0",
+    )}>{widget.lastError ? <p className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive">{widget.lastError}</p> : <StyledWidgetContent widget={widget} />}</div>
   </section>;
 }
 

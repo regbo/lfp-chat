@@ -38,6 +38,8 @@ COPY --chown=node:node --from=build /app/.next/static ./.next/static
 COPY --chown=node:node --from=build /app/public ./public
 COPY --chown=node:node --from=build /app/dist/server ./dist/server
 COPY --chown=node:node --from=build /app/node_modules/@pydantic ./node_modules/@pydantic
+# got-scraping bundles header-generator code, but it loads browser header data at runtime.
+COPY --chown=node:node --from=build /app/node_modules/header-generator/data_files ./node_modules/header-generator/data_files
 COPY --chown=node:node --from=build /app/scripts/start-container.ts ./scripts/start-container.ts
 USER node
 EXPOSE 3000 4111

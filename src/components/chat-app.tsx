@@ -2227,7 +2227,7 @@ export function ChatApp({ branding = DEFAULT_APP_BRANDING, mods = [], plugins = 
   }, [renderThreadActions, runningThreadIds]);
 
   const sidebar = (
-    <aside className="app-sidebar flex h-full w-[244px] shrink-0 flex-col bg-sidebar px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-[max(0.4rem,env(safe-area-inset-top))] text-sidebar-foreground">
+    <aside className="app-sidebar flex h-full w-[244px] shrink-0 flex-col overflow-y-auto overscroll-contain bg-sidebar px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-[max(0.4rem,env(safe-area-inset-top))] text-sidebar-foreground">
       <div className="mb-1.5 flex items-center justify-between px-1">
         <button aria-label={`${branding.fullName}: new chat`} className="chat-ui-emphasis flex items-baseline gap-1 rounded-lg px-2 py-1.5 hover:bg-sidebar-accent" onClick={newChat} type="button">
           <BrandLockup branding={branding} />
@@ -2281,7 +2281,7 @@ export function ChatApp({ branding = DEFAULT_APP_BRANDING, mods = [], plugins = 
           <Settings className="size-[18px]" /> Settings
         </Link>
       </nav>
-      <div className="mt-4 min-h-0 flex-1 overflow-y-auto">
+      <div className="mt-4">
         {pinnedThreads.length > 0 && (
           <>
             <p className="chat-meta-text px-2 pb-1 font-medium text-muted-foreground/80">Pinned</p>
@@ -2337,7 +2337,7 @@ export function ChatApp({ branding = DEFAULT_APP_BRANDING, mods = [], plugins = 
           </SidebarThreadGroup>
         )}
       </div>
-      <div className="mt-1.5 flex items-center gap-2.5 rounded-xl p-1.5 hover:bg-sidebar-accent">
+      <div className="mt-auto flex items-center gap-2.5 rounded-xl p-1.5 hover:bg-sidebar-accent">
         <span className="chat-meta-text grid size-7 place-items-center rounded-full bg-foreground font-semibold text-background">R</span>
         <div className="min-w-0 flex-1">
           <p className="chat-ui-text truncate font-medium">{user?.displayName || "Local user"}</p>

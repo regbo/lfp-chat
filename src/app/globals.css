@@ -985,6 +985,8 @@
     width: min(82vw, 20rem);
     padding-inline: 1rem;
     padding-top: max(1.25rem, env(safe-area-inset-top));
+    touch-action: pan-y;
+    -webkit-overflow-scrolling: touch;
   }
 
   .app-sidebar > :first-child {
@@ -1070,11 +1072,13 @@
   }
 
   .chat-composer [data-slot="input-group"] {
+    width: 100%;
+    max-width: 100%;
     display: grid;
     grid-template-columns:
       var(--control-height-md)
       minmax(0, 1fr)
-      minmax(6rem, 9rem)
+      minmax(4.75rem, 6.5rem)
       var(--control-height-md)
       var(--composer-submit-size);
     grid-template-rows: var(--composer-submit-size);
