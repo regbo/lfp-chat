@@ -1,5 +1,16 @@
 import type { ReactNode } from "react";
 
+import type { ReasoningEffort } from "@/lib/model-catalog";
+
+export type DedicatedToolModelConfig = {
+  /** Model-router id used when this device has not saved a preference. */
+  defaultModelId: string;
+  /** Tool-specific reasoning default. Use none for low-latency transforms. */
+  defaultReasoningEffort?: ReasoningEffort | null;
+  /** Optional copy shown under this tool in Settings. */
+  description?: string;
+};
+
 /** A self-contained view contributed to ChatApp's primary navigation. */
 export type ChatAppPlugin = {
   /** Stable identity used to preserve the selected view across renders. */
@@ -22,6 +33,8 @@ export type ChatAppToolContribution = {
   icon?: ReactNode;
   defaultEnabled?: boolean;
   dangerous?: boolean;
+  /** Adds an isolated, reusable model picker for this tool in Settings. */
+  dedicatedModel?: DedicatedToolModelConfig;
 };
 
 /** App-wide extension bundle supplied without patching ChatApp internals. */
@@ -93,6 +106,16 @@ export function validateChatAppMods(mods: readonly ChatAppMod[]) {
     for (const tool of mod.tools ?? []) {
       if (!tool.id.trim() || !tool.title.trim() || !tool.description.trim()) {
         throw new Error(`ChatApp mod "${mod.id}" has an incomplete tool contribution.`);
+      }
+      if (
+        tool.dedicatedModel &&
+        !/^[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._:-]*$/i.test(
+          tool.dedicatedModel.defaultModelId,
+        )
+      ) {
+        throw new Error(
+          `ChatApp tool "${tool.id}" has an invalid dedicated model id.`,
+        );
       }
       if (toolIds.has(tool.id)) {
         throw new Error(`ChatApp tool id "${tool.id}" is registered more than once.`);

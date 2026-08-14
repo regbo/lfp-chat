@@ -30,6 +30,18 @@ describe("validateChatAppMods", () => {
       { id: "work", tools: [{ id: "assign", title: "Assign", description: "Assign." }] },
     ])).toThrow('ChatApp tool id "assign" is registered more than once.');
   });
+
+  test("validates dedicated tool model ids", () => {
+    expect(() => validateChatAppMods([{
+      id: "home",
+      tools: [{
+        id: "chart",
+        title: "Chart",
+        description: "Render a chart.",
+        dedicatedModel: { defaultModelId: "not a model" },
+      }],
+    }])).toThrow('ChatApp tool "chart" has an invalid dedicated model id.');
+  });
 });
 
 describe("validateChatAppPlugins", () => {

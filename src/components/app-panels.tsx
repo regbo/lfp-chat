@@ -34,6 +34,7 @@ import {
 } from "@/lib/model-catalog";
 import type { ThreadSummary } from "@/lib/thread-state";
 import {
+  orderToolsWithCodeModeLast,
   toolCatalog,
   type SelectableToolId,
 } from "@/lib/tool-catalog";
@@ -324,11 +325,13 @@ function modelSelectionLabel(
 }
 
 function ModelSelectionFields({
+  allowAgents = true,
   catalog,
   modelLabel = "Job model",
   onChange,
   selection,
 }: {
+  allowAgents?: boolean;
   catalog: ModelCatalogResponse | null;
   modelLabel?: string;
   onChange: (selection: ModelSelection) => void;
@@ -341,7 +344,7 @@ function ModelSelectionFields({
     (candidate) => candidate.id === selection.modelId,
   );
   const targetValue =
-    selection.agentId === DEFAULT_CHAT_AGENT_ID
+    !allowAgents || selection.agentId === DEFAULT_CHAT_AGENT_ID
       ? `model:${selection.modelId}`
       : `agent:${selection.agentId}`;
 
@@ -376,7 +379,7 @@ function ModelSelectionFields({
             <SelectValue>{modelSelectionLabel(catalog, selection)}</SelectValue>
           </SelectTrigger>
           <SelectContent>
-            {catalog.agents.length > 0 && (
+            {allowAgents && catalog.agents.length > 0 && (
               <SelectGroup>
                 <SelectLabel>Agents</SelectLabel>
                 {catalog.agents.map((agent) => (
@@ -429,6 +432,55 @@ function ModelSelectionFields({
             </Select>
           </div>
         )}
+    </div>
+  );
+}
+
+export type DedicatedToolModelSetting = {
+  toolId: string;
+  title: string;
+  description: string;
+  selection: ModelSelection;
+};
+
+/** Shared settings surface for tools that run a model independently of chat. */
+export function DedicatedToolModelSettings({
+  catalog,
+  onChange,
+  settings,
+}: {
+  catalog: ModelCatalogResponse | null;
+  onChange: (toolId: string, selection: ModelSelection) => void;
+  settings: readonly DedicatedToolModelSetting[];
+}) {
+  if (settings.length === 0) return null;
+  return (
+    <div className="mt-3 overflow-hidden rounded-2xl border">
+      <div className="border-b px-4 py-3">
+        <p className="chat-ui-emphasis">Tool models</p>
+        <p className="chat-ui-text mt-1 text-muted-foreground">
+          These choices apply only inside the named tool.
+        </p>
+      </div>
+      <div className="divide-y">
+        {settings.map((setting) => (
+          <div className="p-4" key={setting.toolId}>
+            <div className="mb-3">
+              <p className="chat-ui-emphasis">{setting.title}</p>
+              <p className="chat-ui-text mt-1 text-muted-foreground">
+                {setting.description}
+              </p>
+            </div>
+            <ModelSelectionFields
+              allowAgents={false}
+              catalog={catalog}
+              modelLabel={`${setting.title} model`}
+              onChange={(selection) => onChange(setting.toolId, selection)}
+              selection={setting.selection}
+            />
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -777,7 +829,10 @@ export function ToolsPanel({
   enabledToolIds: string[];
   onToggle: (toolId: string) => void;
 }) {
-  const tools = [...toolCatalog, ...(contributedTools ?? [])];
+  const tools = orderToolsWithCodeModeLast([
+    ...toolCatalog,
+    ...(contributedTools ?? []),
+  ]);
   return (
     <PanelShell title="Tools" description="Choose which capabilities are available to new chat runs and schedules.">
       <div className="space-y-2">
@@ -816,16 +871,20 @@ export function ToolsPanel({
 }
 
 export function SettingsPanel({
+  dedicatedToolModels = [],
   extensions,
   modelCatalog,
   modelSelection,
   onModelSelectionChange,
+  onToolModelSelectionChange,
   resourceId,
 }: {
+  dedicatedToolModels?: readonly DedicatedToolModelSetting[];
   extensions?: readonly React.ReactNode[];
   modelCatalog: ModelCatalogResponse | null;
   modelSelection: ModelSelection | null;
   onModelSelectionChange: (selection: ModelSelection) => void;
+  onToolModelSelectionChange?: (toolId: string, selection: ModelSelection) => void;
   resourceId: string;
 }) {
   const [notificationState, setNotificationState] = useState<
@@ -949,6 +1008,13 @@ export function SettingsPanel({
           />
         </div>
       </div>
+      <DedicatedToolModelSettings
+        catalog={modelCatalog}
+        onChange={(toolId, selection) =>
+          onToolModelSelectionChange?.(toolId, selection)
+        }
+        settings={dedicatedToolModels}
+      />
       <div className="settings-row mt-3">
         <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-muted"><MoonStar className="size-4" /></span>
         <div className="min-w-0">

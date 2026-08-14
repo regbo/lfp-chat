@@ -66,6 +66,7 @@ import {
   SearchPanel,
   SettingsPanel,
   ToolsPanel,
+  type DedicatedToolModelSetting,
 } from "@/components/app-panels";
 import {
   getRunningToolLabel,
@@ -95,6 +96,7 @@ import {
   MODEL_CONTEXT_KEY,
   normalizeModelSelection,
   REASONING_CONTEXT_KEY,
+  TOOL_MODEL_SELECTIONS_CONTEXT_KEY,
   type ModelCatalogResponse,
   type ModelSelection,
 } from "@/lib/model-catalog";
@@ -383,6 +385,7 @@ function viewFromPathname(
   return plugin ? pluginView(plugin.id) : "chat";
 }
 const THREAD_PAGE_SIZE = 6;
+const TOOL_MODEL_SELECTIONS_STORAGE_KEY = "lfp-chat-tool-model-selections";
 
 function ensureRemoteBrowserCompatibility() {
   if (typeof globalThis.crypto?.randomUUID === "function") return;
@@ -671,7 +674,6 @@ function ModelSelector({
           showCloseButton={false}
           viewportClassName="place-items-end sm:place-items-center"
         >
-          <div aria-hidden className="mx-auto h-1 w-10 rounded-full bg-muted-foreground/45 sm:hidden" />
           <DialogHeader className="items-center gap-0.5 pb-2 text-center">
             <DialogTitle className="w-full text-center text-base">Advanced</DialogTitle>
             <DialogDescription className="sr-only">
@@ -877,8 +879,10 @@ type ChatSessionProps = {
   modelSelection: ModelSelection | null;
   onModelSelectionChange: (selection: ModelSelection) => void;
   enabledToolIds: string[];
+  toolModelSelections: Record<string, ModelSelection>;
   recentSuggestionTitles: readonly string[];
 };
+
 function ChatSession({
   threadId,
   resourceId,
@@ -886,6 +890,7 @@ function ChatSession({
   modelCatalog,
   modelSelection,
   enabledToolIds,
+  toolModelSelections,
   recentSuggestionTitles,
   onModelSelectionChange,
   onConversationChange,
@@ -982,6 +987,7 @@ function ChatSession({
     try {
       const requestContext = {
         [TOOLS_CONTEXT_KEY]: enabledToolIds,
+        [TOOL_MODEL_SELECTIONS_CONTEXT_KEY]: toolModelSelections,
         [SCHEDULE_TIMEZONE_CONTEXT_KEY]:
           Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
         ...(modelSelection?.agentId === DEFAULT_CHAT_AGENT_ID &&
@@ -1123,7 +1129,7 @@ function ChatSession({
       window.clearTimeout(inactivityTimer);
       window.setTimeout(onThreadListChange, 500);
     }
-  }, [enabledToolIds, modelSelection, onConversationChange, onThreadListChange, resourceId, threadId]);
+  }, [enabledToolIds, modelSelection, onConversationChange, onThreadListChange, resourceId, threadId, toolModelSelections]);
 
   const stop = useCallback(() => {
     getChatSession(threadId)?.abortController?.abort();
@@ -1506,6 +1512,20 @@ export function ChatApp({ mods = [], plugins = [], user }: ChatAppProps) {
     () => registeredMods.flatMap((mod) => mod.settings ? [mod.settings] : []),
     [registeredMods],
   );
+  const dedicatedModelTools = useMemo(
+    () => contributedTools.flatMap((tool) =>
+      tool.dedicatedModel
+        ? [{
+            toolId: tool.id,
+            title: tool.title,
+            description:
+              tool.dedicatedModel.description ?? tool.description,
+            config: tool.dedicatedModel,
+          }]
+        : [],
+    ),
+    [contributedTools],
+  );
   const initialThreadId = threadIdFromPathname(pathname);
   const activeView = useMemo(
     () => viewFromPathname(pathname, registeredPlugins),
@@ -1527,6 +1547,9 @@ export function ChatApp({ mods = [], plugins = [], user }: ChatAppProps) {
   );
   const [modelCatalog, setModelCatalog] = useState<ModelCatalogResponse | null>(null);
   const [modelSelection, setModelSelection] = useState<ModelSelection | null>(null);
+  const [toolModelSelections, setToolModelSelections] = useState<
+    Record<string, ModelSelection>
+  >({});
   const [renamingThread, setRenamingThread] = useState<ThreadSummary | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
   const openRequestId = useRef(0);
@@ -1561,6 +1584,40 @@ export function ChatApp({ mods = [], plugins = [], user }: ChatAppProps) {
       return next;
     });
   }, []);
+
+  useEffect(() => {
+    if (!modelCatalog) return;
+    const timer = window.setTimeout(() => {
+      let stored: Record<string, Partial<ModelSelection>> = {};
+      try {
+        const value = window.localStorage.getItem(
+          TOOL_MODEL_SELECTIONS_STORAGE_KEY,
+        );
+        if (value) {
+          stored = JSON.parse(value) as Record<
+            string,
+            Partial<ModelSelection>
+          >;
+        }
+      } catch {
+        // Restricted browsers use each tool's declared model default.
+      }
+      setToolModelSelections(Object.fromEntries(
+        dedicatedModelTools.map(({ config, toolId }) => [
+          toolId,
+          normalizeModelSelection(modelCatalog, {
+            agentId: DEFAULT_CHAT_AGENT_ID,
+            modelId: stored[toolId]?.modelId ?? config.defaultModelId,
+            reasoningEffort:
+              stored[toolId]?.reasoningEffort ??
+              config.defaultReasoningEffort ??
+              null,
+          }),
+        ]),
+      ));
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [dedicatedModelTools, modelCatalog]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1661,6 +1718,34 @@ export function ChatApp({ mods = [], plugins = [], user }: ChatAppProps) {
       }
     },
     [modelCatalog],
+  );
+
+  const selectToolModel = useCallback(
+    (toolId: string, selection: ModelSelection) => {
+      if (
+        !modelCatalog ||
+        !dedicatedModelTools.some((tool) => tool.toolId === toolId)
+      ) {
+        return;
+      }
+      const normalized = normalizeModelSelection(modelCatalog, {
+        ...selection,
+        agentId: DEFAULT_CHAT_AGENT_ID,
+      });
+      setToolModelSelections((current) => {
+        const next = { ...current, [toolId]: normalized };
+        try {
+          window.localStorage.setItem(
+            TOOL_MODEL_SELECTIONS_STORAGE_KEY,
+            JSON.stringify(next),
+          );
+        } catch {
+          // Selection remains active for this browser session.
+        }
+        return next;
+      });
+    },
+    [dedicatedModelTools, modelCatalog],
   );
 
   useEffect(() => {
@@ -1877,6 +1962,20 @@ export function ChatApp({ mods = [], plugins = [], user }: ChatAppProps) {
   const recentSuggestionTitles = useMemo(
     () => recentThreads.map((thread) => thread.title || "").filter(Boolean).slice(0, 8),
     [recentThreads],
+  );
+  const dedicatedToolModelSettings = useMemo(
+    () => dedicatedModelTools.flatMap((tool) => {
+      const selection = toolModelSelections[tool.toolId];
+      return selection
+        ? [{
+            toolId: tool.toolId,
+            title: tool.title,
+            description: tool.description,
+            selection,
+          } satisfies DedicatedToolModelSetting]
+        : [];
+    }),
+    [dedicatedModelTools, toolModelSelections],
   );
   const archivedThreads = useMemo(
     () => threadsWithBackgroundRuns.filter(isThreadArchived),
@@ -2105,6 +2204,7 @@ export function ChatApp({ mods = [], plugins = [], user }: ChatAppProps) {
                 resourceId={resourceId}
                 recentSuggestionTitles={recentSuggestionTitles}
                 threadId={sessionId}
+                toolModelSelections={toolModelSelections}
               />
             </div>
           );
@@ -2137,9 +2237,11 @@ export function ChatApp({ mods = [], plugins = [], user }: ChatAppProps) {
         )}
         {resourceId && activeView === "settings" && (
           <SettingsPanel
+            dedicatedToolModels={dedicatedToolModelSettings}
             modelCatalog={modelCatalog}
             modelSelection={modelSelection}
             onModelSelectionChange={selectModel}
+            onToolModelSelectionChange={selectToolModel}
             resourceId={resourceId}
             extensions={contributedSettings}
           />

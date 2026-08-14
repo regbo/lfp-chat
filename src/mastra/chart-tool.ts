@@ -3,7 +3,10 @@ import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
 
 import { chartKinds, chartUnits } from "@/lib/chart-spec";
-import { resolveChartModel } from "@/mastra/model-provider";
+import {
+  resolveChartModel,
+  resolveChartProviderOptions,
+} from "@/mastra/model-provider";
 
 const chartSeriesSchema = z.object({
   name: z.string().trim().min(1).max(80),
@@ -49,7 +52,7 @@ const chartPlannerAgent = new Agent({
   id: "chartPlanner",
   name: "Chart planner",
   description: "Converts compact tabular data into a presentation-ready chart plan.",
-  model: resolveChartModel(),
+  model: ({ requestContext }) => resolveChartModel(requestContext),
   instructions: `Turn the supplied JSON rows into a compact line or bar chart plan.
 
 - Preserve the input row order unless chronological labels clearly need sorting.
@@ -97,11 +100,7 @@ export const renderChartTool = createTool({
       abortSignal,
       maxSteps: 1,
       modelSettings: { maxOutputTokens: 2_000, temperature: 0 },
-      providerOptions: {
-        openai: {
-          reasoningEffort: "none",
-        },
-      },
+      providerOptions: resolveChartProviderOptions(context.requestContext),
       requestContext: context.requestContext,
       structuredOutput: {
         schema: chartPlanSchema,

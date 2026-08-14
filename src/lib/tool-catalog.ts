@@ -59,6 +59,16 @@ export const defaultEnabledToolIds: SelectableToolId[] = toolCatalog
   .filter((tool) => tool.defaultEnabled)
   .map((tool) => tool.id);
 
+export function orderToolsWithCodeModeLast<T extends { id: string }>(
+  tools: readonly T[],
+) {
+  return [...tools].toSorted((left, right) => {
+    if (left.id === "code_mode") return 1;
+    if (right.id === "code_mode") return -1;
+    return 0;
+  });
+}
+
 export function normalizeEnabledToolIds(value: unknown): string[] {
   if (!Array.isArray(value)) return [...defaultEnabledToolIds];
   return Array.from(

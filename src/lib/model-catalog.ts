@@ -1,5 +1,6 @@
 export const MODEL_CONTEXT_KEY = "lfp.model";
 export const REASONING_CONTEXT_KEY = "lfp.reasoning";
+export const TOOL_MODEL_SELECTIONS_CONTEXT_KEY = "lfp.toolModels";
 
 export const DEFAULT_CHAT_AGENT_ID = "chatAgent";
 export const CODEX_CHAT_AGENT_ID = "codexAgent";
