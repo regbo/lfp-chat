@@ -23,6 +23,43 @@ const globalForMonty = globalThis as typeof globalThis & {
   lfpFamilySqlPool?: Pool;
 };
 
+function attachmentDownloadUrl(attachmentId: string) {
+  return `/api/attachments/${attachmentId}/download`;
+}
+
+function markdownLinkLabel(value: string) {
+  return value.replace(/[\\\[\]]/g, "\\$&");
+}
+
+function addAttachmentDownloadLink(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(addAttachmentDownloadLink);
+  if (typeof value !== "object" || value === null) return value;
+
+  const record = Object.fromEntries(
+    Object.entries(value).map(([key, item]) => [key, addAttachmentDownloadLink(item)]),
+  );
+  const attachmentId =
+    typeof record.attachment_id === "string"
+      ? record.attachment_id
+      : record.kind === "attachment" && typeof record.item_id === "string"
+        ? record.item_id
+        : undefined;
+  if (!attachmentId) return record;
+
+  const filename =
+    typeof record.filename === "string"
+      ? record.filename
+      : typeof record.title === "string"
+        ? record.title
+        : "Download attachment";
+  const downloadUrl = attachmentDownloadUrl(attachmentId);
+  return {
+    ...record,
+    download_url: downloadUrl,
+    download_markdown: `[${markdownLinkLabel(filename)}](${downloadUrl})`,
+  };
+}
+
 function getMontyPool() {
   return (
     globalForMonty.lfpMontyPool ??=
@@ -318,7 +355,7 @@ export const familySearchTool = createTool({
     return {
       query,
       results: result.rows.map((row) =>
-        truncateToolValue(row) as Record<string, unknown>,
+        truncateToolValue(addAttachmentDownloadLink(row)) as Record<string, unknown>,
       ),
     };
   },
@@ -398,7 +435,7 @@ export const familyEmailTool = createTool({
         contentBase64: bytes.toString("base64"),
       };
     }
-    return truncateToolValue(await response.json()) as Record<string, unknown>;
+    return truncateToolValue(addAttachmentDownloadLink(await response.json())) as Record<string, unknown>;
   },
 });
 
@@ -428,7 +465,7 @@ export const familyAttachmentTool = createTool({
         contentBase64: bytes.toString("base64"),
       };
     }
-    return truncateToolValue(await response.json()) as Record<string, unknown>;
+    return truncateToolValue(addAttachmentDownloadLink(await response.json())) as Record<string, unknown>;
   },
 });
 

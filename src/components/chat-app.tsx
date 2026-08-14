@@ -65,6 +65,7 @@ import {
   ToolEventSummary,
 } from "@/components/tool-event-summary";
 import { type PendingSteer, SteerQueue } from "@/components/steer-queue";
+import { formatAttachmentLinks } from "@/lib/attachment-links";
 import { formatCitationMarkers } from "@/lib/citations";
 import { browserMastraClient } from "@/lib/browser-mastra-client";
 import {
@@ -276,7 +277,7 @@ function getText(message: UIMessage) {
   const tools = message.parts.filter(isToolPart);
   return message.parts
     .filter((part) => part.type === "text")
-    .map((part) => formatCitationMarkers(part.text, tools))
+    .map((part) => formatAttachmentLinks(formatCitationMarkers(part.text, tools), tools))
     .join("");
 }
 
@@ -673,7 +674,7 @@ function ChatMessage({ message, streaming }: { message: UIMessage; streaming: bo
               <ReasoningTrigger expandable={hasReasoningDetails} status={runningToolLabel} />
               {hasReasoningDetails ? (
                 <ReasoningContent className="space-y-2">
-                  {reasoningText && <MessageResponse>{formatCitationMarkers(reasoningText, tools)}</MessageResponse>}
+                  {reasoningText && <MessageResponse>{formatAttachmentLinks(formatCitationMarkers(reasoningText, tools), tools)}</MessageResponse>}
                   {tools.length > 0 && <ToolEventSummary parts={tools} />}
                 </ReasoningContent>
               ) : null}
@@ -681,7 +682,7 @@ function ChatMessage({ message, streaming }: { message: UIMessage; streaming: bo
           )}
           {message.parts.map((part, index) => {
             if (part.type === "text") {
-              return <MessageResponse key={`${message.id}-text-${index}`}>{formatCitationMarkers(part.text, tools)}</MessageResponse>;
+              return <MessageResponse key={`${message.id}-text-${index}`}>{formatAttachmentLinks(formatCitationMarkers(part.text, tools), tools)}</MessageResponse>;
             }
             return null;
           })}
