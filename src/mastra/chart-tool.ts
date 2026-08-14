@@ -64,7 +64,7 @@ const chartPlannerAgent = new Agent({
 export const renderChartTool = createTool({
   id: "render_chart",
   description:
-    "Render an interactive chart from compact tabular data already retrieved by another tool. A private local chart planner chooses the chart layout. Use for requests to show, plot, chart, trend, or compare numeric values.",
+    "Render an interactive chart from compact tabular data already retrieved by another tool. A private chart planner chooses the chart layout. Use for requests to show, plot, chart, trend, or compare numeric values.",
   strict: true,
   inputSchema: chartRequestSchema,
   outputSchema: chartOutputSchema,

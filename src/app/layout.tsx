@@ -3,7 +3,7 @@ import { Geist_Mono } from "next/font/google";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { PwaRegister } from "@/components/pwa-register";
 import { ThemeSync } from "@/components/theme-sync";
-import { THEME_BOOTSTRAP_SCRIPT } from "@/lib/theme-preference";
+import { THEME_BOOTSTRAP_SCRIPT, THEME_COLORS } from "@/lib/theme-preference";
 import "@regbo/lfp-chat/styles.css";
 import "./globals.css";
 
@@ -35,8 +35,8 @@ export const viewport: Viewport = {
   viewportFit: "cover",
   colorScheme: "light dark",
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
-    { media: "(prefers-color-scheme: dark)", color: "#252525" },
+    { media: "(prefers-color-scheme: light)", color: THEME_COLORS.light },
+    { media: "(prefers-color-scheme: dark)", color: THEME_COLORS.dark },
   ],
 };
 

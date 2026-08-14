@@ -1,5 +1,9 @@
 export const THEME_STORAGE_KEY = "lfp-chat-theme";
 export const THEME_CHANGE_EVENT = "lfp-chat-theme-change";
+export const THEME_COLORS = {
+  light: "#f7f9fc",
+  dark: "#101827",
+} as const;
 
 export type ThemePreference = "auto" | "light" | "dark";
 
@@ -10,6 +14,7 @@ export const THEME_BOOTSTRAP_SCRIPT = `(() => {
     const dark = preference === "dark" || (preference === "auto" && matchMedia("(prefers-color-scheme: dark)").matches);
     document.documentElement.dataset.theme = preference;
     document.documentElement.classList.toggle("dark", dark);
+    document.documentElement.style.colorScheme = dark ? "dark" : "light";
   } catch {}
 })();`;
 
@@ -30,7 +35,7 @@ export function applyThemePreference(preference: ThemePreference) {
   document.documentElement.classList.toggle("dark", dark);
   document.documentElement.style.colorScheme = dark ? "dark" : "light";
   document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]')
-    .forEach((meta) => { meta.content = dark ? "#252525" : "#ffffff"; });
+    .forEach((meta) => { meta.content = dark ? THEME_COLORS.dark : THEME_COLORS.light; });
 }
 
 export function saveThemePreference(preference: ThemePreference) {
