@@ -97,6 +97,11 @@ export const renderChartTool = createTool({
       abortSignal,
       maxSteps: 1,
       modelSettings: { maxOutputTokens: 2_000, temperature: 0 },
+      providerOptions: {
+        openai: {
+          reasoningEffort: "none",
+        },
+      },
       requestContext: context.requestContext,
       structuredOutput: {
         schema: chartPlanSchema,

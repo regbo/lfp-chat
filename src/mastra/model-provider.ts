@@ -43,9 +43,9 @@ export function resolveBackgroundModel() {
   return localOllama.chat(serverConfig.scheduledModelName);
 }
 
-/** Keep chart planning local without changing the model used for chat. */
+/** Use a low-cost hosted model for chart planning without changing chat. */
 export function resolveChartModel() {
-  return localOllama.chat(serverConfig.chartModelName);
+  return `openai/${serverConfig.chartModelName}` as ModelRouterModelId;
 }
 
 type OpenAiModelsResponse = {
