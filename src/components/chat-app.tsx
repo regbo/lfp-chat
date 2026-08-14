@@ -831,6 +831,14 @@ function ChatMessage({ message, streaming }: { message: UIMessage; streaming: bo
   const hasReasoningDetails = Boolean(reasoningText) || tools.length > 0;
   const showReasoning = !isUser && (streaming || Boolean(reasoningText) || tools.length > 0);
   const runningToolLabel = streaming ? getRunningToolLabel(tools) : undefined;
+  const charts = tools.flatMap((part) => {
+    const name =
+      part.type === "dynamic-tool"
+        ? part.toolName
+        : part.type.split("-").slice(1).join("-");
+    const output = "output" in part ? part.output : undefined;
+    return name === "render_chart" && isChatChartSpec(output) ? [output] : [];
+  });
 
   return (
     <Message className="chat-column" from={message.role}>
@@ -857,20 +865,15 @@ function ChatMessage({ message, streaming }: { message: UIMessage; streaming: bo
             }
             return null;
           })}
+          {charts.map((chart, index) => (
+            <ChatChart key={`${message.id}-chart-${index}`} spec={chart} />
+          ))}
           <MessageAttachments files={files} />
         </MessageContent>
         {text && isUser && (
           <MessageActions className="absolute -left-10 top-1/2 -translate-y-1/2 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
             <CopyAction text={text} />
           </MessageActions>
-  const charts = tools.flatMap((part) => {
-    const name =
-      part.type === "dynamic-tool"
-        ? part.toolName
-        : part.type.split("-").slice(1).join("-");
-    const output = "output" in part ? part.output : undefined;
-    return name === "render_chart" && isChatChartSpec(output) ? [output] : [];
-  });
         )}
       </div>
       {text && !isUser && (
@@ -897,10 +900,6 @@ type ChatSessionProps = {
   enabledToolIds: string[];
   recentSuggestionTitles: readonly string[];
 };
-          {charts.map((chart, index) => (
-            <ChatChart key={`${message.id}-chart-${index}`} spec={chart} />
-          ))}
-
 function ChatSession({
   threadId,
   resourceId,
