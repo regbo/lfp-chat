@@ -7,6 +7,7 @@ import {
 } from "streamdown";
 
 type PluginEntry = readonly [string, unknown];
+const DISABLED_LINK_SAFETY = { enabled: false } as const;
 
 function requestedPlugins(markdown: string): Promise<PluginEntry>[] {
   const imports: Promise<PluginEntry>[] = [];
@@ -60,6 +61,7 @@ export function StreamdownRenderer({ children, plugins, ...props }: StreamdownPr
 
   return (
     <Streamdown
+      linkSafety={DISABLED_LINK_SAFETY}
       plugins={{ ...detectedPlugins, ...plugins } as never}
       {...props}
     >

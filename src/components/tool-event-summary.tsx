@@ -59,13 +59,13 @@ export function ToolEventSummary({ parts }: ToolEventSummaryProps) {
 
   return (
     <Collapsible className="group/tool-summary not-prose w-full text-muted-foreground">
-      <CollapsibleTrigger className="chat-tool-summary-trigger flex h-8 max-w-full items-center gap-2 rounded-lg px-1.5 transition-colors hover:bg-muted/55">
+      <CollapsibleTrigger className="chat-tool-summary-trigger flex h-8 w-full max-w-full items-center gap-2 overflow-hidden whitespace-nowrap rounded-lg px-1.5 transition-colors hover:bg-muted/55">
         {running ? (
           <LoaderCircle className="size-3.5 shrink-0 animate-spin" />
         ) : (
           <Check className="size-3.5 shrink-0" />
         )}
-        <span className="min-w-0 truncate">{label}</span>
+        <span className="min-w-0 flex-1 truncate text-left">{label}</span>
         <ChevronDown className="size-3.5 shrink-0 transition-transform group-data-[state=open]/tool-summary:rotate-180" />
       </CollapsibleTrigger>
       <CollapsibleContent className="mt-1 space-y-3 rounded-xl border border-border/65 bg-muted/15 p-3 text-foreground">
