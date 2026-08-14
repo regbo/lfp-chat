@@ -1,0 +1,21 @@
+version: 1
+project: lfp-chat
+
+automation:
+  enabled: true
+  triggers:
+    - id: published-chat-package
+      source:
+        type: npm
+        package: "@regbo/lfp-chat"
+        distTag: latest
+      # The first check records a baseline. Only a subsequent published version runs commands.
+      runOnInitial: false
+      commands:
+        - name: update published chat dependency
+          command: 'bun update "@regbo/lfp-chat"'
+          timeoutMs: 120000
+          retries: 1
+        - name: validate and build hosted chat
+          command: bun run check
+          timeoutMs: 1200000
