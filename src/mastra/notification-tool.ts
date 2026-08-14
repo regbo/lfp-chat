@@ -6,7 +6,7 @@ import { notifyResource, pushNotificationConfig } from "@/lib/push-notifications
 export const notificationSendTool = createTool({
   id: "notification_send",
   description:
-    "Send a Web Push notification to the current user's registered PWA devices. Use from a scheduled job when the result needs a concise, timely alert. Do not include secrets or the full job output.",
+    "Notify the current user. Delivery uses registered PWA devices first and queues a browser notification when push delivery is unavailable. Keep alerts concise and do not include secrets or full tool output.",
   inputSchema: z.object({
     title: z.string().trim().min(1).max(100),
     body: z.string().trim().min(1).max(240),
@@ -18,13 +18,19 @@ export const notificationSendTool = createTool({
     sent: z.boolean(),
     configured: z.boolean(),
     devices: z.number().int().nonnegative(),
+    channel: z.enum(["push", "browser"]),
   }),
   execute: async ({ body, title, url }, context) => {
     const resourceId = context?.agent?.resourceId;
     if (!resourceId) throw new Error("Notifications require a user-scoped agent run.");
     const configured = pushNotificationConfig().enabled;
-    if (!configured) return { sent: false, configured: false, devices: 0 };
-    const devices = await notifyResource(resourceId, { title, body, url });
-    return { sent: devices > 0, configured: true, devices };
+    const delivery = await notifyResource(resourceId, { title, body, url });
+    const channel: "push" | "browser" = delivery.devices > 0 ? "push" : "browser";
+    return {
+      sent: delivery.devices > 0 || delivery.browserFallbackQueued,
+      configured,
+      devices: delivery.devices,
+      channel,
+    };
   },
 });

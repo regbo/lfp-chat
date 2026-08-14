@@ -1,5 +1,5 @@
 export const TOOLS_CONTEXT_KEY = "lfp.tools";
-export const TOOL_CATALOG_VERSION = 6;
+export const TOOL_CATALOG_VERSION = 7;
 
 export const hiddenMandatoryToolIds = [
   "monty",
@@ -35,6 +35,12 @@ export const toolCatalog = [
     id: "image_generation",
     title: "Image generation",
     description: "Create images with OpenAI's hosted image tool.",
+    defaultEnabled: true,
+  },
+  {
+    id: "notifications",
+    title: "Notifications",
+    description: "Send concise alerts through PWA push or the active browser fallback.",
     defaultEnabled: true,
   },
   {
@@ -84,6 +90,7 @@ export function migrateEnabledToolIds(
   const additions = [
     ...(storedCatalogVersion < 2 ? ["scheduling"] : []),
     ...(storedCatalogVersion < 4 ? ["url_fetch"] : []),
+    ...(storedCatalogVersion < 7 ? ["notifications"] : []),
   ];
   return Array.from(new Set([...normalized, ...additions])).filter(
     (id) => !["calculator", "search", ...hiddenMandatoryToolIds].includes(id),

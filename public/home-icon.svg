@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
+  <title id="title">LFP Home</title>
+  <rect width="512" height="512" fill="#ff6f61"/>
+  <path d="M92 244 256 104l164 140v180a28 28 0 0 1-28 28H120a28 28 0 0 1-28-28V244Z" fill="#fff9f5"/>
+  <path d="M62 250 256 84l194 166-38 44-156-134-156 134-38-44Z" fill="#fff9f5"/>
+  <path d="M218 302a38 38 0 0 1 76 0v150h-76V302Z" fill="#0b1426"/>
+  <circle cx="275" cy="365" r="7" fill="#ff6f61"/>
+</svg>

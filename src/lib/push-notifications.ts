@@ -39,6 +39,18 @@ async function ready() {
     );
     CREATE INDEX IF NOT EXISTS lfp_push_subscriptions_resource_idx
       ON lfp_push_subscriptions (resource_id);
+    CREATE TABLE IF NOT EXISTS lfp_browser_notifications (
+      id bigserial PRIMARY KEY,
+      resource_id text NOT NULL,
+      title text NOT NULL,
+      body text NOT NULL,
+      url text NOT NULL DEFAULT '/',
+      tag text,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      claimed_at timestamptz
+    );
+    CREATE INDEX IF NOT EXISTS lfp_browser_notifications_pending_idx
+      ON lfp_browser_notifications (resource_id, id) WHERE claimed_at IS NULL;
   `).then(() => undefined);
   return globalForPush.lfpPushReady;
 }
@@ -87,16 +99,15 @@ export async function notifyResource(
   resourceId: string,
   notification: { title: string; body: string; url?: string; tag?: string },
 ) {
-  if (!pushConfigured) return 0;
   await ready();
-  const result = await pool().query<{
+  const result = pushConfigured ? await pool().query<{
     endpoint: string;
     p256dh: string;
     auth: string;
   }>(
     "SELECT endpoint, p256dh, auth FROM lfp_push_subscriptions WHERE resource_id = $1",
     [resourceId],
-  );
+  ) : { rows: [] };
   const deliveries = await Promise.all(result.rows.map(async (row) => {
     try {
       await webPush.sendNotification(
@@ -112,5 +123,46 @@ export async function notifyResource(
       return false;
     }
   }));
-  return deliveries.filter(Boolean).length;
+  const devices = deliveries.filter(Boolean).length;
+  if (devices === 0) {
+    await pool().query(
+      `INSERT INTO lfp_browser_notifications (resource_id, title, body, url, tag)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [resourceId, notification.title, notification.body, notification.url ?? "/", notification.tag ?? null],
+    );
+  }
+  return { devices, browserFallbackQueued: devices === 0 };
+}
+
+export async function claimBrowserNotifications(resourceId: string) {
+  await ready();
+  const result = await pool().query<{
+    id: string;
+    title: string;
+    body: string;
+    url: string;
+    tag: string | null;
+  }>(
+    `WITH pending AS (
+       SELECT id FROM lfp_browser_notifications
+       WHERE resource_id = $1 AND claimed_at IS NULL
+         AND created_at > now() - interval '24 hours'
+       ORDER BY id LIMIT 20
+       FOR UPDATE SKIP LOCKED
+     )
+     UPDATE lfp_browser_notifications notification
+     SET claimed_at = now()
+     FROM pending
+     WHERE notification.id = pending.id
+     RETURNING notification.id, notification.title, notification.body,
+       notification.url, notification.tag`,
+    [resourceId],
+  );
+  return result.rows.map((row) => ({
+    id: Number(row.id),
+    title: row.title,
+    body: row.body,
+    url: row.url,
+    ...(row.tag ? { tag: row.tag } : {}),
+  }));
 }

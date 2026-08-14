@@ -25,7 +25,7 @@ export type AppBrandingOptions = {
   faviconUrl?: string;
 };
 
-const DEFAULT_FAVICON_URL = "/lfp-icon.svg";
+const DEFAULT_FAVICON_URL = "/home-icon.svg?v=4";
 
 function titleCase(value: string) {
   return value.replace(/(^|[ -])([a-z])/g, (_, boundary: string, letter: string) =>

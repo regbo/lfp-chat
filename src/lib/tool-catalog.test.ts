@@ -16,17 +16,22 @@ describe("mandatory framework tools", () => {
 describe("tool catalog migrations", () => {
   test("enables scheduling once for selections saved before catalog v2", () => {
     expect(migrateEnabledToolIds(["web_search"], 1)).toEqual([
-      "web_search", "scheduling", "url_fetch",
+      "web_search", "scheduling", "url_fetch", "notifications",
     ]);
   });
 
   test("adds dashboard capabilities once for selections saved before v4", () => {
-    expect(migrateEnabledToolIds(["web_search"], 2)).toEqual(["web_search", "url_fetch"]);
+    expect(migrateEnabledToolIds(["web_search"], 2)).toEqual(["web_search", "url_fetch", "notifications"]);
   });
 
   test("removes retired demos and hidden mandatory tools from saved selections", () => {
     expect(migrateEnabledToolIds(["calculator", "search", "monty", "cache", "dashboard", "code_interpreter", "url_fetch"], 5))
-      .toEqual(["url_fetch"]);
+      .toEqual(["url_fetch", "notifications"]);
+  });
+
+  test("adds notifications once for selections saved before catalog v7", () => {
+    expect(migrateEnabledToolIds(["web_search"], 6)).toEqual(["web_search", "notifications"]);
+    expect(migrateEnabledToolIds(["web_search"], 7)).toEqual(["web_search"]);
   });
 });
 

@@ -18,13 +18,19 @@ export default function manifest(): MetadataRoute.Manifest {
     categories: ["productivity", "utilities"],
     icons: [
       {
-        src: "/icon-192.png",
+        src: "/home-icon.svg?v=4",
+        sizes: "any",
+        type: "image/svg+xml",
+        purpose: "any",
+      },
+      {
+        src: "/icon-192.png?v=4",
         sizes: "192x192",
         type: "image/png",
         purpose: "any",
       },
       {
-        src: "/icon-512.png",
+        src: "/icon-512.png?v=4",
         sizes: "512x512",
         type: "image/png",
         purpose: "maskable",

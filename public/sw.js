@@ -1,5 +1,12 @@
-const CACHE_NAME = "lfp-chat-shell-v3";
-const APP_SHELL = ["/", "/manifest.webmanifest", "/icon-192.png", "/icon-512.png"];
+const CACHE_NAME = "lfp-chat-shell-v4";
+const APP_SHELL = [
+  "/",
+  "/manifest.webmanifest",
+  "/home-icon.svg?v=4",
+  "/apple-touch-icon.png?v=4",
+  "/icon-192.png?v=4",
+  "/icon-512.png?v=4",
+];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)));
@@ -45,8 +52,8 @@ self.addEventListener("push", (event) => {
   const data = event.data?.json() || {};
   event.waitUntil(self.registration.showNotification(data.title || "LFP Chat", {
     body: data.body || "Scheduled work finished.",
-    icon: "/icon-192.png",
-    badge: "/icon-192.png",
+    icon: "/icon-192.png?v=4",
+    badge: "/icon-192.png?v=4",
     tag: data.tag || "lfp-chat-schedule",
     data: { url: data.url || "/scheduled" },
   }));

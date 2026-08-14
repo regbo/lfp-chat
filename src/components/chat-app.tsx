@@ -35,6 +35,7 @@ import type { ToolPart } from "@/components/ai-elements/tool";
 import { Button } from "@/components/ui/button";
 import { BrandLockup } from "@/components/brand-lockup";
 import { DashboardPanel } from "@/components/dashboard-panel";
+import { BrowserNotificationListener } from "@/components/browser-notification-listener";
 import {
   Dialog,
   DialogContent,
@@ -2349,6 +2350,7 @@ export function ChatApp({ branding = DEFAULT_APP_BRANDING, mods = [], plugins = 
 
   return (
     <>
+    {resourceId && <BrowserNotificationListener resourceId={resourceId} />}
     <main className="app-shell flex bg-background" ref={appShellRef}>
       <div className={cn("hidden transition-[width] duration-200 md:block", sidebarOpen ? "w-[244px]" : "w-0 overflow-hidden")}>{sidebar}</div>
       {mobileSidebarOpen && (

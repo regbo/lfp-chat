@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { archiveDashboardWidget, deleteDashboardWidget, updateDashboardWidgetMetadata } from "@/lib/dashboard-store";
+import { archiveDashboardWidget, deleteDashboardWidget, updateDashboardWidgetCss, updateDashboardWidgetMetadata } from "@/lib/dashboard-store";
 import { resolveUserScope } from "@/lib/user-scope";
 
 export async function PATCH(
@@ -12,6 +12,7 @@ export async function PATCH(
     archived: z.boolean().optional(),
     title: z.string().max(160).optional(),
     description: z.string().max(500).optional(),
+    css: z.string().max(20_000).optional(),
   }).safeParse(await request.json());
   if (!parsed.success) return Response.json({ error: parsed.error.message }, { status: 400 });
   const scope = await resolveUserScope(request.headers, parsed.data.resourceId);
@@ -19,6 +20,9 @@ export async function PATCH(
   const { widgetId } = await context.params;
   if (parsed.data.archived !== undefined) {
     return Response.json(await archiveDashboardWidget(scope.scope.resourceId, widgetId, parsed.data.archived));
+  }
+  if (parsed.data.css !== undefined) {
+    return Response.json(await updateDashboardWidgetCss(scope.scope.resourceId, widgetId, parsed.data.css));
   }
   if (parsed.data.title === undefined && parsed.data.description === undefined) {
     return Response.json({ error: "A metadata field is required." }, { status: 400 });

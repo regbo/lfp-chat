@@ -7,7 +7,7 @@ describe("app branding", () => {
     expect(DEFAULT_APP_BRANDING).toEqual({
       fullName: "LFP Chat",
       shortName: "chat",
-      faviconUrl: "/lfp-icon.svg",
+      faviconUrl: "/home-icon.svg?v=4",
       displayName: "LFP Chat",
       productName: "chat",
     });
@@ -17,7 +17,7 @@ describe("app branding", () => {
     expect(createAppBranding(" Portal ")).toEqual({
       fullName: "LFP Portal",
       shortName: "portal",
-      faviconUrl: "/lfp-icon.svg",
+      faviconUrl: "/home-icon.svg?v=4",
       displayName: "LFP Portal",
       productName: "portal",
     });

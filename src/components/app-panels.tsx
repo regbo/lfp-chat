@@ -12,6 +12,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { DashboardInputSummary, hasStaticDashboardInput } from "@/components/dashboard-input-summary";
 import {
   Select,
   SelectContent,
@@ -41,6 +42,10 @@ import {
 } from "@/lib/tool-catalog";
 import type { ChatAppToolContribution } from "@/lib/chat-app-plugins";
 import type { DashboardState, DashboardUserTool } from "@/lib/dashboard-spec";
+import {
+  browserNotificationsEnabled,
+  setBrowserNotificationsEnabled,
+} from "@/lib/browser-notifications";
 import {
   readThemePreference,
   saveThemePreference,
@@ -816,6 +821,7 @@ const toolIcons: Record<SelectableToolId, LucideIcon> = {
   scheduling: Clock3,
   web_search: Globe2,
   image_generation: ImageIcon,
+  notifications: Bell,
   code_mode: Terminal,
 };
 
@@ -831,6 +837,7 @@ export function ToolsPanel({
   resourceId: string;
 }) {
   const [savedTools, setSavedTools] = useState<DashboardUserTool[]>([]);
+  const [savedToolValues, setSavedToolValues] = useState<Record<string, Array<{ label: string; value: unknown }>>>({});
   const [selectedTool, setSelectedTool] = useState<DashboardUserTool>();
   const tools = orderToolsWithCodeModeLast([
     ...toolCatalog,
@@ -842,6 +849,12 @@ export function ToolsPanel({
     if (!response.ok) return;
     const state = await response.json() as DashboardState;
     setSavedTools(state.tools);
+    const values: Record<string, Array<{ label: string; value: unknown }>> = {};
+    for (const widget of state.tabs.flatMap((tab) => tab.widgets)) {
+      if (!hasStaticDashboardInput(widget.toolInput)) continue;
+      (values[widget.toolName] ??= []).push({ label: widget.title, value: widget.toolInput });
+    }
+    setSavedToolValues(values);
   }, [resourceId]);
 
   useEffect(() => {
@@ -909,7 +922,7 @@ export function ToolsPanel({
           <h2 className="chat-ui-text font-medium">Saved tools</h2>
           <div className="mt-2 divide-y">
             {savedTools.filter((tool) => !tool.archivedAt).map((tool) => (
-              <div className="flex items-center gap-3 py-3" key={tool.id}>
+              <div className="flex items-center gap-3 py-3" id={`saved-tool-${tool.name}`} key={tool.id}>
                 <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-muted"><Code2 className="size-4" /></span>
                 <span className="min-w-0 flex-1">
                   <span className="chat-ui-text block font-medium">{tool.title}</span>
@@ -943,7 +956,17 @@ export function ToolsPanel({
           </DialogHeader>
           {selectedTool && (
             <div className="min-w-0 space-y-4">
-              <p className="chat-meta-text text-muted-foreground"><span className="font-mono text-foreground">{selectedTool.name}</span> · cache {selectedTool.cacheTtlSeconds}s · calls {selectedTool.capabilities.join(", ") || "none"}</p>
+              <p className="chat-meta-text text-muted-foreground"><span className="font-mono text-foreground">{selectedTool.name}</span> · cache {selectedTool.cacheTtlSeconds}s</p>
+              <DashboardInputSummary
+                description="Tool rows are callable dependencies. Value rows are fixed inputs supplied by widgets that use this tool."
+                linkedToolNames={savedTools.map((tool) => tool.name)}
+                onToolSelect={(name) => {
+                  const linked = savedTools.find((tool) => tool.name === name);
+                  if (linked) setSelectedTool(linked);
+                }}
+                toolNames={selectedTool.capabilities}
+                values={savedToolValues[selectedTool.name] ?? []}
+              />
               <CodeBlock className="max-h-[60vh] w-full min-w-0 max-w-full overflow-auto" code={selectedTool.code} language="python" showLineNumbers />
             </div>
           )}
@@ -976,7 +999,7 @@ export function SettingsPanel({
   resourceId: string;
 }) {
   const [notificationState, setNotificationState] = useState<
-    "loading" | "unsupported" | "install" | "unconfigured" | "off" | "on"
+    "loading" | "unsupported" | "browser-off" | "browser-on" | "off" | "on"
   >("loading");
   const [notificationBusy, setNotificationBusy] = useState(false);
   const [notificationError, setNotificationError] = useState("");
@@ -999,12 +1022,16 @@ export function SettingsPanel({
   useEffect(() => {
     let active = true;
     void (async () => {
-      const supportsPush =
-        "serviceWorker" in navigator &&
-        "PushManager" in window &&
-        "Notification" in window;
-      if (!supportsPush) {
+      if (!("Notification" in window)) {
         if (active) setNotificationState("unsupported");
+        return;
+      }
+      const setBrowserFallbackState = () => setNotificationState(
+        browserNotificationsEnabled() ? "browser-on" : "browser-off",
+      );
+      const supportsPush = "serviceWorker" in navigator && "PushManager" in window;
+      if (!supportsPush) {
+        if (active) setBrowserFallbackState();
         return;
       }
       const isiOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
@@ -1012,14 +1039,14 @@ export function SettingsPanel({
       const standalone = window.matchMedia("(display-mode: standalone)").matches ||
         Boolean((navigator as Navigator & { standalone?: boolean }).standalone);
       if (isiOS && !standalone) {
-        if (active) setNotificationState("install");
+        if (active) setBrowserFallbackState();
         return;
       }
       const response = await fetch("/api/push", { cache: "no-store" });
       const config = await response.json() as { enabled?: boolean; publicKey?: string };
       if (!active) return;
       if (!config.enabled || !config.publicKey) {
-        setNotificationState("unconfigured");
+        setBrowserFallbackState();
         return;
       }
       setPushPublicKey(config.publicKey);
@@ -1038,6 +1065,18 @@ export function SettingsPanel({
     setNotificationBusy(true);
     setNotificationError("");
     try {
+      if (notificationState === "browser-on") {
+        setBrowserNotificationsEnabled(false);
+        setNotificationState("browser-off");
+        return;
+      }
+      if (notificationState === "browser-off") {
+        const permission = await Notification.requestPermission();
+        if (permission !== "granted") throw new Error("Notification permission was not granted.");
+        setBrowserNotificationsEnabled(true);
+        setNotificationState("browser-on");
+        return;
+      }
       const registration = await navigator.serviceWorker.ready;
       const existing = await registration.pushManager.getSubscription();
       if (existing) {
@@ -1047,6 +1086,7 @@ export function SettingsPanel({
           body: JSON.stringify({ endpoint: existing.endpoint, resourceId }),
         });
         await existing.unsubscribe();
+        setBrowserNotificationsEnabled(false);
         setNotificationState("off");
         return;
       }
@@ -1072,6 +1112,7 @@ export function SettingsPanel({
         throw new Error(payload.error || "Could not save notification subscription.");
       }
       setNotificationState("on");
+      setBrowserNotificationsEnabled(true);
     } catch (cause) {
       setNotificationError(cause instanceof Error ? cause.message : "Could not update notifications.");
     } finally { setNotificationBusy(false); }
@@ -1126,12 +1167,12 @@ export function SettingsPanel({
           <div className="min-w-0">
             <p className="chat-ui-emphasis">Notifications</p>
             <p className="chat-ui-text mt-1 text-muted-foreground">
-              {notificationState === "install" ? "Add the app to your Home Screen first, then turn on notifications here." : notificationState === "unconfigured" ? "Notifications aren't available yet." : notificationState === "on" ? "This device receives app updates." : "Get alerts when background work finishes or something needs your attention."}
+              {notificationState === "browser-on" ? "This browser shows alerts while the app is open." : notificationState === "browser-off" ? "Push isn't available here. Use browser alerts while the app is open." : notificationState === "on" ? "This device receives app updates." : "Get alerts when background work finishes or something needs your attention."}
             </p>
             {notificationError && <p className="chat-meta-text mt-2 text-destructive">{notificationError}</p>}
           </div>
-          {(["off", "on"] as const).includes(notificationState as "off" | "on") && (
-            <Button className="settings-row-action" disabled={notificationBusy || !pushPublicKey} onClick={() => void toggleNotifications()} size="sm" variant={notificationState === "on" ? "outline" : "default"}>{notificationBusy && <LoaderCircle className="animate-spin" />}{notificationState === "on" ? "Turn off" : "Turn on"}</Button>
+          {(["off", "on", "browser-off", "browser-on"] as const).includes(notificationState) && (
+            <Button className="settings-row-action" disabled={notificationBusy || ((notificationState === "off" || notificationState === "on") && !pushPublicKey)} onClick={() => void toggleNotifications()} size="sm" variant={notificationState === "on" || notificationState === "browser-on" ? "outline" : "default"}>{notificationBusy && <LoaderCircle className="animate-spin" />}{notificationState === "on" || notificationState === "browser-on" ? "Turn off" : "Turn on"}</Button>
           )}
         </div>
       )}

@@ -1,12 +1,15 @@
 "use client";
 
-import { Archive, ArchiveRestore, GripVertical, LoaderCircle, Pencil, RefreshCw, Trash2 } from "lucide-react";
+import { Archive, ArchiveRestore, GripVertical, Info, LoaderCircle, Pencil, RefreshCw, Trash2 } from "lucide-react";
 import ReactGridLayout, { useContainerWidth, type Layout } from "react-grid-layout";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { ChatChart } from "@/components/chat-chart";
+import { DashboardInputSummary } from "@/components/dashboard-input-summary";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
 import type { CSSProperties, KeyboardEvent } from "react";
 import type { DashboardState, DashboardWidget } from "@/lib/dashboard-spec";
 import { cn } from "@/lib/utils";
@@ -135,6 +138,7 @@ function WidgetCard({
   archiveWidget,
   running,
   run,
+  updateCss,
   updateMetadata,
   widget,
   draggable = false,
@@ -142,14 +146,33 @@ function WidgetCard({
   archiveWidget: (widget: DashboardWidget, archived: boolean) => Promise<void>;
   running: boolean;
   run: (widget: DashboardWidget, force?: boolean) => Promise<void>;
+  updateCss: (widget: DashboardWidget, css: string) => Promise<void>;
   updateMetadata: (widget: DashboardWidget, title: string, description: string) => Promise<void>;
   widget: DashboardWidget;
   draggable?: boolean;
 }) {
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [css, setCss] = useState(widget.css ?? "");
+  const [savingCss, setSavingCss] = useState(false);
+  const [cssError, setCssError] = useState("");
+
+  const saveCss = async () => {
+    setSavingCss(true);
+    setCssError("");
+    try {
+      await updateCss(widget, css);
+    } catch (error) {
+      setCssError(error instanceof Error ? error.message : "Could not save widget CSS.");
+    } finally {
+      setSavingCss(false);
+    }
+  };
+
   return <section className="dashboard-widget flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-border/60 bg-card p-4 shadow-[0_8px_28px_rgba(0,0,0,0.045)]">
     <header className="mb-3 flex shrink-0 items-start gap-2">
       {draggable && <span aria-hidden="true" className="dashboard-widget-drag-handle mt-0.5 grid size-7 shrink-0 cursor-grab place-items-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:cursor-grabbing" title="Drag widget"><GripVertical className="size-4" /></span>}
       <EditableWidgetMetadata onSave={(title, description) => updateMetadata(widget, title, description)} widget={widget} />
+      <Button aria-label={`Information about ${widget.title}`} onClick={() => { setCss(widget.css ?? ""); setDetailsOpen(true); }} size="icon-sm" variant="ghost"><Info className="size-4" /></Button>
       <Button aria-label="Refresh widget" disabled={running} onClick={() => void run(widget, true)} size="icon-sm" variant="ghost">{running ? <LoaderCircle className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}</Button>
       <Button aria-label="Archive widget" onClick={() => void archiveWidget(widget, true)} size="icon-sm" variant="ghost"><Archive className="size-4" /></Button>
     </header>
@@ -157,6 +180,41 @@ function WidgetCard({
       "dashboard-widget-content min-h-0 flex-1 overflow-auto",
       widget.output?.kind === "chart" && "min-h-64 lg:min-h-0",
     )}>{widget.lastError ? <p className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive">{widget.lastError}</p> : <StyledWidgetContent widget={widget} />}</div>
+    <Dialog onOpenChange={setDetailsOpen} open={detailsOpen}>
+      <DialogContent className="min-w-0 sm:w-[min(46rem,calc(100vw-2rem))] sm:max-w-none">
+        <DialogHeader>
+          <DialogTitle>{widget.title}</DialogTitle>
+          <DialogDescription>How this widget gets its data and styles its output.</DialogDescription>
+        </DialogHeader>
+        <div className="min-w-0 space-y-5">
+          <DashboardInputSummary
+            description="The source tool runs first. Fixed values are passed to it unchanged on every refresh."
+            toolHref={(name) => `/tools#saved-tool-${name}`}
+            toolNames={[widget.toolName]}
+            value={widget.toolInput}
+          />
+          <div className="space-y-2">
+            <div>
+              <label className="chat-ui-text font-medium" htmlFor={`widget-css-${widget.id}`}>CSS</label>
+              <p className="chat-meta-text text-muted-foreground">Applied only to this widget using {widget.cssIsolation === "scoped" ? "scoped" : "Shadow DOM"} isolation. Clear it to use the default styles.</p>
+            </div>
+            <Textarea
+              className="min-h-48 resize-y font-mono text-xs leading-5"
+              id={`widget-css-${widget.id}`}
+              onChange={(event) => setCss(event.target.value)}
+              placeholder={".widget-output {\n  /* Widget-only styles */\n}"}
+              spellCheck={false}
+              value={css}
+            />
+            {cssError && <p className="chat-meta-text text-destructive">{cssError}</p>}
+          </div>
+        </div>
+        <DialogFooter>
+          <Button onClick={() => setDetailsOpen(false)} variant="outline">Done</Button>
+          <Button disabled={savingCss || css === (widget.css ?? "")} onClick={() => void saveCss()}>{savingCss && <LoaderCircle className="animate-spin" />}{savingCss ? "Saving" : "Save CSS"}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   </section>;
 }
 
@@ -165,6 +223,7 @@ function DesktopWidgetGrid({
   persistLayout,
   run,
   running,
+  updateCss,
   updateMetadata,
   widgets,
 }: {
@@ -172,6 +231,7 @@ function DesktopWidgetGrid({
   persistLayout: (layout: Layout) => Promise<void>;
   run: (widget: DashboardWidget, force?: boolean) => Promise<void>;
   running: Set<string>;
+  updateCss: (widget: DashboardWidget, css: string) => Promise<void>;
   updateMetadata: (widget: DashboardWidget, title: string, description: string) => Promise<void>;
   widgets: DashboardWidget[];
 }) {
@@ -195,7 +255,7 @@ function DesktopWidgetGrid({
     onResizeStop={(next) => save(next)}
     resizeConfig={{ enabled: true, handles: ["se"] }}
     width={width}
-  >{widgets.map((widget) => <div key={widget.id}><WidgetCard archiveWidget={archiveWidget} draggable run={run} running={running.has(widget.id)} updateMetadata={updateMetadata} widget={widget} /></div>)}</ReactGridLayout>}</div>;
+  >{widgets.map((widget) => <div key={widget.id}><WidgetCard archiveWidget={archiveWidget} draggable run={run} running={running.has(widget.id)} updateCss={updateCss} updateMetadata={updateMetadata} widget={widget} /></div>)}</ReactGridLayout>}</div>;
 }
 
 function useDesktopDashboard() {
@@ -261,6 +321,7 @@ export function DashboardPanel({ resourceId, onAvailabilityChange }: { resourceI
   };
   const archiveWidget = (widget: DashboardWidget, archived: boolean) => mutate(`/api/dashboard/widgets/${widget.id}`, "PATCH", { archived });
   const updateWidgetMetadata = (widget: DashboardWidget, title: string, description: string) => mutate(`/api/dashboard/widgets/${widget.id}`, "PATCH", { title, description });
+  const updateWidgetCss = (widget: DashboardWidget, css: string) => mutate(`/api/dashboard/widgets/${widget.id}`, "PATCH", { css });
   const persistLayout = async (layout: Layout) => {
     const response = await fetch("/api/dashboard/widgets/layout", {
       method: "PATCH",
@@ -287,7 +348,7 @@ export function DashboardPanel({ resourceId, onAvailabilityChange }: { resourceI
       {view === "dashboard" && activeTabs.length > 1 && <div className="flex gap-1">{activeTabs.map((tab) => <button className={cn("rounded-lg px-3 py-1.5 text-sm", activeTab?.id === tab.id && "bg-muted")} key={tab.id} onClick={() => setActiveTabId(tab.id)}>{tab.name}</button>)}</div>}
     </div>
 
-    {view === "dashboard" && (!activeWidgets.length ? <p className="py-20 text-center text-sm text-muted-foreground">No active widgets. Ask the assistant to add one.</p> : desktop ? <DesktopWidgetGrid archiveWidget={archiveWidget} persistLayout={persistLayout} run={run} running={running} updateMetadata={updateWidgetMetadata} widgets={activeWidgets} /> : <div className="grid gap-4">{activeWidgets.map((widget) => <WidgetCard archiveWidget={archiveWidget} key={widget.id} run={run} running={running.has(widget.id)} updateMetadata={updateWidgetMetadata} widget={widget} />)}</div>)}
+    {view === "dashboard" && (!activeWidgets.length ? <p className="py-20 text-center text-sm text-muted-foreground">No active widgets. Ask the assistant to add one.</p> : desktop ? <DesktopWidgetGrid archiveWidget={archiveWidget} persistLayout={persistLayout} run={run} running={running} updateCss={updateWidgetCss} updateMetadata={updateWidgetMetadata} widgets={activeWidgets} /> : <div className="grid gap-4">{activeWidgets.map((widget) => <WidgetCard archiveWidget={archiveWidget} key={widget.id} run={run} running={running.has(widget.id)} updateCss={updateWidgetCss} updateMetadata={updateWidgetMetadata} widget={widget} />)}</div>)}
 
     {view === "archive" && <div className="divide-y">{archivedWidgets.map((widget) => <div className="flex items-center gap-3 py-4" key={widget.id}><div className="min-w-0 flex-1">{widget.title && <p className="font-medium">{widget.title}</p>}{widget.description && <p className="text-sm text-muted-foreground">{widget.description}</p>}{!widget.title && !widget.description && <p className="font-mono text-sm text-muted-foreground">{widget.toolName}</p>}</div><Button onClick={() => void archiveWidget(widget, false)} size="sm" variant="ghost"><ArchiveRestore className="size-4" /> Restore</Button><Button aria-label="Delete permanently" onClick={() => void permanentlyDelete("widgets", widget.id, widget.title || widget.toolName)} size="icon-sm" variant="ghost"><Trash2 className="size-4" /></Button></div>)}</div>}
   </div></div>;

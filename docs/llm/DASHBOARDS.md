@@ -69,7 +69,10 @@ generated JavaScript, HTML, React, or arbitrary CSS.
 - Dashboard navigation appears only while a widget record exists.
 - Widgets are archived, restored, and permanently deleted from Dashboard.
 - Saved tools live under Tools, where each has an Info button with highlighted
-  source code, dependencies, TTL, archive, restore, and permanent delete.
+  source code, tool-sourced inputs, TTL, archive, restore, and permanent delete.
+- Widget Info shows its source tool and any fixed value input used on every
+  refresh. Widget CSS can be edited there without regenerating its tool or
+  presentation program.
 - A manual widget refresh forces the saved tool's automatic output cache to
   recompute; ordinary dashboard loads honor the tool TTL.
 - The repository contains no deployment-specific or domain-specific data tool.

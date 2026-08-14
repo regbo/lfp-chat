@@ -34,7 +34,7 @@ export function generateMetadata(): Metadata {
     },
     icons: {
       icon: serverConfig.appBranding.faviconUrl,
-      apple: "/apple-touch-icon.png",
+      apple: "/apple-touch-icon.png?v=4",
     },
   };
 }

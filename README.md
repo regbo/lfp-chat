@@ -264,7 +264,9 @@ Provider-native web search follows the selected OpenAI, Anthropic, Google, or xA
 LFP Chat includes a web app manifest, adaptive icons, safe-area layout, and a network-first service worker. Use the browser's **Add to Home Screen** action when desired. The application shell is available offline; chat and memory APIs always remain network-only.
 
 Installed PWAs can receive Web Push notifications when scheduled work finishes,
-and scheduled agents have a scoped notification tool for explicit alerts.
+and chats or scheduled agents can use the scoped notification tool for explicit
+alerts. When no registered push device receives an alert, it is queued for an
+opted-in browser session and displayed while the app is open.
 Generate VAPID keys with `bunx web-push generate-vapid-keys`, store the private
 key outside the repository, and configure `WEB_PUSH_PUBLIC_KEY` plus
 `WEB_PUSH_PRIVATE_KEY_FILE`. On iOS, install the app to the Home Screen before

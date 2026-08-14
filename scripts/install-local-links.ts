@@ -53,6 +53,7 @@ for (const link of await requestedLinks()) {
 
   const source = isAbsolute(link.path) ? link.path : resolve(projectRoot, link.path);
   const manifest = JSON.parse(await readFile(resolve(source, "package.json"), "utf8")) as {
+    dependencies?: Record<string, string>;
     name?: string;
   };
   if (manifest.name !== link.package) {
@@ -61,13 +62,18 @@ for (const link of await requestedLinks()) {
     );
   }
 
-  const install = Bun.spawn([process.execPath, "add", "--no-save", source], {
-    cwd: projectRoot,
-    stderr: "inherit",
-    stdout: "inherit",
-  });
-  if ((await install.exited) !== 0) {
-    throw new Error(`Failed to install dependencies for local link: ${link.package}`);
+  const dependencies = Object.entries(manifest.dependencies ?? {}).map(
+    ([name, version]) => `${name}@${version}`,
+  );
+  if (dependencies.length > 0) {
+    const install = Bun.spawn([process.execPath, "add", "--no-save", ...dependencies], {
+      cwd: projectRoot,
+      stderr: "inherit",
+      stdout: "inherit",
+    });
+    if ((await install.exited) !== 0) {
+      throw new Error(`Failed to install dependencies for local link: ${link.package}`);
+    }
   }
 
   const target = resolve(projectRoot, "node_modules", ...link.package.split("/"));

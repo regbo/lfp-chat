@@ -505,6 +505,22 @@ export async function updateDashboardWidgetMetadata(
   return widgetFromRow(result.rows[0]);
 }
 
+export async function updateDashboardWidgetCss(
+  resourceId: string,
+  widgetId: string,
+  css: string,
+) {
+  await ready();
+  const result = await pool().query<DashboardWidgetRow>(
+    `UPDATE lfp_dashboard_widgets
+     SET css = NULLIF($3, ''), updated_at = now()
+     WHERE id = $1 AND resource_id = $2 RETURNING *`,
+    [widgetId, resourceId, css.trim()],
+  );
+  if (!result.rows[0]) throw new Error("Dashboard widget was not found.");
+  return widgetFromRow(result.rows[0]);
+}
+
 export async function updateDashboardWidgetLayouts(
   resourceId: string,
   layouts: DashboardWidgetLayout[],
