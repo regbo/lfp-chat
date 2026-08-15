@@ -11,7 +11,7 @@ export const notificationTargetSchema = z.string().trim().min(1).max(2_000).refi
   } catch {
     return false;
   }
-}, "Use an app path beginning with / or an absolute HTTP(S) URL.");
+}, "Use an app path beginning with / or an absolute HTTP(S) URL.").default("/");
 
 export const notificationSendTool = createTool({
   id: "notification_send",
@@ -21,7 +21,7 @@ export const notificationSendTool = createTool({
     title: z.string().trim().min(1).max(100),
     body: z.string().trim().min(1).max(240),
     url: notificationTargetSchema.describe(
-      "The destination opened when tapped. Use the specific source or result URL when one exists. App paths such as /tasks and absolute HTTP(S) URLs are supported. Use /scheduled only when the alert is specifically about managing its schedule, and use / only when there is no better destination.",
+      "Optional destination opened when tapped; it defaults to the home view. Use the specific source or result URL when one exists. App paths such as /tasks and absolute HTTP(S) URLs are supported. Use /scheduled only when the alert is specifically about managing its schedule.",
     ),
   }),
   inputExamples: [

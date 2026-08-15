@@ -3,6 +3,10 @@ import { describe, expect, test } from "bun:test";
 import { notificationTargetSchema } from "./notification-tool";
 
 describe("notification destination", () => {
+  test("defaults to the home view", () => {
+    expect(notificationTargetSchema.parse(undefined)).toBe("/");
+  });
+
   test.each([
     "/",
     "/tasks",

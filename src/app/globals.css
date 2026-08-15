@@ -384,6 +384,11 @@
     font-size: var(--text-ui);
   }
 
+  /* Sidebar rows provide their own touch actions; suppress Safari's competing link preview. */
+  .sidebar-chat-link[href] {
+    -webkit-touch-callout: none;
+  }
+
   .sidebar-chat-title {
     @apply block w-full min-w-0 overflow-hidden whitespace-nowrap;
   }
