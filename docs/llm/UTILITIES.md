@@ -1,5 +1,7 @@
 # Shared utilities
 
+Read `LFP_HOME_HOST.md` before modifying Home-specific host composition.
+
 - `src/lib/browser-mastra-client.ts` — browser-facing Mastra client and per-call agent streaming with explicit run, thread, resource, and abort identity.
 - `src/lib/chat-session-store.ts` — shared per-thread transcript/run registry; keeps background streams alive across route and chat selection changes.
 - `src/lib/chat-app-plugins.ts` — public plugin contract and registration validation for adding self-contained views to the primary ChatApp menu.
