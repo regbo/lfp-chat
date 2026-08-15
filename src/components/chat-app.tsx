@@ -108,6 +108,7 @@ import {
   type ModelSelection,
 } from "@/lib/model-catalog";
 import { cn } from "@/lib/utils";
+import { readableError } from "@/lib/readable-error";
 import { truncateToolValue } from "@/lib/tool-output";
 import { SCHEDULE_TIMEZONE_CONTEXT_KEY } from "@/lib/schedules";
 import {
@@ -588,30 +589,6 @@ function MessageAttachments({ files }: { files: FileUIPart[] }) {
   );
 }
 
-function readableError(value: unknown): string {
-  if (typeof value === "string") return value;
-  if (value instanceof Error) return value.message;
-  if (value && typeof value === "object") {
-    const record = value as Record<string, unknown>;
-    if (typeof record.message === "string") return record.message;
-    if (typeof record.error === "string") return record.error;
-    try {
-      return JSON.stringify(value);
-    } catch {
-      return "An unexpected error occurred.";
-    }
-  }
-  return String(value ?? "An unexpected error occurred.");
-}
-
-function getErrorMessage(error: Error) {
-  try {
-    return readableError(JSON.parse(error.message));
-  } catch {
-    return error.message;
-  }
-}
-
 const MAX_STREAM_RECONNECT_ATTEMPTS = 8;
 
 function waitForStreamReconnect(signal: AbortSignal, attempt: number) {
@@ -718,7 +695,6 @@ function ModelSelector({
         className="chat-model-trigger chat-ui-text max-w-[13rem] gap-1 rounded-full px-2 text-muted-foreground"
         disabled={disabled || !catalog || !selection}
         onClick={() => setOpen(true)}
-        tooltip="Model or agent"
       >
         <SlidersHorizontal aria-hidden="true" className="chat-model-compact-icon size-4" />
         <span className="chat-model-label truncate">{label}</span>
@@ -1446,7 +1422,7 @@ function ChatSession({
           )}
           {error && (
             <div className="chat-column chat-ui-text rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-destructive">
-              {getErrorMessage(error)}
+              {readableError(error)}
             </div>
           )}
           {steerError && (
