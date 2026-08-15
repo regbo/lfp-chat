@@ -27,6 +27,7 @@ import {
   type LfpChatToolRegistryOverrides,
 } from "@/mastra/tool-registry";
 import { registerDashboardMastraTools } from "@/lib/dashboard-runtime";
+import { OpenAiConversationStateProcessor } from "@/mastra/openai-conversation-state";
 
 export type LfpChatMastraCustomization = {
   /** Keyed native Mastra tool overrides; existing keys update and new keys register. */
@@ -109,6 +110,7 @@ export function createLfpChatMastra(
       },
     },
   });
+  const openAiConversationState = new OpenAiConversationStateProcessor();
 
   const baseChatAgentConfig: AgentConfig = {
     id: "chatAgent",
@@ -116,6 +118,9 @@ export function createLfpChatMastra(
     description: "A concise, tool-capable assistant with persistent memory.",
     model: ({ requestContext }) => resolveRuntimeModel(requestContext),
     memory,
+    inputProcessors: [openAiConversationState],
+    outputProcessors: [openAiConversationState],
+    errorProcessors: [openAiConversationState],
     tools: async ({ requestContext }) => {
       const enabled = resolvedEnabledCapabilities(requestContext.get(TOOLS_CONTEXT_KEY));
       if (!serverConfig.taskServiceConfigured) enabled.delete("tasks");
@@ -154,7 +159,7 @@ export function createLfpChatMastra(
         "For render_chart, pass ordered tabular data as columns plus aligned rows. Put the label or time axis first and numeric series after it.";
       return `You are ${serverConfig.appBranding.fullName}, a capable and concise assistant.
 
-The user has enabled these optional capabilities for this run: ${enabled.join(", ") || "none"}. Monty, cache, dashboard orchestration, and hosted code_interpreter are mandatory framework capabilities and always available when supported by the provider. Only use other tools when they are enabled. ${scheduledJobInstructions} Use Monty for isolated Python, web_fetch for a normal bounded URL request, and url_fetch when a specific public page needs browser-like request behavior. url_fetch is not internet search. Create reusable data logic with dashboard_upsert_tool; saved tools may call declared built-in or saved tools, and each distinct deeply ordered input is cached automatically for its TTL. During a refresh or expired-cache recomputation, saved tool code receives previous with its prior same-input output, or None on its first run. Explicit cache deletes are soft deletes and get can opt into expired or deleted values. Create visible results with dashboard_upsert_widget only after the backing saved tool exists. A widget names exactly one saved tool, supplies fixed JSON input, and converts the returned data into one chart, metric, table, or text presentation. Widgets never fetch, call arbitrary tools, cache, or poll. Text presentations may use the validated css fields for fontWeight, fontStyle, and textAlign. Saved programs run without an LLM. Use dashboard_list before changes, dashboard_archive to archive or restore, and dashboard_delete only when the user explicitly asks to permanently remove an archived item. Use notification_send only when the user explicitly asks for an alert. When the user asks for work on a time cadence, use schedule_create. Put only the recurring work in its prompt and include the timezone when known. When Code mode is enabled, workspace tools operate directly on the host filesystem and shell; do not read secrets or modify unrelated files unless explicitly asked. ${providerInstructions}
+The user has enabled these optional capabilities for this run: ${enabled.join(", ") || "none"}. Monty, cache, dashboard orchestration, and hosted code_interpreter are mandatory framework capabilities and always available when supported by the provider. Only use other tools when they are enabled. ${scheduledJobInstructions} Use Monty for isolated Python, web_fetch for a normal bounded URL request, and url_fetch when a specific public page needs browser-like request behavior. url_fetch is not internet search. Create reusable data logic with dashboard_upsert_tool; saved tools may call declared built-in or saved tools, and each distinct deeply ordered input is cached automatically for its TTL. During a refresh or expired-cache recomputation, saved tool code receives previous with its prior same-input output, or None on its first run. Explicit cache deletes are soft deletes and get can opt into expired or deleted values. Create visible results with dashboard_upsert_widget only after the backing saved tool exists. A widget names exactly one saved tool, supplies fixed JSON input, and converts the returned data into one chart, metric, table, or text presentation. Widgets never fetch, call arbitrary tools, cache, or poll. Text presentations may use the validated css fields for fontWeight, fontStyle, and textAlign. Saved programs run without an LLM. Use compact dashboard_list output for discovery and request includeDefinitions only for a targeted edit. Use dashboard_archive to archive or restore, and dashboard_delete only when the user explicitly asks to permanently remove an archived item. Use notification_send only when the user explicitly asks for an alert. When the user asks for work on a time cadence, use schedule_create. Put only the recurring work in its prompt and include the timezone when known. When Code mode is enabled, workspace tools operate directly on the host filesystem and shell; do not read secrets or modify unrelated files unless explicitly asked. ${providerInstructions}
 
 ${chartInstructions}
 

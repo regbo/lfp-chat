@@ -268,6 +268,12 @@ const vikunjaApiToken = secretValue(
   "VIKUNJA_API_TOKEN",
   "VIKUNJA_API_TOKEN_FILE",
 );
+const localModelBaseUrl = (
+  process.env.OLLAMA_MODEL_BASE_URL?.trim() ||
+  process.env.SCHEDULED_MODEL_BASE_URL?.trim() ||
+  "http://127.0.0.1:11434/v1"
+).replace(/\/+$/, "");
+const scheduledModelName = process.env.SCHEDULED_MODEL_NAME?.trim() || "qwen3:8b";
 
 if (userScopeMode === "jwt") {
   for (const name of ["USER_SCOPE_JWT_JWKS_URL", "USER_SCOPE_JWT_ISSUER"]) {
@@ -322,12 +328,14 @@ export const serverConfig = {
   },
   agentMaxSteps: boundedInteger("MASTRA_AGENT_MAX_STEPS", 16, 1, 40),
   openaiApiKey: secretValue("OPENAI_API_KEY", "OPENAI_API_KEY_FILE"),
-  localModelBaseUrl: (
-    process.env.OLLAMA_MODEL_BASE_URL?.trim() ||
-    process.env.SCHEDULED_MODEL_BASE_URL?.trim() ||
-    "http://127.0.0.1:11434/v1"
+  localModelBaseUrl,
+  scheduledModelName,
+  // Hosts may dedicate a separate CPU runtime to lightweight web UI work.
+  // Falling back keeps standalone deployments on their existing local model.
+  webModelBaseUrl: (
+    process.env.WEB_MODEL_BASE_URL?.trim() || localModelBaseUrl
   ).replace(/\/+$/, ""),
-  scheduledModelName: process.env.SCHEDULED_MODEL_NAME?.trim() || "qwen3:8b",
+  webModelName: process.env.WEB_MODEL_NAME?.trim() || scheduledModelName,
   phoenix: {
     collectorEndpoint: optionalHttpUrl("PHOENIX_COLLECTOR_ENDPOINT"),
     apiKey: secretValue("PHOENIX_API_KEY", "PHOENIX_API_KEY_FILE"),

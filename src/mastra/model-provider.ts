@@ -37,10 +37,15 @@ const localOllama = createOpenAI({
   baseURL: serverConfig.localModelBaseUrl,
   apiKey: "local-bridge",
 });
+const webOllama = createOpenAI({
+  name: "web-ollama",
+  baseURL: serverConfig.webModelBaseUrl,
+  apiKey: "local-bridge",
+});
 
 /** Use the inexpensive local model for background UI assistance. */
 export function resolveBackgroundModel() {
-  return localOllama.chat(serverConfig.scheduledModelName);
+  return webOllama.chat(serverConfig.webModelName);
 }
 
 type OpenAiModelsResponse = {

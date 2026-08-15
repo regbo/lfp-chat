@@ -14,6 +14,26 @@ export type MastraStreamResponse = Response & {
   }) => Promise<void>;
 };
 
+type StreamChatOptions = {
+  agentId: string;
+  messages: unknown[];
+  runId: string;
+  threadId: string;
+  resourceId: string;
+  requestContext: Record<string, unknown>;
+  signal: AbortSignal;
+};
+
+export function streamChatRequestBody(options: StreamChatOptions) {
+  return {
+    messages: options.messages,
+    runId: options.runId,
+    memory: { thread: options.threadId, resource: options.resourceId },
+    requestContext: options.requestContext,
+    untilIdle: { maxIdleMs: 15_000 },
+  };
+}
+
 export async function processMastraStream(
   stream: ReadableStream<Uint8Array>,
   signal: AbortSignal,
@@ -61,26 +81,13 @@ export async function processMastraStream(
  * headers or resend their complete transcripts.
  */
 class LfpMastraClient extends MastraClient {
-  async streamChat(options: {
-    agentId: string;
-    messages: unknown[];
-    runId: string;
-    threadId: string;
-    resourceId: string;
-    requestContext: Record<string, unknown>;
-    signal: AbortSignal;
-  }): Promise<MastraStreamResponse> {
+  async streamChat(options: StreamChatOptions): Promise<MastraStreamResponse> {
     const response = await fetch(
       `/api/mastra/agents/${encodeURIComponent(options.agentId)}/stream`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          messages: options.messages,
-          runId: options.runId,
-          memory: { thread: options.threadId, resource: options.resourceId },
-          requestContext: options.requestContext,
-        }),
+        body: JSON.stringify(streamChatRequestBody(options)),
         signal: options.signal,
       },
     );

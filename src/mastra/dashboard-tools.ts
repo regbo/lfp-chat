@@ -9,6 +9,7 @@ import {
   listDashboard,
   upsertDashboardWidget,
 } from "@/lib/dashboard-store";
+import type { DashboardState } from "@/lib/dashboard-spec";
 import {
   deleteDashboardUserTool,
   setDashboardUserToolArchived,
@@ -23,6 +24,36 @@ function resourceId(context: { agent?: { resourceId?: string } }) {
   const value = context.agent?.resourceId;
   if (!value) throw new Error("Dashboard tools require a resource-scoped agent run.");
   return value;
+}
+
+/** Keep dashboard discovery small while retaining full definitions on demand. */
+export function dashboardListResult(
+  state: DashboardState,
+  includeDefinitions = false,
+) {
+  return {
+    ...state,
+    tabs: state.tabs.map((tab) => ({
+      ...tab,
+      widgets: tab.widgets.map((widget) => {
+        const result: Record<string, unknown> = { ...widget };
+        // Cached presentation data can dwarf the definition and is never
+        // needed to identify or edit a widget.
+        delete result.output;
+        if (!includeDefinitions) {
+          delete result.code;
+          delete result.css;
+          delete result.toolInput;
+        }
+        return result;
+      }),
+    })),
+    tools: state.tools.map((tool) => {
+      const result: Record<string, unknown> = { ...tool };
+      if (!includeDefinitions) delete result.code;
+      return result;
+    }),
+  };
 }
 
 export const dashboardUpsertWidgetTool = createTool({
@@ -43,11 +74,17 @@ export const dashboardUpsertWidgetTool = createTool({
 
 export const dashboardListTool = createTool({
   id: "dashboard_list",
-  description: "List the current user's dashboard tabs, widget IDs, programs, cache state, archives, and the registered capabilities that saved tools may call.",
-  inputSchema: z.object({ includeArchived: z.boolean().default(false) }),
+  description: "List the current user's dashboard tabs, widgets, saved tools, run state, archives, and registered capabilities. Definitions are omitted by default; set includeDefinitions for targeted edits. Cached widget output is never returned.",
+  inputSchema: z.object({
+    includeArchived: z.boolean().default(false),
+    includeDefinitions: z.boolean().default(false),
+  }),
   outputSchema: z.record(z.string(), z.unknown()),
-  execute: async ({ includeArchived }, context) => ({
-    ...await listDashboard(resourceId(context), { includeArchived }),
+  execute: async ({ includeArchived, includeDefinitions }, context) => ({
+    ...dashboardListResult(
+      await listDashboard(resourceId(context), { includeArchived }),
+      includeDefinitions,
+    ),
     availableCapabilities: dashboardCapabilityDescriptions(),
   }),
 });

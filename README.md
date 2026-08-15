@@ -289,6 +289,25 @@ REASONING_EFFORT=medium
 OPENAI_API_KEY=...
 ```
 
+For OpenAI Responses models, Mastra still owns the PostgreSQL transcript, while
+an agent processor chains OpenAI's stored response ID. Provider requests keep
+the current instructions and new turn or tool output instead of replaying the
+last 24 messages. If a stored response has expired, the agent retries once from
+the local transcript and starts a fresh chain. This reduces request payload and
+history bookkeeping; prior context still counts toward the model context and
+input-token billing.
+
+Scheduled automation remains on the private local Ollama route. A host can send
+lightweight background UI work to a separate CPU runtime without changing
+scheduled or user-selected chat routing:
+
+```env
+OLLAMA_MODEL_BASE_URL=http://127.0.0.1:11434/v1
+SCHEDULED_MODEL_NAME=qwen3:8b
+WEB_MODEL_BASE_URL=http://web-ollama:11434/v1
+WEB_MODEL_NAME=qwen3:8b
+```
+
 Chart requests can use the structured `render_chart` Mastra tool. It maps the first table column to labels
 and each remaining numeric column to a series directly, so it adds no second
 model call or chart-planning timeout. The browser receives an ECharts data spec,

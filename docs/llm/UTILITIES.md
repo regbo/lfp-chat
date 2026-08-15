@@ -26,6 +26,7 @@ Read `LFP_HOME_HOST.md` before modifying Home-specific host composition.
 - `src/lib/thread-state.ts` — thread metadata helpers for folders, pinning, and archiving.
 - `src/lib/citations.ts` — citation-marker cleanup and formatting for rendered assistant text.
 - `src/lib/mastra-client.ts` — server-only Mastra client used by Next route handlers for memory and thread operations.
+- `src/mastra/openai-conversation-state.ts` — server-side Mastra processor that chains OpenAI Responses state while preserving PostgreSQL history and retrying expired chains from local history.
 - `src/lib/user-scope.ts` — server-side identity resolver for local development IDs, trusted proxy headers, and JWKS-verified JWT claims; API routes use it to reject cross-user resource IDs.
 - `scripts/caddy.ts` — generates and validates the local Caddy config, binding only loopback plus detected ZeroTier IPv4 interfaces before proxying to Next.js.
 - `src/components/ai-elements/streamdown-renderer.tsx` — lazy rich-text renderer that loads code, Mermaid, math, and CJK plugins only when message content requires them.

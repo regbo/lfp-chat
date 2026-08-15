@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import {
   processMastraStream,
+  streamChatRequestBody,
   type MastraStreamChunk,
 } from "./browser-mastra-client";
 
@@ -16,6 +17,26 @@ function sseStream(events: string[]) {
 }
 
 describe("Mastra stream processing", () => {
+  test("requests a bounded run-until-idle loop without resending history", () => {
+    const body = streamChatRequestBody({
+      agentId: "chatAgent",
+      messages: [{ role: "user", content: "Hello" }],
+      runId: "run-1",
+      threadId: "thread-1",
+      resourceId: "resource-1",
+      requestContext: { tools: ["web_search"] },
+      signal: new AbortController().signal,
+    });
+
+    expect(body).toEqual({
+      messages: [{ role: "user", content: "Hello" }],
+      runId: "run-1",
+      memory: { thread: "thread-1", resource: "resource-1" },
+      requestContext: { tools: ["web_search"] },
+      untilIdle: { maxIdleMs: 15_000 },
+    });
+  });
+
   test("accepts a terminal finish event", async () => {
     const chunks: MastraStreamChunk[] = [];
     await processMastraStream(

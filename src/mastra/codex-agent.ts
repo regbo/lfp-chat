@@ -11,6 +11,7 @@ import {
   resolveRuntimeOptions,
 } from "@/mastra/model-provider";
 import { DEFAULT_WRITING_STYLE_INSTRUCTIONS } from "@/mastra/writing-style-instructions";
+import { OpenAiConversationStateProcessor } from "@/mastra/openai-conversation-state";
 
 function getCodexAcpCommand() {
   if (serverConfig.codexAcpCommand) return serverConfig.codexAcpCommand;
@@ -47,12 +48,16 @@ const codexCli = new AcpAgent({
 });
 
 export function createCodexAgent(memory: ConstructorParameters<typeof Agent>[0]["memory"]) {
+  const openAiConversationState = new OpenAiConversationStateProcessor();
   return new Agent({
     id: "codexAgent",
     name: "Codex CLI",
     description: "A coding assistant backed by the Codex CLI over ACP.",
     model: ({ requestContext }) => resolveRuntimeModel(requestContext),
     memory,
+    inputProcessors: [openAiConversationState],
+    outputProcessors: [openAiConversationState],
+    errorProcessors: [openAiConversationState],
     agents: { codexCli },
     tools: ({ requestContext }) =>
       Object.fromEntries(
