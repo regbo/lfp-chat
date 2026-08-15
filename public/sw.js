@@ -51,17 +51,17 @@ self.addEventListener("fetch", (event) => {
 self.addEventListener("push", (event) => {
   const data = event.data?.json() || {};
   event.waitUntil(self.registration.showNotification(data.title || "LFP Chat", {
-    body: data.body || "Scheduled work finished.",
+    body: data.body || "New notification.",
     icon: "/icon-192.png?v=4",
     badge: "/icon-192.png?v=4",
-    tag: data.tag || "lfp-chat-schedule",
-    data: { url: data.url || "/scheduled" },
+    tag: data.tag || "lfp-chat-notification",
+    data: { url: data.url || "/" },
   }));
 });
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const target = new URL(event.notification.data?.url || "/scheduled", self.location.origin).href;
+  const target = new URL(event.notification.data?.url || "/", self.location.origin).href;
   event.waitUntil(
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
       const existing = clients.find((client) => client.url === target);
