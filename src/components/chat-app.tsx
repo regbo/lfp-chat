@@ -1489,8 +1489,9 @@ function ThreadActionsMenu({
             aria-label={`Chat actions for ${thread.title || "New chat"}`}
             className={cn(
               "shrink-0 hover:!bg-transparent aria-expanded:!bg-transparent data-popup-open:!bg-transparent data-popup-open:opacity-100 focus-visible:!bg-transparent focus-visible:opacity-100",
-              !alwaysVisible && "opacity-0 group-hover:opacity-100",
+              !alwaysVisible && "opacity-0 group-hover:opacity-100 max-md:pointer-events-none max-md:!opacity-0",
             )}
+            data-thread-actions-trigger
             size="icon-xs"
             variant="ghost"
           />
@@ -1560,8 +1561,48 @@ function SidebarThreadRow({
   onPrefetch: (threadId: string) => void;
   thread: ThreadSummary;
 }) {
+  const rowRef = useRef<HTMLDivElement>(null);
+  const longPressTimer = useRef(0);
+  const longPressOrigin = useRef({ x: 0, y: 0 });
+  const suppressNextClick = useRef(false);
+  const cancelLongPress = () => window.clearTimeout(longPressTimer.current);
+  const openActions = () => {
+    suppressNextClick.current = true;
+    window.setTimeout(() => { suppressNextClick.current = false; }, 900);
+    rowRef.current
+      ?.querySelector<HTMLButtonElement>("[data-thread-actions-trigger]")
+      ?.click();
+  };
+
   return (
-    <div className={cn("sidebar-chat-row group flex min-h-8 items-center rounded-lg hover:bg-sidebar-accent", active && "sidebar-chat-link-active")}>
+    <div
+      className={cn("sidebar-chat-row group relative flex min-h-8 items-center rounded-lg hover:bg-sidebar-accent", active && "sidebar-chat-link-active")}
+      onClickCapture={(event) => {
+        if (!suppressNextClick.current || (event.target as HTMLElement).closest("[data-thread-actions-trigger]")) return;
+        event.preventDefault();
+        event.stopPropagation();
+        suppressNextClick.current = false;
+      }}
+      onContextMenu={(event) => {
+        if (!window.matchMedia("(max-width: 767px)").matches) return;
+        event.preventDefault();
+        if (!suppressNextClick.current) openActions();
+      }}
+      onPointerCancel={cancelLongPress}
+      onPointerDown={(event) => {
+        if (event.pointerType !== "touch" || !window.matchMedia("(max-width: 767px)").matches) return;
+        cancelLongPress();
+        longPressOrigin.current = { x: event.clientX, y: event.clientY };
+        longPressTimer.current = window.setTimeout(openActions, 500);
+      }}
+      onPointerMove={(event) => {
+        if (event.pointerType !== "touch") return;
+        const { x, y } = longPressOrigin.current;
+        if (Math.hypot(event.clientX - x, event.clientY - y) > 10) cancelLongPress();
+      }}
+      onPointerUp={cancelLongPress}
+      ref={rowRef}
+    >
       <Link
         className="sidebar-chat-link min-w-0 flex-1"
         href={threadHref(thread.id)}
@@ -1811,6 +1852,57 @@ export function ChatApp({ branding = DEFAULT_APP_BRANDING, mods = [], plugins = 
     getChatSessionRevision,
   );
   const runningThreadIds = getRunningChatThreadIds();
+
+  useEffect(() => {
+    const shell = appShellRef.current;
+    if (!shell) return;
+    let tracking = false;
+    let horizontal = false;
+    let startX = 0;
+    let startY = 0;
+    let currentX = 0;
+
+    const onTouchStart = (event: TouchEvent) => {
+      if (window.innerWidth >= 768 || event.touches.length !== 1) return;
+      const touch = event.touches[0];
+      if (!mobileSidebarOpen && touch.clientX > 32) return;
+      tracking = true;
+      horizontal = false;
+      startX = touch.clientX;
+      startY = touch.clientY;
+      currentX = startX;
+    };
+    const onTouchMove = (event: TouchEvent) => {
+      if (!tracking || event.touches.length !== 1) return;
+      const touch = event.touches[0];
+      currentX = touch.clientX;
+      const deltaX = currentX - startX;
+      const deltaY = touch.clientY - startY;
+      if (Math.abs(deltaX) <= Math.abs(deltaY) || Math.abs(deltaX) < 8) return;
+      horizontal = true;
+      event.preventDefault();
+    };
+    const onTouchEnd = () => {
+      if (tracking && horizontal) {
+        const deltaX = currentX - startX;
+        if (!mobileSidebarOpen && deltaX > 56) setMobileSidebarOpen(true);
+        if (mobileSidebarOpen && deltaX < -56) setMobileSidebarOpen(false);
+      }
+      tracking = false;
+      horizontal = false;
+    };
+
+    shell.addEventListener("touchstart", onTouchStart, { passive: true });
+    shell.addEventListener("touchmove", onTouchMove, { passive: false });
+    shell.addEventListener("touchend", onTouchEnd, { passive: true });
+    shell.addEventListener("touchcancel", onTouchEnd, { passive: true });
+    return () => {
+      shell.removeEventListener("touchstart", onTouchStart);
+      shell.removeEventListener("touchmove", onTouchMove);
+      shell.removeEventListener("touchend", onTouchEnd);
+      shell.removeEventListener("touchcancel", onTouchEnd);
+    };
+  }, [mobileSidebarOpen]);
 
   useEffect(() => {
     if (!resourceId) return;
@@ -2327,7 +2419,7 @@ export function ChatApp({ branding = DEFAULT_APP_BRANDING, mods = [], plugins = 
   const renderSidebarThreadControls = useCallback((thread: ThreadSummary) => {
     const running = runningThreadIds.has(thread.id);
     return (
-      <span className="sidebar-chat-actions relative mr-1 grid size-6 shrink-0 place-items-center">
+      <span className="sidebar-chat-actions relative mr-1 grid size-6 shrink-0 place-items-center max-md:absolute max-md:right-0">
         {running && (
           <LoaderCircle
             aria-label={`${thread.title || "Chat"} is running`}
