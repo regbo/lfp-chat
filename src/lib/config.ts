@@ -119,6 +119,39 @@ export type ToolPolicyOverride = {
   availableToMonty?: boolean;
 };
 
+export type ExternalViewConfig = {
+  id: string;
+  label: string;
+  href: `/${string}`;
+  source: `/${string}`;
+};
+
+function externalViews(): ExternalViewConfig[] {
+  const raw = process.env.APP_EXTERNAL_VIEWS?.trim();
+  if (!raw) return [];
+  const parsed: unknown = JSON.parse(raw);
+  if (!Array.isArray(parsed)) throw new Error("APP_EXTERNAL_VIEWS must be a JSON array.");
+  const ids = new Set<string>();
+  return parsed.map((value, index) => {
+    if (!value || typeof value !== "object") {
+      throw new Error(`APP_EXTERNAL_VIEWS[${index}] must be an object.`);
+    }
+    const item = value as Record<string, unknown>;
+    const id = typeof item.id === "string" ? item.id.trim() : "";
+    const label = typeof item.label === "string" ? item.label.trim() : "";
+    const href = typeof item.href === "string" ? item.href.trim() : "";
+    const source = typeof item.source === "string" ? item.source.trim() : "";
+    if (!/^[a-z][a-z0-9_-]{0,62}$/.test(id) || ids.has(id)) {
+      throw new Error(`APP_EXTERNAL_VIEWS[${index}].id must be a unique lowercase slug.`);
+    }
+    if (!label || !href.startsWith("/") || !source.startsWith("/")) {
+      throw new Error(`APP_EXTERNAL_VIEWS[${index}] requires label, href, and source.`);
+    }
+    ids.add(id);
+    return { id, label, href: href as `/${string}`, source: source as `/${string}` };
+  });
+}
+
 function toolPolicyOverrides(): Record<string, ToolPolicyOverride> {
   const raw = process.env.TOOL_POLICIES?.trim();
   if (!raw) return {};
@@ -257,6 +290,7 @@ export const serverConfig = {
   vikunjaApiToken,
   vikunjaProjectId: boundedInteger("VIKUNJA_PROJECT_ID", 1, 1, 2_147_483_647),
   taskServiceConfigured: Boolean(vikunjaApiUrl && vikunjaApiToken),
+  externalViews: externalViews(),
   mcpToolSources: mcpToolSources(),
   toolPolicyOverrides: toolPolicyOverrides(),
   scheduleRunImmediately: booleanValue("SCHEDULE_RUN_IMMEDIATELY", true),

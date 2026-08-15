@@ -8,6 +8,7 @@ export default async function WorkspaceLayout() {
   const user = await resolvePageUserScope(await headers());
   return <WorkspaceChatApp
     branding={serverConfig.appBranding}
+    externalViews={serverConfig.externalViews}
     taskServiceConfigured={serverConfig.taskServiceConfigured}
     toolPolicies={serverConfig.toolPolicyOverrides}
     tools={[
