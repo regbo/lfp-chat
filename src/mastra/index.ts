@@ -114,7 +114,9 @@ export function createLfpChatMastra(
       observationalMemory: {
         enabled: true,
         model: resolveBackgroundModel(),
-        scope: "resource",
+        // Keep observations isolated to a conversation. Working memory remains
+        // resource-scoped so the compact user profile is still shared.
+        scope: "thread",
         observation: {
           manageWorkingMemory: true,
         },

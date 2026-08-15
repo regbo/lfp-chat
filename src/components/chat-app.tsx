@@ -1093,10 +1093,12 @@ function ChatSession({
     }
 
     if (isTerminalMastraChunk(chunk)) {
-      if (chunk.type === "error") {
+      if (chunk.type === "error" || chunk.type === "tripwire") {
         settleRun(run, {
           status: "error",
-          error: new Error(readableError(payload.error ?? payload.message ?? "Chat failed.")),
+          error: new Error(readableError(
+            payload.reason ?? payload.error ?? payload.message ?? "Chat stopped before it could respond.",
+          )),
         });
       } else if (run.timedOut) {
         settleRun(run, {

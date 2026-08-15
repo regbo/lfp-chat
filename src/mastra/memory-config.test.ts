@@ -15,7 +15,7 @@ describe("Mastra memory", () => {
     });
     expect(config.observationalMemory).toMatchObject({
       enabled: true,
-      scope: "resource",
+      scope: "thread",
       observation: { manageWorkingMemory: true },
     });
     expect(memory.listTools()).not.toHaveProperty("updateWorkingMemory");

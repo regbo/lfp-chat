@@ -49,7 +49,7 @@ export function threadMessageOptions(options: {
 }
 
 export function isTerminalMastraChunk(chunk: MastraStreamChunk) {
-  if (chunk.type === "error" || chunk.type === "abort") return true;
+  if (chunk.type === "error" || chunk.type === "abort" || chunk.type === "tripwire") return true;
   const payload = chunk.payload && typeof chunk.payload === "object"
     ? chunk.payload as Record<string, unknown>
     : {};

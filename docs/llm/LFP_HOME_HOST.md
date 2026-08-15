@@ -6,8 +6,9 @@ This repository is a reusable chat package plus an LFP Home host. Preserve that 
   structured Home API and must not reproduce PostgreSQL writes, account matching, deduplication, or
   embeddings. Keep `src/host/transaction-tool.ts` out of public package entrypoints.
 - Mastra owns chat history and long-term conversational memory through its PostgreSQL-backed memory
-  system. Observational Memory maintains the small resource-scoped user profile with the local
-  background model; ordinary tool results and ingested Home content do not belong in that profile.
+  system. Observational Memory summarizes each thread with the local background model and manages
+  the small resource-scoped working-memory profile; ordinary tool results and ingested Home content
+  do not belong in that profile.
 - Notifications accept an optional app path or absolute HTTP(S) URL and default to `/`. Use the
   content or result URL when available; reserve `/scheduled` for schedule-management alerts.
 - Resource-scoped working memory may retain household access details only after an explicit user

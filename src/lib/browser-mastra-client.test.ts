@@ -66,6 +66,7 @@ describe("Mastra thread messaging", () => {
     })).toBe(false);
     expect(isTerminalMastraChunk({ type: "error" })).toBe(true);
     expect(isTerminalMastraChunk({ type: "abort" })).toBe(true);
+    expect(isTerminalMastraChunk({ type: "tripwire" })).toBe(true);
     expect(isTerminalMastraChunk({ type: "text-delta" })).toBe(false);
   });
 });

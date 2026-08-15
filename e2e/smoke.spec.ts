@@ -190,3 +190,33 @@ test("a terminal Mastra step clears the streaming state", async ({ page }) => {
   await expect(page.getByText("Thinking…")).toHaveCount(0);
   await expect(page.getByRole("button", { name: /^Thought for/ })).toBeVisible();
 });
+
+test("a Mastra tripwire surfaces the reason and clears the streaming state", async ({ page }) => {
+  await page.unroute("**/api/**");
+  await installAppApiFixture(page, {
+    messagesByThread: { "smoke-tripwire-thread": [] },
+  });
+  await page.route("**/api/mastra/**", async (route) => {
+    const pathname = new URL(route.request().url()).pathname;
+    if (pathname.endsWith("/threads/subscribe")) {
+      await route.fulfill({
+        body: `data: ${JSON.stringify({
+          type: "tripwire",
+          runId: "smoke-tripwire-run",
+          payload: { reason: "Memory observation could not process this conversation." },
+        })}\n\n`,
+        contentType: "text/event-stream",
+      });
+      return;
+    }
+    await route.fulfill({ json: { runId: "smoke-tripwire-run" } });
+  });
+  await page.goto("/c/smoke-tripwire-thread");
+
+  await page.getByRole("textbox", { name: "Message" }).fill("Trigger the processor guard");
+  await page.getByRole("button", { name: "Send message" }).click();
+
+  await expect(page.getByText("Memory observation could not process this conversation.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Stop response" })).toHaveCount(0);
+  await expect(page.getByText("Thinking…")).toHaveCount(0);
+});
