@@ -1,5 +1,4 @@
 import { createLfpChatMastra } from "@/mastra";
-import { homeMemoryTools } from "@/host/memory-tool";
 import { homeTransactionTools } from "@/host/transaction-tool";
 
 const globalForMastra = globalThis as typeof globalThis & {
@@ -8,5 +7,5 @@ const globalForMastra = globalThis as typeof globalThis & {
 
 export const { mastra, memory, toolCatalog, toolRegistry } = (globalForMastra.lfpMastra ??=
   createLfpChatMastra({
-    configureTools: { ...homeTransactionTools, ...homeMemoryTools },
+    configureTools: homeTransactionTools,
   }));

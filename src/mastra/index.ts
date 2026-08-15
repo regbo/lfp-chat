@@ -8,6 +8,7 @@ import { PostgresStore } from "@mastra/pg";
 import { serverConfig } from "@/lib/config";
 import {
   modelProvider,
+  resolveBackgroundModel,
   resolveRuntimeModel,
   resolveRuntimeOptions,
 } from "@/mastra/model-provider";
@@ -99,6 +100,8 @@ export function createLfpChatMastra(
       workingMemory: {
         enabled: true,
         scope: "resource",
+        agentManaged: false,
+        useStateSignals: true,
         template: [
           "# User context",
           "- Name:",
@@ -107,6 +110,14 @@ export function createLfpChatMastra(
           "- Important constraints:",
           "- Household access details (only when the user explicitly asks to remember them):",
         ].join("\n"),
+      },
+      observationalMemory: {
+        enabled: true,
+        model: resolveBackgroundModel(),
+        scope: "resource",
+        observation: {
+          manageWorkingMemory: true,
+        },
       },
     },
   });
@@ -165,10 +176,12 @@ ${chartInstructions}
 
 ${DEFAULT_WRITING_STYLE_INSTRUCTIONS}
 
-Remember stable user preferences and household facts in working memory. When the user explicitly
-asks, household access details such as garage, gate, lockbox, door, or alarm codes may be stored in
-their user-scoped working memory. Never store account passwords, API keys, authentication or recovery
-tokens, private keys, payment card details, or financial account credentials.`;
+Mastra observational memory maintains stable user preferences and household facts in PostgreSQL.
+Ordinary query results, transaction rows, emails, attachments, and tool output are not user-profile
+memory and must not be copied into working memory. Household access details such as garage, gate,
+lockbox, door, or alarm codes may be retained only when the user explicitly asks. Never retain
+account passwords, API keys, authentication or recovery tokens, private keys, payment card details,
+or financial account credentials.`;
     },
     defaultOptions: ({ requestContext }) =>
       resolveRuntimeOptions(requestContext),

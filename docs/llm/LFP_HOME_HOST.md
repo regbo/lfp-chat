@@ -5,14 +5,15 @@ This repository is a reusable chat package plus an LFP Home host. Preserve that 
 - Home's `transaction_add` tool is a host-only native Mastra adapter. It calls the authenticated
   structured Home API and must not reproduce PostgreSQL writes, account matching, deduplication, or
   embeddings. Keep `src/host/transaction-tool.ts` out of public package entrypoints.
-- Home's `memory_add` tool is another host-only adapter. It writes shared household facts to the
-  authenticated Home memory API; personal or credential-bearing details remain in the existing
-  scoped-memory policy and must not be sent to the durable household endpoint.
+- Mastra owns chat history and long-term conversational memory through its PostgreSQL-backed memory
+  system. Observational Memory maintains the small resource-scoped user profile with the local
+  background model; ordinary tool results and ingested Home content do not belong in that profile.
 - Notifications accept an optional app path or absolute HTTP(S) URL and default to `/`. Use the
   content or result URL when available; reserve `/scheduled` for schedule-management alerts.
-- Resource-scoped working memory may save household access details only after an explicit user
+- Resource-scoped working memory may retain household access details only after an explicit user
   request. Passwords, API keys, authentication and recovery tokens, private keys, card details, and
-  financial credentials remain excluded.
+  financial credentials remain excluded. Graphiti is reserved for knowledge derived from ingested
+  Home sources such as emails, documents, and attachments.
 - Sidebar chat links suppress Safari's long-press preview because the row owns its touch actions.
   Running rows use the expanded action-width title fade so loading controls do not cover text.
 - Home-managed read tools for PostgreSQL schema, email, attachments, Graphiti, and Kestra remain MCP
