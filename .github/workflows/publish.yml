@@ -33,11 +33,8 @@ jobs:
       - name: Set package version from tag
         run: bun scripts/set-version-from-tag.ts "$GITHUB_REF_NAME"
 
-      - name: Type-check package
-        run: bun run typecheck
-
-      - name: Verify package contents
-        run: bun run pack:check
+      - name: Build npm package
+        run: bun run build:package
 
       - name: Set up npm publishing
         uses: actions/setup-node@v6

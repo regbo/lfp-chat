@@ -36,6 +36,8 @@
     "start:mastra": "MASTRA_HOST=127.0.0.1 bun dist/server/index.js",
     "start:caddy": "bun scripts/caddy.ts",
     "caddy:check": "bun scripts/caddy.ts --check",
+    "smoke": "playwright test",
+    "smoke:install": "playwright install chromium webkit",
     "lint": "eslint",
     "typecheck": "next typegen && tsc --noEmit",
     "check": "bun run lint && bun run typecheck && bun run build",
@@ -95,6 +97,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "@tailwindcss/cli": "^4",
     "@tailwindcss/postcss": "^4",
     "@types/bun": "^1.3.14",

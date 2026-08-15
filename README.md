@@ -370,10 +370,16 @@ bun run dev:web     # Start only Next.js
 bun run dev:mastra  # Start only the Bun/Hono Mastra Server
 bun run dev:caddy   # Start only the Caddy loopback/ZeroTier proxy
 bun run caddy:check # Generate and validate the Caddy configuration
+bun run smoke       # Run desktop Chromium and mobile WebKit UI smoke tests
+bun run smoke:install # Install the Playwright browser engines once
 bun run db:up       # Start PostgreSQL
 bun run db:down     # Stop PostgreSQL
 bun run check       # Lint, typecheck, and production build
 ```
+
+The smoke suite uses deterministic browser API fixtures and does not require
+PostgreSQL or the Mastra server. See `docs/llm/PLAYWRIGHT_SMOKE.md` for covered
+risks, project selection, artifacts, and port configuration.
 
 Any installed dependency can be temporarily replaced by a prepared local package directory. The
 directory's `package.json` name must match the requested package; its declared dependencies are
