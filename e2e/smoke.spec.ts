@@ -132,3 +132,27 @@ test("mobile keyboard viewport geometry keeps the shell and composer visible", a
     shellTop: 48,
   });
 });
+
+test("mobile composer does not reserve an empty control slot", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "mobile-webkit", "The compact composer is mobile-specific.");
+  await page.goto("/");
+
+  const modelSelector = page.getByRole("button", {
+    name: "Select model, agent, and reasoning",
+  });
+  const submit = page.getByRole("button", { name: "Send message" });
+  await expect(modelSelector).toBeVisible();
+  await expect(submit).toBeVisible();
+
+  const controlGap = async () => {
+    const modelBox = await modelSelector.boundingBox();
+    const submitBox = await submit.boundingBox();
+    if (!modelBox || !submitBox) throw new Error("Composer controls did not render.");
+    return Math.round(submitBox.x - (modelBox.x + modelBox.width));
+  };
+
+  await expect.poll(controlGap).toBeLessThanOrEqual(4);
+
+  await page.getByRole("textbox", { name: "Message" }).focus();
+  await expect.poll(controlGap).toBeLessThanOrEqual(4);
+});

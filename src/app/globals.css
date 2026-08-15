@@ -1097,7 +1097,6 @@
       var(--control-height-md)
       minmax(0, 1fr)
       minmax(4.75rem, 6.5rem)
-      var(--control-height-md)
       var(--composer-submit-size);
     grid-template-rows: var(--composer-submit-size);
     column-gap: var(--mobile-composer-control-gap);
@@ -1138,7 +1137,6 @@
     grid-template-columns:
       var(--control-height-md)
       minmax(0, 1fr)
-      var(--control-height-md)
       var(--composer-submit-size);
     grid-template-rows: 0 minmax(var(--mobile-composer-input-height), max-content) var(--composer-submit-size);
     min-height: var(--mobile-composer-height);
@@ -1195,14 +1193,9 @@
     display: block;
   }
 
-  .chat-composer button[aria-label="Start dictation"] {
-    grid-row: 1;
-    grid-column: 4;
-  }
-
   .chat-composer .chat-composer-submit {
     grid-row: 1;
-    grid-column: 5;
+    grid-column: 4;
     position: relative;
     width: 2.25rem;
     height: 2.25rem;
@@ -1233,18 +1226,9 @@
     [data-expanded="true"],
     :has([data-attachments]),
     :has([data-slot="input-group-control"]:focus)
-  ) button[aria-label="Start dictation"] {
-    grid-row: 3;
-    grid-column: 3;
-  }
-
-  .chat-composer:where(
-    [data-expanded="true"],
-    :has([data-attachments]),
-    :has([data-slot="input-group-control"]:focus)
   ) .chat-composer-submit {
     grid-row: 3;
-    grid-column: 4;
+    grid-column: 3;
   }
 
   .chat-composer .chat-composer-submit::before {
