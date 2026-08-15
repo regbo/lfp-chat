@@ -2419,7 +2419,10 @@ export function ChatApp({ branding = DEFAULT_APP_BRANDING, mods = [], plugins = 
   const renderSidebarThreadControls = useCallback((thread: ThreadSummary) => {
     const running = runningThreadIds.has(thread.id);
     return (
-      <span className="sidebar-chat-actions relative mr-1 grid size-6 shrink-0 place-items-center max-md:absolute max-md:right-0">
+      <span className={cn(
+        "sidebar-chat-actions relative mr-1 grid size-6 shrink-0 place-items-center max-md:absolute max-md:right-0",
+        running && "sidebar-chat-actions-active",
+      )}>
         {running && (
           <LoaderCircle
             aria-label={`${thread.title || "Chat"} is running`}

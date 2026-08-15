@@ -405,7 +405,8 @@
   }
 
   .sidebar-chat-row:has(.sidebar-chat-actions:hover) .sidebar-chat-title-overflowing,
-  .sidebar-chat-row:has(.sidebar-chat-actions:focus-within) .sidebar-chat-title-overflowing {
+  .sidebar-chat-row:has(.sidebar-chat-actions:focus-within) .sidebar-chat-title-overflowing,
+  .sidebar-chat-row:has(.sidebar-chat-actions-active) .sidebar-chat-title-overflowing {
     --sidebar-title-fade: var(--sidebar-title-fade-action);
   }
 

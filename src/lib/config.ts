@@ -34,7 +34,7 @@ function booleanValue(name: string, fallback: boolean) {
   throw new Error(`${name} must be true or false.`);
 }
 
-function secretValue(valueName: string, fileName: string) {
+export function secretValue(valueName: string, fileName: string) {
   const file = process.env[fileName]?.trim();
   if (file) {
     const value = readFileSync(file, "utf8").trim();
@@ -88,7 +88,7 @@ const appBranding = createAppBranding({
   faviconUrl: process.env.APP_FAVICON_URL?.trim(),
 });
 
-function optionalHttpUrl(name: string) {
+export function optionalHttpUrl(name: string) {
   const value = process.env[name]?.trim();
   if (!value) return undefined;
   const url = new URL(value);

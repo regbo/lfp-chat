@@ -142,6 +142,13 @@ programs; otherwise only MCP tools carrying Mastra's native
 Each source is registered as a normal tool-registry entry, and its discovered
 native Mastra tools are attached to that entry before the agent resolves tools.
 
+The included LFP Home host demonstrates the complementary write pattern: it composes
+`transaction_add` through `createLfpChatMastra({ configureTools })` and calls Home's
+typed HTTP endpoint directly. The adapter lives under `src/host`, is omitted from the
+published `@regbo/lfp-chat` entrypoints, and contains no database or dedupe logic. This
+keeps the package application-agnostic while preserving native Mastra tool events and
+avoiding an unnecessary MCP round trip for a Home-only mutation.
+
 `TOOL_POLICIES` applies `{ hidden, enabled, userConfigurable, availableToMonty }`
 overrides to
 built-in logical capabilities or exact Mastra tool IDs. For example,
