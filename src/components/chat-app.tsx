@@ -159,7 +159,6 @@ import {
   LoaderCircle,
   LayoutDashboard,
   Menu,
-  Mic,
   MoreHorizontal,
   PanelLeftClose,
   PanelLeftOpen,
@@ -824,7 +823,6 @@ function ChatComposer({ draft, editingSteerId, modelCatalog, modelSelection, onD
           onSelect={onModelSelectionChange}
           selection={modelSelection}
         />
-        <PromptInputButton aria-label="Start dictation" tooltip="Dictate"><Mic className="size-4" /></PromptInputButton>
         <ChatSubmitButton
           draft={draft}
           editingSteerId={editingSteerId}
