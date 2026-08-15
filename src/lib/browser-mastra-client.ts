@@ -50,15 +50,16 @@ export function threadMessageOptions(options: {
 
 export function isTerminalMastraChunk(chunk: MastraStreamChunk) {
   if (chunk.type === "error" || chunk.type === "abort") return true;
-  if (chunk.type !== "finish") return false;
   const payload = chunk.payload && typeof chunk.payload === "object"
     ? chunk.payload as Record<string, unknown>
     : {};
   const stepResult = payload.stepResult;
-  const reason = stepResult && typeof stepResult === "object"
-    ? (stepResult as Record<string, unknown>).reason
-    : undefined;
-  return reason !== "tool-calls";
+  const result = stepResult && typeof stepResult === "object"
+    ? stepResult as Record<string, unknown>
+    : {};
+  if (chunk.type === "step-finish") return result.isContinued !== true;
+  if (chunk.type !== "finish") return false;
+  return result.isContinued !== true && result.reason !== "tool-calls";
 }
 
 /**

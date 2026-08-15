@@ -156,3 +156,37 @@ test("mobile composer does not reserve an empty control slot", async ({ page }, 
   await page.getByRole("textbox", { name: "Message" }).focus();
   await expect.poll(controlGap).toBeLessThanOrEqual(4);
 });
+
+test("a terminal Mastra step clears the streaming state", async ({ page }) => {
+  await page.unroute("**/api/**");
+  const chatChunks = [
+    { type: "reasoning-start", runId: "smoke-chat-run", payload: { id: "reasoning-1" } },
+    { type: "reasoning-delta", runId: "smoke-chat-run", payload: { id: "reasoning-1", text: "Checked the fixture." } },
+    { type: "text-start", runId: "smoke-chat-run", payload: { id: "text-1" } },
+    { type: "text-delta", runId: "smoke-chat-run", payload: { id: "text-1", text: "The response is complete." } },
+    { type: "step-finish", runId: "smoke-chat-run", payload: { stepResult: { isContinued: false, reason: "stop" } } },
+  ];
+  await installAppApiFixture(page, {
+    messagesByThread: { "smoke-thread-1": [] },
+  });
+  await page.route("**/api/mastra/**", async (route) => {
+    const pathname = new URL(route.request().url()).pathname;
+    if (pathname.endsWith("/threads/subscribe")) {
+      await route.fulfill({
+        body: chatChunks.map((chunk) => `data: ${JSON.stringify(chunk)}\n\n`).join(""),
+        contentType: "text/event-stream",
+      });
+      return;
+    }
+    await route.fulfill({ json: { runId: "smoke-chat-run" } });
+  });
+  await page.goto("/c/smoke-thread-1");
+
+  await page.getByRole("textbox", { name: "Message" }).fill("Complete this turn");
+  await page.getByRole("button", { name: "Send message" }).click();
+
+  await expect(page.getByText("The response is complete.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Stop response" })).toHaveCount(0);
+  await expect(page.getByText("Thinking…")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /^Thought for/ })).toBeVisible();
+});

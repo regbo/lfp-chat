@@ -56,6 +56,14 @@ describe("Mastra thread messaging", () => {
       type: "finish",
       payload: { stepResult: { reason: "tool-calls" } },
     })).toBe(false);
+    expect(isTerminalMastraChunk({
+      type: "step-finish",
+      payload: { stepResult: { isContinued: false } },
+    })).toBe(true);
+    expect(isTerminalMastraChunk({
+      type: "step-finish",
+      payload: { stepResult: { isContinued: true } },
+    })).toBe(false);
     expect(isTerminalMastraChunk({ type: "error" })).toBe(true);
     expect(isTerminalMastraChunk({ type: "abort" })).toBe(true);
     expect(isTerminalMastraChunk({ type: "text-delta" })).toBe(false);
