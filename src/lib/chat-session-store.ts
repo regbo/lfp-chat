@@ -9,7 +9,7 @@ export type ChatSessionState = {
   status: ChatSessionStatus;
   error: Error | null;
   runId: string | null;
-  abortController: AbortController | null;
+  abortRun: (() => Promise<void>) | null;
   historyLoaded: boolean;
   historyPage: number;
   hasMoreHistory: boolean;
@@ -25,7 +25,7 @@ export function createChatSession(messages: UIMessage[] = []): ChatSessionState 
     status: "ready",
     error: null,
     runId: null,
-    abortController: null,
+    abortRun: null,
     historyLoaded: true,
     historyPage: 1,
     hasMoreHistory: false,
@@ -63,7 +63,7 @@ export function updateChatSession(
 }
 
 export function deleteChatSession(threadId: string) {
-  sessions.get(threadId)?.abortController?.abort();
+  void sessions.get(threadId)?.abortRun?.().catch(() => undefined);
   if (!sessions.delete(threadId)) return;
   revision += 1;
   listeners.forEach((listener) => listener());

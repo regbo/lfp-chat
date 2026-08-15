@@ -1,65 +1,63 @@
 import { describe, expect, test } from "bun:test";
 
 import {
-  processMastraStream,
-  streamChatRequestBody,
-  type MastraStreamChunk,
+  isTerminalMastraChunk,
+  messageContents,
+  threadMessageOptions,
 } from "./browser-mastra-client";
 
-function sseStream(events: string[]) {
-  const encoder = new TextEncoder();
-  return new ReadableStream<Uint8Array>({
-    start(controller) {
-      for (const event of events) controller.enqueue(encoder.encode(event));
-      controller.close();
-    },
-  });
-}
-
-describe("Mastra stream processing", () => {
-  test("requests a bounded run-until-idle loop without resending history", () => {
-    const body = streamChatRequestBody({
-      agentId: "chatAgent",
-      messages: [{ role: "user", content: "Hello" }],
-      runId: "run-1",
-      threadId: "thread-1",
+describe("Mastra thread messaging", () => {
+  test("sends only the current turn with native run options", () => {
+    const options = threadMessageOptions({
+      clientMessageId: "message-1",
+      message: { text: " Hello ", files: [] },
       resourceId: "resource-1",
+      threadId: "thread-1",
       requestContext: { tools: ["web_search"] },
-      signal: new AbortController().signal,
     });
 
-    expect(body).toEqual({
-      messages: [{ role: "user", content: "Hello" }],
-      runId: "run-1",
-      memory: { thread: "thread-1", resource: "resource-1" },
-      requestContext: { tools: ["web_search"] },
-      untilIdle: { maxIdleMs: 15_000 },
+    expect(options).toEqual({
+      resourceId: "resource-1",
+      threadId: "thread-1",
+      message: {
+        contents: [{ type: "text", text: "Hello" }],
+        metadata: { clientMessageId: "message-1" },
+      },
+      ifIdle: {
+        behavior: "wake",
+        attributes: { source: "user" },
+        streamOptions: {
+          requestContext: { tools: ["web_search"] },
+        },
+      },
     });
   });
 
-  test("accepts a terminal finish event", async () => {
-    const chunks: MastraStreamChunk[] = [];
-    await processMastraStream(
-      sseStream(['data: {"type":"finish"}\n\n']),
-      new AbortController().signal,
-      (chunk) => { chunks.push(chunk); },
-    );
-    expect(chunks).toEqual([{ type: "finish" }]);
+  test("preserves file data for Mastra message signals", () => {
+    expect(messageContents({
+      text: "",
+      files: [{
+        type: "file",
+        url: "data:image/png;base64,abc",
+        mediaType: "image/png",
+        filename: "screen.png",
+      }],
+    })).toEqual([{
+      type: "file",
+      data: "data:image/png;base64,abc",
+      mediaType: "image/png",
+      filename: "screen.png",
+    }]);
   });
 
-  test("accepts the SSE done sentinel", async () => {
-    await expect(processMastraStream(
-      sseStream(["data: [DONE]\n\n"]),
-      new AbortController().signal,
-      () => undefined,
-    )).resolves.toBeUndefined();
-  });
-
-  test("reports an interrupted stream so the caller can reconnect", async () => {
-    await expect(processMastraStream(
-      sseStream(['data: {"type":"text-delta","payload":{"text":"Hi"}}\n\n']),
-      new AbortController().signal,
-      () => undefined,
-    )).rejects.toThrow("disconnected before the run finished");
+  test("recognizes every native terminal chunk", () => {
+    expect(isTerminalMastraChunk({ type: "finish" })).toBe(true);
+    expect(isTerminalMastraChunk({
+      type: "finish",
+      payload: { stepResult: { reason: "tool-calls" } },
+    })).toBe(false);
+    expect(isTerminalMastraChunk({ type: "error" })).toBe(true);
+    expect(isTerminalMastraChunk({ type: "abort" })).toBe(true);
+    expect(isTerminalMastraChunk({ type: "text-delta" })).toBe(false);
   });
 });

@@ -55,6 +55,7 @@ async function proxy(
   const init: RequestInit & { duplex?: "half" } = {
     method: request.method,
     headers,
+    signal: request.signal,
   };
   if (request.method !== "GET" && request.method !== "HEAD") {
     init.body = body;

@@ -85,7 +85,9 @@ import { isChatChartSpec } from "@/lib/chart-spec";
 import { formatCitationMarkers } from "@/lib/citations";
 import {
   browserMastraClient,
-  type MastraStreamResponse,
+  isTerminalMastraChunk,
+  type MastraStreamChunk,
+  threadMessageOptions,
 } from "@/lib/browser-mastra-client";
 import {
   deleteChatSession,
@@ -588,38 +590,9 @@ function MessageAttachments({ files }: { files: FileUIPart[] }) {
   );
 }
 
-const MAX_STREAM_RECONNECT_ATTEMPTS = 8;
 const INITIAL_RESPONSE_TIMEOUT_MS = 180_000;
 const STREAM_INACTIVITY_TIMEOUT_MS = 180_000;
 const TOOL_INACTIVITY_TIMEOUT_MS = 10 * 60_000;
-
-function waitForStreamReconnect(signal: AbortSignal, attempt: number) {
-  if (signal.aborted) return Promise.resolve();
-
-  return new Promise<void>((resolve) => {
-    let timer: number | undefined;
-    const cleanup = () => {
-      if (timer !== undefined) window.clearTimeout(timer);
-      document.removeEventListener("visibilitychange", checkReady);
-      window.removeEventListener("online", checkReady);
-      signal.removeEventListener("abort", finish);
-    };
-    const finish = () => {
-      cleanup();
-      resolve();
-    };
-    const checkReady = () => {
-      if (document.visibilityState === "visible" && navigator.onLine) finish();
-    };
-
-    document.addEventListener("visibilitychange", checkReady);
-    window.addEventListener("online", checkReady);
-    signal.addEventListener("abort", finish, { once: true });
-    if (document.visibilityState === "visible" && navigator.onLine) {
-      timer = window.setTimeout(finish, Math.min(500 * 2 ** attempt, 5_000));
-    }
-  });
-}
 
 type ChatComposerProps = {
   onSubmit: (message: PromptInputMessage) => Promise<void>;
@@ -919,6 +892,25 @@ type ChatSessionProps = {
   recentSuggestionTitles: readonly string[];
 };
 
+type ActiveChatRun = {
+  operationId: string;
+  runId: string | null;
+  assistantId: string;
+  reasoning: Map<string, string>;
+  reasoningOrder: string[];
+  text: Map<string, string>;
+  textOrder: string[];
+  toolParts: Map<string, UIMessage["parts"][number]>;
+  activeToolCallIds: Set<string>;
+  inactivityTimer: number;
+  timedOut: boolean;
+  terminalSettled: boolean;
+  abortRun: () => Promise<void>;
+  unsubscribe: (() => void) | null;
+  resolveAccepted: () => void;
+  accepted: Promise<void>;
+};
+
 function ChatSession({
   threadId,
   resourceId,
@@ -945,15 +937,17 @@ function ChatSession({
   const [draft, setDraft] = useState("");
   const suggestions = useStarterSuggestions(resourceId, recentSuggestionTitles);
   const [editingSteerId, setEditingSteerId] = useState<string | null>(null);
+  const [steeringSteerId, setSteeringSteerId] = useState<string | null>(null);
   const [steerError, setSteerError] = useState("");
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [submitScrollRequest, setSubmitScrollRequest] = useState(0);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const composerDockRef = useRef<HTMLDivElement>(null);
+  const activeRunRef = useRef<ActiveChatRun | null>(null);
+  const steeringSteerIdRef = useRef<string | null>(null);
   const isStreaming = status === "submitted" || status === "streaming";
-  const renderedMessages = useMemo(
-    () => Array.from(new Map(messages.map((message) => [message.id, message])).values()),
-    [messages],
+  const renderedMessages = Array.from(
+    new Map(messages.map((message) => [message.id, message])).values(),
   );
   const isEmpty = renderedMessages.length === 0;
   const hasStreamingAssistant =
@@ -974,58 +968,230 @@ function ChatSession({
     };
   }, [autoFocusComposer, isEmpty, onAutoFocusComposer]);
 
-  const runMessage = useCallback(async (message: PromptInputMessage) => {
-    const userMessage = promptMessageToUserMessage(message);
-    const assistantId = makeId();
-    const runId = makeId();
-    const controller = new AbortController();
-    let timedOut = false;
-    let inactivityTimer = 0;
-    const activeToolCallIds = new Set<string>();
-    const armInactivityTimeout = (milliseconds: number) => {
-      window.clearTimeout(inactivityTimer);
-      inactivityTimer = window.setTimeout(() => {
-        timedOut = true;
-        controller.abort();
-      }, milliseconds);
+  const settleRun = useCallback((
+    run: ActiveChatRun,
+    next: { status: "ready" | "error"; error?: Error | null },
+  ) => {
+    if (run.terminalSettled) return;
+    run.terminalSettled = true;
+    window.clearTimeout(run.inactivityTimer);
+    run.unsubscribe?.();
+    run.resolveAccepted();
+    if (activeRunRef.current === run) activeRunRef.current = null;
+    const expectedRunId = run.runId ?? run.operationId;
+    updateChatSession(threadId, (current) => {
+      if (current.runId !== expectedRunId) return current;
+      return {
+        ...current,
+        status: next.status,
+        error: next.error ?? null,
+        runId: null,
+        abortRun: null,
+      };
+    });
+    window.setTimeout(onThreadListChange, 500);
+  }, [onThreadListChange, threadId]);
+
+  const upsertAssistant = useCallback((run: ActiveChatRun) => {
+    const expectedRunId = run.runId ?? run.operationId;
+    const parts: UIMessage["parts"] = [];
+    const reasoning = run.reasoningOrder
+      .map((id) => run.reasoning.get(id) ?? "")
+      .join("");
+    if (reasoning) parts.push({ type: "reasoning", text: reasoning });
+    parts.push(...run.toolParts.values());
+    for (const id of run.textOrder) {
+      const text = run.text.get(id) ?? "";
+      if (text) parts.push({ type: "text", text });
+    }
+    updateChatSession(threadId, (current) => {
+      if (current.runId !== expectedRunId) return current;
+      const messages = [...current.messages];
+      const index = messages.findIndex((candidate) => candidate.id === run.assistantId);
+      const assistant: UIMessage = {
+        id: run.assistantId,
+        role: "assistant",
+        parts: parts.length > 0 ? parts : [{ type: "text", text: "" }],
+      };
+      if (index < 0) messages.push(assistant);
+      else messages[index] = assistant;
+      return { ...current, messages, status: "streaming" };
+    });
+  }, [threadId]);
+
+  const handleRunChunk = useCallback((run: ActiveChatRun, chunk: MastraStreamChunk) => {
+    if (!run.runId || chunk.runId !== run.runId || run.terminalSettled) return;
+    const payload = chunk.payload && typeof chunk.payload === "object"
+      ? chunk.payload as Record<string, unknown>
+      : {};
+    const partId = String(payload.id ?? chunk.type.replace(/-(start|delta|end)$/, ""));
+    switch (chunk.type) {
+      case "reasoning-start":
+        if (!run.reasoning.has(partId)) run.reasoningOrder.push(partId);
+        run.reasoning.set(partId, "");
+        break;
+      case "reasoning-delta":
+        if (!run.reasoning.has(partId)) run.reasoningOrder.push(partId);
+        run.reasoning.set(
+          partId,
+          `${run.reasoning.get(partId) ?? ""}${typeof payload.text === "string" ? payload.text : ""}`,
+        );
+        upsertAssistant(run);
+        break;
+      case "text-start":
+        if (!run.text.has(partId)) run.textOrder.push(partId);
+        run.text.set(partId, "");
+        break;
+      case "text-delta":
+        if (!run.text.has(partId)) run.textOrder.push(partId);
+        run.text.set(
+          partId,
+          `${run.text.get(partId) ?? ""}${typeof payload.text === "string" ? payload.text : ""}`,
+        );
+        upsertAssistant(run);
+        break;
+      case "tool-call": {
+        const toolCallId = String(payload.toolCallId ?? "");
+        if (!toolCallId) break;
+        run.activeToolCallIds.add(toolCallId);
+        run.toolParts.set(toolCallId, {
+          type: "dynamic-tool",
+          toolCallId,
+          toolName: String(payload.toolName ?? "tool"),
+          state: "input-available",
+          input: payload.args,
+        });
+        upsertAssistant(run);
+        break;
+      }
+      case "tool-result": {
+        const toolCallId = String(payload.toolCallId ?? "");
+        run.activeToolCallIds.delete(toolCallId);
+        const previous = run.toolParts.get(toolCallId);
+        if (!previous || previous.type !== "dynamic-tool") break;
+        run.toolParts.set(toolCallId, {
+          ...previous,
+          state: "output-available",
+          output: truncateToolValue(payload.result ?? payload.output),
+        } as UIMessage["parts"][number]);
+        upsertAssistant(run);
+        break;
+      }
+      case "tool-error": {
+        const toolCallId = String(payload.toolCallId ?? "");
+        run.activeToolCallIds.delete(toolCallId);
+        const previous = run.toolParts.get(toolCallId);
+        if (!previous || previous.type !== "dynamic-tool") break;
+        run.toolParts.set(toolCallId, {
+          ...previous,
+          state: "output-error",
+          errorText: readableError(payload.error ?? payload.message ?? "Tool failed."),
+        } as UIMessage["parts"][number]);
+        upsertAssistant(run);
+        break;
+      }
+    }
+
+    if (isTerminalMastraChunk(chunk)) {
+      if (chunk.type === "error") {
+        settleRun(run, {
+          status: "error",
+          error: new Error(readableError(payload.error ?? payload.message ?? "Chat failed.")),
+        });
+      } else if (run.timedOut) {
+        settleRun(run, {
+          status: "error",
+          error: new Error("The response stopped making progress. Try again or choose a faster intelligence level."),
+        });
+      } else {
+        settleRun(run, { status: "ready" });
+      }
+      return;
+    }
+
+    window.clearTimeout(run.inactivityTimer);
+    run.inactivityTimer = window.setTimeout(() => {
+      run.timedOut = true;
+      void run.abortRun().catch((caught) => {
+        settleRun(run, {
+          status: "error",
+          error: caught instanceof Error ? caught : new Error("Unable to stop the stalled response."),
+        });
+      });
+    }, run.activeToolCallIds.size > 0
+      ? TOOL_INACTIVITY_TIMEOUT_MS
+      : STREAM_INACTIVITY_TIMEOUT_MS);
+  }, [settleRun, upsertAssistant]);
+
+  const runMessage = useCallback(async (
+    message: PromptInputMessage,
+    clientMessageId = makeId(),
+  ) => {
+    const userMessage = promptMessageToUserMessage(message, clientMessageId);
+    const operationId = makeId();
+    const agentId = modelSelection?.agentId ?? DEFAULT_CHAT_AGENT_ID;
+    const agent = browserMastraClient.getAgent(agentId);
+    let resolveAccepted: () => void = () => undefined;
+    const accepted = new Promise<void>((resolve) => { resolveAccepted = resolve; });
+    const run: ActiveChatRun = {
+      operationId,
+      runId: null,
+      assistantId: makeId(),
+      reasoning: new Map(),
+      reasoningOrder: [],
+      text: new Map(),
+      textOrder: [],
+      toolParts: new Map(),
+      activeToolCallIds: new Set(),
+      inactivityTimer: 0,
+      timedOut: false,
+      terminalSettled: false,
+      abortRun: async () => undefined,
+      unsubscribe: null,
+      resolveAccepted,
+      accepted,
     };
-    armInactivityTimeout(INITIAL_RESPONSE_TIMEOUT_MS);
+    let abortPromise: Promise<void> | null = null;
+    run.abortRun = () => {
+      if (abortPromise) return abortPromise;
+      abortPromise = (async () => {
+        await run.accepted;
+        if (run.terminalSettled || !run.runId) return;
+        await agent.abortThread({ resourceId, threadId });
+        if (run.timedOut) {
+          settleRun(run, {
+            status: "error",
+            error: new Error("The response stopped making progress. Try again or choose a faster intelligence level."),
+          });
+        } else {
+          settleRun(run, { status: "ready" });
+        }
+      })();
+      return abortPromise;
+    };
+    activeRunRef.current = run;
+    run.inactivityTimer = window.setTimeout(() => {
+      run.timedOut = true;
+      void run.abortRun().catch((caught) => {
+        settleRun(run, {
+          status: "error",
+          error: caught instanceof Error ? caught : new Error("Unable to stop the stalled response."),
+        });
+      });
+    }, INITIAL_RESPONSE_TIMEOUT_MS);
     updateChatSession(threadId, (current) => ({
       ...current,
-      messages: [...current.messages, userMessage],
+      messages: current.messages.some((item) => item.id === userMessage.id)
+        ? current.messages
+        : [...current.messages, userMessage],
       status: "submitted",
       error: null,
-      runId,
-      abortController: controller,
+      runId: operationId,
+      abortRun: run.abortRun,
     }));
     setSubmitScrollRequest((current) => current + 1);
     onConversationChange(threadId);
     window.setTimeout(onThreadListChange, 500);
-
-    let reasoning = "";
-    const textSegments: string[] = [];
-    const toolParts = new Map<string, UIMessage["parts"][number]>();
-    let eventOffset = 0;
-    const upsertAssistant = () => {
-      const parts: UIMessage["parts"] = [];
-      if (reasoning) parts.push({ type: "reasoning", text: reasoning });
-      parts.push(...toolParts.values());
-      for (const text of textSegments) {
-        if (text) parts.push({ type: "text", text });
-      }
-      updateChatSession(threadId, (current) => {
-        const next = [...current.messages];
-        const index = next.findIndex((candidate) => candidate.id === assistantId);
-        const assistant: UIMessage = {
-          id: assistantId,
-          role: "assistant",
-          parts: parts.length > 0 ? parts : [{ type: "text", text: "" }],
-        };
-        if (index < 0) next.push(assistant);
-        else next[index] = assistant;
-        return { ...current, messages: next, status: "streaming" };
-      });
-    };
 
     try {
       const requestContext = {
@@ -1033,208 +1199,92 @@ function ChatSession({
         [TOOL_MODEL_SELECTIONS_CONTEXT_KEY]: toolModelSelections,
         [SCHEDULE_TIMEZONE_CONTEXT_KEY]:
           Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
-        ...(modelSelection?.agentId === DEFAULT_CHAT_AGENT_ID &&
-        modelSelection.modelId
+        ...(modelSelection?.agentId === DEFAULT_CHAT_AGENT_ID && modelSelection.modelId
           ? {
               [MODEL_CONTEXT_KEY]: modelSelection.modelId,
               [REASONING_CONTEXT_KEY]: modelSelection.reasoningEffort,
             }
           : {}),
       };
-      const agentId = modelSelection?.agentId ?? DEFAULT_CHAT_AGENT_ID;
-      let stream: MastraStreamResponse | null = await browserMastraClient.streamChat({
-        agentId,
-        // Memory is keyed by thread/resource on the server, so only this turn
-        // crosses the wire instead of resending the complete transcript.
-        messages: [userMessage],
-        runId,
-        threadId,
-        resourceId,
-        requestContext,
-        signal: controller.signal,
-      });
-      const consumeStream = () => stream?.processDataStream({
-        onChunk: (chunk) => {
-          eventOffset += 1;
-          const payload = chunk.payload ?? {};
-          switch (chunk.type) {
-            case "reasoning-delta":
-              reasoning += typeof payload.text === "string" ? payload.text : "";
-              upsertAssistant();
-              break;
-            case "text-start":
-              textSegments.push("");
-              break;
-            case "text-delta": {
-              if (textSegments.length === 0) textSegments.push("");
-              const index = textSegments.length - 1;
-              textSegments[index] += typeof payload.text === "string" ? payload.text : "";
-              upsertAssistant();
-              break;
-            }
-            case "tool-call": {
-              const toolCallId = String(payload.toolCallId ?? "");
-              if (!toolCallId) break;
-              activeToolCallIds.add(toolCallId);
-              toolParts.set(toolCallId, {
-                type: "dynamic-tool",
-                toolCallId,
-                toolName: String(payload.toolName ?? "tool"),
-                state: "input-available",
-                input: payload.args,
-              });
-              upsertAssistant();
-              break;
-            }
-            case "tool-result": {
-              const toolCallId = String(payload.toolCallId ?? "");
-              activeToolCallIds.delete(toolCallId);
-              const previous = toolParts.get(toolCallId);
-              if (!previous || previous.type !== "dynamic-tool") break;
-              toolParts.set(toolCallId, {
-                ...previous,
-                state: "output-available",
-                output: truncateToolValue(payload.result ?? payload.output),
-              } as UIMessage["parts"][number]);
-              upsertAssistant();
-              break;
-            }
-            case "tool-error": {
-              const toolCallId = String(payload.toolCallId ?? "");
-              activeToolCallIds.delete(toolCallId);
-              const previous = toolParts.get(toolCallId);
-              if (!previous || previous.type !== "dynamic-tool") break;
-              toolParts.set(toolCallId, {
-                ...previous,
-                state: "output-error",
-                errorText: readableError(payload.error ?? payload.message ?? "Tool failed."),
-              } as UIMessage["parts"][number]);
-              upsertAssistant();
-              break;
-            }
-            case "error":
-              throw new Error(readableError(payload.error ?? payload.message ?? "Chat failed."));
-          }
-          armInactivityTimeout(
-            activeToolCallIds.size > 0
-              ? TOOL_INACTIVITY_TIMEOUT_MS
-              : STREAM_INACTIVITY_TIMEOUT_MS,
-          );
-        },
-      });
-      let reconnectAttempt = 0;
-      while (!controller.signal.aborted) {
-        try {
-          if (!stream) {
-            stream = await browserMastraClient.observeChat({
-              agentId,
-              runId,
-              offset: eventOffset,
-              signal: controller.signal,
-            });
-          }
-          await consumeStream();
-          break;
-        } catch (streamError) {
-          stream = null;
-          if (
-            controller.signal.aborted ||
-            reconnectAttempt >= MAX_STREAM_RECONNECT_ATTEMPTS
-          ) {
-            throw streamError;
-          }
-          await waitForStreamReconnect(controller.signal, reconnectAttempt);
-          if (controller.signal.aborted) break;
-          reconnectAttempt += 1;
-        }
+      const subscription = await agent.subscribeToThread({ resourceId, threadId });
+      run.unsubscribe = subscription.unsubscribe;
+      if (activeRunRef.current !== run) {
+        subscription.unsubscribe();
+        run.resolveAccepted();
+        return;
       }
-      updateChatSession(threadId, (current) => ({
-        ...current,
-        status: "ready",
-        abortController: null,
+      const result = await agent.queueMessage(threadMessageOptions({
+        clientMessageId,
+        message,
+        resourceId,
+        threadId,
+        requestContext,
       }));
-    } catch (caught) {
-      if (timedOut) {
-        updateChatSession(threadId, (current) => ({
-          ...current,
+      run.runId = result.runId;
+      updateChatSession(threadId, (current) => current.runId === operationId
+        ? { ...current, runId: result.runId }
+        : current);
+      const consumer = subscription.processDataStream({
+        onChunk: (chunk) => handleRunChunk(run, chunk),
+        reconnect: { maxRetries: 8, delayMs: 1_000 },
+      });
+      run.resolveAccepted();
+      void consumer.then(() => {
+        if (activeRunRef.current !== run || run.terminalSettled) return;
+        settleRun(run, {
           status: "error",
-          error: new Error("The response stopped making progress. Try again or choose a faster intelligence level."),
-          abortController: null,
-        }));
-      } else if (controller.signal.aborted) {
-        updateChatSession(threadId, (current) => ({
-          ...current,
-          status: "ready",
-          abortController: null,
-        }));
-      } else {
-        updateChatSession(threadId, (current) => ({
-          ...current,
+          error: new Error("The chat connection ended before the response finished."),
+        });
+      }).catch((caught) => {
+        if (activeRunRef.current !== run || run.terminalSettled) return;
+        settleRun(run, {
           status: "error",
           error: caught instanceof Error ? caught : new Error("Chat failed."),
-          abortController: null,
-        }));
+        });
+      });
+    } catch (caught) {
+      run.resolveAccepted();
+      if (run.timedOut) {
+        settleRun(run, {
+          status: "error",
+          error: new Error("The response stopped making progress. Try again or choose a faster intelligence level."),
+        });
+      } else {
+        settleRun(run, {
+          status: "error",
+          error: caught instanceof Error ? caught : new Error("Chat failed."),
+        });
       }
-    } finally {
-      window.clearTimeout(inactivityTimer);
-      window.setTimeout(onThreadListChange, 500);
     }
-  }, [enabledToolIds, modelSelection, onConversationChange, onThreadListChange, resourceId, threadId, toolModelSelections]);
+  }, [enabledToolIds, handleRunChunk, modelSelection, onConversationChange, onThreadListChange, resourceId, settleRun, threadId, toolModelSelections]);
 
   const stop = useCallback(() => {
-    getChatSession(threadId)?.abortController?.abort();
+    const abortRun = getChatSession(threadId)?.abortRun;
+    if (!abortRun) return;
+    void abortRun().catch((caught) => {
+      setSteerError(readableError(caught));
+    });
   }, [threadId]);
 
-  const deliverSteer = useCallback((item: PendingSteer) => {
-    const runId = getChatSession(threadId)?.runId;
-    if (!runId) {
-      setSteers((current) =>
-        current.some((candidate) => candidate.id === item.id)
-          ? current
-          : [item, ...current],
-      );
-      setSteerError("The active run is no longer available to steer.");
-      return;
-    }
+  const deliverSteer = useCallback(async (item: PendingSteer) => {
+    steeringSteerIdRef.current = item.id;
+    setSteeringSteerId(item.id);
     setSteerError("");
-    const userMessage = promptMessageToUserMessage(item.message, item.id);
-    updateChatSession(threadId, (current) => ({
-      ...current,
-      messages: current.messages.some((message) => message.id === userMessage.id)
-        ? current.messages
-        : [...current.messages, userMessage],
-    }));
-    setSubmitScrollRequest((current) => current + 1);
-    setSteers((current) => current.filter((candidate) => candidate.id !== item.id));
-    const restoreSteer = () => {
-      updateChatSession(threadId, (current) => ({
-        ...current,
-        messages: current.messages.filter((message) => message.id !== userMessage.id),
-      }));
-      setSteers((current) =>
-        current.some((candidate) => candidate.id === item.id)
-          ? current
-          : [item, ...current],
-      );
-    };
-    void fetch(`/api/threads/${encodeURIComponent(threadId)}/steer`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        resourceId,
-        text: item.message.text,
-        files: item.message.files,
-      }),
-    }).then(async (response) => {
-      if (response.ok) return;
-      const data = (await response.json()) as { error?: string };
-      restoreSteer();
-      setSteerError(data.error || "Unable to steer the current response.");
-    }).catch(() => {
-      restoreSteer();
-      setSteerError("Unable to reach the chat server to deliver this steer.");
-    });
-  }, [resourceId, threadId]);
+    try {
+      await getChatSession(threadId)?.abortRun?.();
+      setSteers((current) => current.filter((candidate) => candidate.id !== item.id));
+      if (editingSteerId === item.id) {
+        setEditingSteerId(null);
+        setDraft("");
+      }
+      void runMessage(item.message, item.id);
+    } catch (caught) {
+      setSteerError(readableError(caught));
+    } finally {
+      steeringSteerIdRef.current = null;
+      setSteeringSteerId(null);
+    }
+  }, [editingSteerId, runMessage, threadId]);
 
   const submit = useCallback(
     async ({ text, files }: PromptInputMessage) => {
@@ -1272,14 +1322,20 @@ function ChatSession({
   );
 
   useEffect(() => {
-    if (isStreaming || editingSteerId || steers.length === 0) return;
+    if (
+      isStreaming ||
+      editingSteerId ||
+      steeringSteerId ||
+      steeringSteerIdRef.current ||
+      steers.length === 0
+    ) return;
     const next = steers[0];
     const timer = window.setTimeout(() => {
       setSteers((current) => current.filter((item) => item.id !== next.id));
       void runMessage(next.message);
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [editingSteerId, isStreaming, runMessage, steers]);
+  }, [editingSteerId, isStreaming, runMessage, steers, steeringSteerId]);
 
   const deleteSteer = useCallback((id: string) => {
     setSteers((current) => current.filter((item) => item.id !== id));
