@@ -590,6 +590,9 @@ function MessageAttachments({ files }: { files: FileUIPart[] }) {
 }
 
 const MAX_STREAM_RECONNECT_ATTEMPTS = 8;
+const INITIAL_RESPONSE_TIMEOUT_MS = 180_000;
+const STREAM_INACTIVITY_TIMEOUT_MS = 180_000;
+const TOOL_INACTIVITY_TIMEOUT_MS = 10 * 60_000;
 
 function waitForStreamReconnect(signal: AbortSignal, attempt: number) {
   if (signal.aborted) return Promise.resolve();
@@ -980,6 +983,7 @@ function ChatSession({
     const controller = new AbortController();
     let timedOut = false;
     let inactivityTimer = 0;
+    const activeToolCallIds = new Set<string>();
     const armInactivityTimeout = (milliseconds: number) => {
       window.clearTimeout(inactivityTimer);
       inactivityTimer = window.setTimeout(() => {
@@ -987,7 +991,7 @@ function ChatSession({
         controller.abort();
       }, milliseconds);
     };
-    armInactivityTimeout(90_000);
+    armInactivityTimeout(INITIAL_RESPONSE_TIMEOUT_MS);
     updateChatSession(threadId, (current) => ({
       ...current,
       messages: [...current.messages, userMessage],
@@ -1053,7 +1057,6 @@ function ChatSession({
       });
       const consumeStream = () => stream?.processDataStream({
         onChunk: (chunk) => {
-          armInactivityTimeout(180_000);
           eventOffset += 1;
           const payload = chunk.payload ?? {};
           switch (chunk.type) {
@@ -1074,6 +1077,7 @@ function ChatSession({
             case "tool-call": {
               const toolCallId = String(payload.toolCallId ?? "");
               if (!toolCallId) break;
+              activeToolCallIds.add(toolCallId);
               toolParts.set(toolCallId, {
                 type: "dynamic-tool",
                 toolCallId,
@@ -1086,6 +1090,7 @@ function ChatSession({
             }
             case "tool-result": {
               const toolCallId = String(payload.toolCallId ?? "");
+              activeToolCallIds.delete(toolCallId);
               const previous = toolParts.get(toolCallId);
               if (!previous || previous.type !== "dynamic-tool") break;
               toolParts.set(toolCallId, {
@@ -1098,6 +1103,7 @@ function ChatSession({
             }
             case "tool-error": {
               const toolCallId = String(payload.toolCallId ?? "");
+              activeToolCallIds.delete(toolCallId);
               const previous = toolParts.get(toolCallId);
               if (!previous || previous.type !== "dynamic-tool") break;
               toolParts.set(toolCallId, {
@@ -1111,6 +1117,11 @@ function ChatSession({
             case "error":
               throw new Error(readableError(payload.error ?? payload.message ?? "Chat failed."));
           }
+          armInactivityTimeout(
+            activeToolCallIds.size > 0
+              ? TOOL_INACTIVITY_TIMEOUT_MS
+              : STREAM_INACTIVITY_TIMEOUT_MS,
+          );
         },
       });
       let reconnectAttempt = 0;

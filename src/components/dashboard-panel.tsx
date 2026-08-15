@@ -1,6 +1,6 @@
 "use client";
 
-import { Archive, ArchiveRestore, GripVertical, Info, LoaderCircle, Pencil, RefreshCw, Trash2 } from "lucide-react";
+import { Archive, ArchiveRestore, GripVertical, Info, LoaderCircle, RefreshCw, Trash2 } from "lucide-react";
 import ReactGridLayout, { useContainerWidth, type Layout } from "react-grid-layout";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -10,7 +10,7 @@ import { DashboardInputSummary } from "@/components/dashboard-input-summary";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import type { CSSProperties, KeyboardEvent } from "react";
+import type { CSSProperties } from "react";
 import type { DashboardState, DashboardWidget } from "@/lib/dashboard-spec";
 import { cn } from "@/lib/utils";
 
@@ -75,61 +75,12 @@ function StyledWidgetContent({ widget }: { widget: DashboardWidget }) {
   return <><style>{`@scope (.dashboard-widget-user-content) {${widget.css}}`}</style><div className="dashboard-widget-user-content h-full min-h-0">{content}</div></>;
 }
 
-function EditableWidgetMetadata({
-  onSave,
-  widget,
-}: {
-  onSave: (title: string, description: string) => Promise<void>;
-  widget: DashboardWidget;
-}) {
-  const [editing, setEditing] = useState(false);
-  const [title, setTitle] = useState(widget.title);
-  const [description, setDescription] = useState(widget.description ?? "");
-
-  const cancel = () => {
-    setTitle(widget.title);
-    setDescription(widget.description ?? "");
-    setEditing(false);
-  };
-  const save = async () => {
-    setEditing(false);
-    const nextTitle = title.trim();
-    const nextDescription = description.trim();
-    if (nextTitle === widget.title && nextDescription === (widget.description ?? "")) return;
-    await onSave(nextTitle, nextDescription);
-  };
-  const keyDown = (event: KeyboardEvent<HTMLInputElement>) => {
-    if (event.key === "Escape") {
-      event.preventDefault();
-      cancel();
-    } else if (event.key === "Enter") {
-      event.preventDefault();
-      event.currentTarget.blur();
-    }
-  };
-
-  if (editing) {
-    return (
-      <div
-        className="min-w-0 flex-1 space-y-1"
-        onBlur={(event) => {
-          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) void save();
-        }}
-      >
-        <input aria-label="Widget title" autoFocus className="w-full rounded-md bg-muted/60 px-2 py-1 font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring" onChange={(event) => setTitle(event.target.value)} onKeyDown={keyDown} value={title} />
-        <input aria-label="Widget description" className="w-full rounded-md bg-muted/60 px-2 py-1 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring" onChange={(event) => setDescription(event.target.value)} onKeyDown={keyDown} value={description} />
-      </div>
-    );
-  }
-
+function WidgetMetadata({ widget }: { widget: DashboardWidget }) {
   return (
-    <div className="flex min-w-0 flex-1 items-start gap-1">
-      <div className="min-w-0 flex-1">
-        {widget.title && <button className="block max-w-full truncate text-left font-medium" onClick={() => setEditing(true)}>{widget.title}</button>}
-        {widget.description && <button className="mt-0.5 block max-w-full truncate text-left text-xs text-muted-foreground" onClick={() => setEditing(true)}>{widget.description}</button>}
-        <p className="mt-1 text-xs text-muted-foreground">{updatedLabel(widget.lastRunAt)} · {widget.toolName}</p>
-      </div>
-      <Button aria-label="Edit widget title and description" onClick={() => setEditing(true)} size="icon-sm" variant="ghost"><Pencil className="size-3.5" /></Button>
+    <div className="min-w-0 flex-1">
+      {widget.title && <p className="truncate font-medium">{widget.title}</p>}
+      {widget.description && <p className="mt-0.5 truncate text-xs text-muted-foreground">{widget.description}</p>}
+      <p className="mt-1 truncate text-xs text-muted-foreground">{updatedLabel(widget.lastRunAt)} · {widget.toolName}</p>
     </div>
   );
 }
@@ -152,29 +103,49 @@ function WidgetCard({
   draggable?: boolean;
 }) {
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [title, setTitle] = useState(widget.title);
+  const [description, setDescription] = useState(widget.description ?? "");
   const [css, setCss] = useState(widget.css ?? "");
-  const [savingCss, setSavingCss] = useState(false);
-  const [cssError, setCssError] = useState("");
+  const [savingDetails, setSavingDetails] = useState(false);
+  const [detailsError, setDetailsError] = useState("");
 
-  const saveCss = async () => {
-    setSavingCss(true);
-    setCssError("");
+  const openDetails = () => {
+    setTitle(widget.title);
+    setDescription(widget.description ?? "");
+    setCss(widget.css ?? "");
+    setDetailsError("");
+    setDetailsOpen(true);
+  };
+  const saveDetails = async () => {
+    setSavingDetails(true);
+    setDetailsError("");
     try {
-      await updateCss(widget, css);
+      const nextTitle = title.trim();
+      const nextDescription = description.trim();
+      if (nextTitle !== widget.title || nextDescription !== (widget.description ?? "")) {
+        await updateMetadata(widget, nextTitle, nextDescription);
+      }
+      if (css !== (widget.css ?? "")) await updateCss(widget, css);
+      setDetailsOpen(false);
     } catch (error) {
-      setCssError(error instanceof Error ? error.message : "Could not save widget CSS.");
+      setDetailsError(error instanceof Error ? error.message : "Could not save widget changes.");
     } finally {
-      setSavingCss(false);
+      setSavingDetails(false);
     }
   };
+  const detailsChanged = title.trim() !== widget.title
+    || description.trim() !== (widget.description ?? "")
+    || css !== (widget.css ?? "");
 
   return <section className="dashboard-widget flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-border/60 bg-card p-4 shadow-[0_8px_28px_rgba(0,0,0,0.045)]">
     <header className="mb-3 flex shrink-0 items-start gap-2">
       {draggable && <span aria-hidden="true" className="dashboard-widget-drag-handle mt-0.5 grid size-7 shrink-0 cursor-grab place-items-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:cursor-grabbing" title="Drag widget"><GripVertical className="size-4" /></span>}
-      <EditableWidgetMetadata onSave={(title, description) => updateMetadata(widget, title, description)} widget={widget} />
-      <Button aria-label={`Information about ${widget.title}`} onClick={() => { setCss(widget.css ?? ""); setDetailsOpen(true); }} size="icon-sm" variant="ghost"><Info className="size-4" /></Button>
-      <Button aria-label="Refresh widget" disabled={running} onClick={() => void run(widget, true)} size="icon-sm" variant="ghost">{running ? <LoaderCircle className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}</Button>
-      <Button aria-label="Archive widget" onClick={() => void archiveWidget(widget, true)} size="icon-sm" variant="ghost"><Archive className="size-4" /></Button>
+      <WidgetMetadata widget={widget} />
+      <div className="dashboard-widget-actions -mr-1 flex shrink-0 items-center gap-0 text-muted-foreground">
+        <Button aria-label={`Information and edit options for ${widget.title}`} className="text-muted-foreground/70 hover:text-foreground" onClick={openDetails} size="icon-xs" variant="ghost"><Info className="size-3.5" /></Button>
+        <Button aria-label="Refresh widget" className="text-muted-foreground/70 hover:text-foreground" disabled={running} onClick={() => void run(widget, true)} size="icon-xs" variant="ghost">{running ? <LoaderCircle className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}</Button>
+        <Button aria-label="Archive widget" className="text-muted-foreground/70 hover:text-foreground" onClick={() => void archiveWidget(widget, true)} size="icon-xs" variant="ghost"><Archive className="size-3.5" /></Button>
+      </div>
     </header>
     <div className={cn(
       "dashboard-widget-content min-h-0 flex-1 overflow-auto",
@@ -184,9 +155,19 @@ function WidgetCard({
       <DialogContent className="min-w-0 sm:w-[min(46rem,calc(100vw-2rem))] sm:max-w-none">
         <DialogHeader>
           <DialogTitle>{widget.title}</DialogTitle>
-          <DialogDescription>How this widget gets its data and styles its output.</DialogDescription>
+          <DialogDescription>View its data source or edit its presentation.</DialogDescription>
         </DialogHeader>
         <div className="min-w-0 space-y-5">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="space-y-1.5">
+              <span className="chat-ui-text font-medium">Title</span>
+              <input className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring" onChange={(event) => setTitle(event.target.value)} value={title} />
+            </label>
+            <label className="space-y-1.5">
+              <span className="chat-ui-text font-medium">Description</span>
+              <input className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring" onChange={(event) => setDescription(event.target.value)} value={description} />
+            </label>
+          </div>
           <DashboardInputSummary
             description="The source tool runs first. Fixed values are passed to it unchanged on every refresh."
             toolHref={(name) => `/tools#saved-tool-${name}`}
@@ -206,12 +187,12 @@ function WidgetCard({
               spellCheck={false}
               value={css}
             />
-            {cssError && <p className="chat-meta-text text-destructive">{cssError}</p>}
+            {detailsError && <p className="chat-meta-text text-destructive">{detailsError}</p>}
           </div>
         </div>
         <DialogFooter>
           <Button onClick={() => setDetailsOpen(false)} variant="outline">Done</Button>
-          <Button disabled={savingCss || css === (widget.css ?? "")} onClick={() => void saveCss()}>{savingCss && <LoaderCircle className="animate-spin" />}{savingCss ? "Saving" : "Save CSS"}</Button>
+          <Button disabled={savingDetails || !detailsChanged} onClick={() => void saveDetails()}>{savingDetails && <LoaderCircle className="animate-spin" />}{savingDetails ? "Saving" : "Save changes"}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
