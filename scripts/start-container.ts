@@ -1,7 +1,7 @@
 export {};
 
 const children = [
-  Bun.spawn(["node", "server.js"], {
+  Bun.spawn(["bun", "server.js"], {
     env: process.env,
     stderr: "inherit",
     stdout: "inherit",

@@ -104,6 +104,7 @@ export function createLfpChatMastra(
           "- Preferences:",
           "- Current goals:",
           "- Important constraints:",
+          "- Household access details (only when the user explicitly asks to remember them):",
         ].join("\n"),
       },
     },
@@ -159,7 +160,10 @@ ${chartInstructions}
 
 ${DEFAULT_WRITING_STYLE_INSTRUCTIONS}
 
-Remember stable user preferences in working memory, but do not store secrets or sensitive credentials.`;
+Remember stable user preferences and household facts in working memory. When the user explicitly
+asks, household access details such as garage, gate, lockbox, door, or alarm codes may be stored in
+their user-scoped working memory. Never store account passwords, API keys, authentication or recovery
+tokens, private keys, payment card details, or financial account credentials.`;
     },
     defaultOptions: ({ requestContext }) =>
       resolveRuntimeOptions(requestContext),
