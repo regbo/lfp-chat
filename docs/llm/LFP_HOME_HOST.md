@@ -5,6 +5,9 @@ This repository is a reusable chat package plus an LFP Home host. Preserve that 
 - Home's `transaction_add` tool is a host-only native Mastra adapter. It calls the authenticated
   structured Home API and must not reproduce PostgreSQL writes, account matching, deduplication, or
   embeddings. Keep `src/host/transaction-tool.ts` out of public package entrypoints.
+- Home's `memory_add` tool is another host-only adapter. It writes shared household facts to the
+  authenticated Home memory API; personal or credential-bearing details remain in the existing
+  scoped-memory policy and must not be sent to the durable household endpoint.
 - Notifications accept an optional app path or absolute HTTP(S) URL and default to `/`. Use the
   content or result URL when available; reserve `/scheduled` for schedule-management alerts.
 - Resource-scoped working memory may save household access details only after an explicit user

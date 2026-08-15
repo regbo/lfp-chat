@@ -1,16 +1,11 @@
 import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
 
-import { optionalHttpUrl, secretValue } from "@/lib/config";
+import { homeContextApi } from "@/host/home-context-api";
 import type { LfpChatToolRegistryOverrides } from "@/mastra/tool-registry";
 
 const decimalSchema = z.union([z.number(), z.string().trim().min(1)]);
 const timestampSchema = z.iso.datetime({ offset: true });
-const homeContextApi = {
-  apiUrl: optionalHttpUrl("LFP_HOME_CONTEXT_API_URL") || "http://lfp-home-context-api:8001",
-  apiKey: secretValue("LFP_HOME_CONTEXT_API_KEY", "LFP_HOME_CONTEXT_API_KEY_FILE"),
-};
-
 export const transactionInputSchema = z.object({
   source: z.string().regex(/^[a-z][a-z0-9_-]{0,62}$/).default("mastra"),
   account: z.object({
