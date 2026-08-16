@@ -157,6 +157,49 @@ test("mobile composer does not reserve an empty control slot", async ({ page }, 
   await expect.poll(controlGap).toBeLessThanOrEqual(4);
 });
 
+test("mobile composer centers its prompt and controls", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "mobile-webkit", "The compact composer is mobile-specific.");
+  await page.goto("/");
+  const composerInput = page.locator('textarea[aria-label="Message"]:visible');
+  await expect(composerInput).toBeVisible();
+  await expect(page.getByRole("button", { name: "Select model, agent, and reasoning" })).toBeVisible();
+
+  const alignment = await composerInput.evaluate((input) => {
+    const shell = input.closest<HTMLElement>('[data-slot="input-group"]');
+    const controls = Array.from(
+      shell?.querySelectorAll<HTMLElement>(
+        'button[aria-label="Add files"], button[aria-label="Select model, agent, and reasoning"], .chat-composer-submit',
+      ) ?? [],
+    );
+    if (!shell || controls.length !== 3) {
+      throw new Error(
+        `Compact composer did not render: shell=${Boolean(shell)} controls=${controls.length}.`,
+      );
+    }
+
+    const shellBox = shell.getBoundingClientRect();
+    const inputBox = input.getBoundingClientRect();
+    const inputStyle = getComputedStyle(input);
+    const shellCenter = shellBox.top + shellBox.height / 2;
+    const promptLineCenter =
+      inputBox.top +
+      Number.parseFloat(inputStyle.borderTopWidth) +
+      Number.parseFloat(inputStyle.paddingTop) +
+      Number.parseFloat(inputStyle.lineHeight) / 2;
+
+    return {
+      controlOffsets: controls.map((control) => {
+        const box = control.getBoundingClientRect();
+        return Math.round((box.top + box.height / 2 - shellCenter) * 10) / 10;
+      }),
+      promptOffset: Math.round((promptLineCenter - shellCenter) * 10) / 10,
+    };
+  });
+
+  expect(Math.abs(alignment.promptOffset)).toBeLessThanOrEqual(1);
+  expect(alignment.controlOffsets.every((offset) => Math.abs(offset) <= 1)).toBe(true);
+});
+
 test("a terminal Mastra step clears the streaming state", async ({ page }) => {
   await page.unroute("**/api/**");
   const chatChunks = [
