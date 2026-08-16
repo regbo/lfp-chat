@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  allowedDevOrigins: ["chat.pipe.lfpconnect.io"],
   devIndicators: false,
   output: "standalone",
   async rewrites() {
