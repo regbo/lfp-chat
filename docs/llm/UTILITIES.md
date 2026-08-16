@@ -15,6 +15,7 @@ Read `LFP_HOME_HOST.md` before modifying Home-specific host composition.
 - `src/lib/tool-catalog.ts` — selectable tool definitions, defaults, and request-context keys.
 - `src/mastra/tool-registry.ts` — typed native Mastra tool registry shared by agent resolution, the serialized UI catalog, global Mastra registration, and explicit Monty capability exposure.
 - `src/mastra/index.ts` — stock agent plus AgentController composition, including chat/research/plan/act/code modes, permission defaults, task planning, and forked researcher/reviewer subagents.
+- `src/mastra/chatgpt-subscription-gateway.ts` — optional LiteLLM-backed Mastra model gateway that keeps ChatGPT OAuth in the proxy while AgentController owns the agent loop.
 - `src/host/transaction-tool.ts` — Home-host composition that calls the authoritative typed transaction API; it is intentionally excluded from the reusable package entrypoints.
 - `src/lib/schedules.ts` — shared schedule deduplication, timezone context, and safe scheduled-run request-context construction.
 - `src/lib/vikunja.ts` — centralized server-only task client used by chat tools and the Tasks menu.
@@ -33,4 +34,5 @@ Read `LFP_HOME_HOST.md` before modifying Home-specific host composition.
 - `src/mastra/openai-conversation-state.ts` — server-side Mastra processor that chains OpenAI Responses state while preserving PostgreSQL history and retrying expired chains from local history.
 - `src/lib/user-scope.ts` — server-side identity resolver for local development IDs, trusted proxy headers, and JWKS-verified JWT claims; API routes use it to reject cross-user resource IDs.
 - `scripts/caddy.ts` — generates and validates the local Caddy config, binding only loopback plus detected ZeroTier IPv4 interfaces before proxying to Next.js.
+- `scripts/litellm.ts` — reproducible local LiteLLM launcher with ChatGPT OAuth tokens stored under the user secrets directory.
 - `src/components/ai-elements/streamdown-renderer.tsx` — lazy rich-text renderer that loads code, Mermaid, math, and CJK plugins only when message content requires them.

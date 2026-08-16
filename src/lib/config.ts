@@ -10,6 +10,14 @@ const DEFAULT_MODEL_PROVIDER = "openai";
 const DEFAULT_OPENAI_MODEL = "gpt-5.6-luna";
 const DEFAULT_CODEX_AGENT_MODE = "agent";
 const DEFAULT_USER_SCOPE_MODE = "local";
+const DEFAULT_CHATGPT_SUBSCRIPTION_MODELS = [
+  "gpt-5.4",
+  "gpt-5.4-pro",
+  "gpt-5.3-codex",
+  "gpt-5.3-codex-spark",
+  "gpt-5.3-instant",
+  "gpt-5.3-chat-latest",
+] as const;
 
 function boundedInteger(
   name: string,
@@ -32,6 +40,19 @@ function booleanValue(name: string, fallback: boolean) {
   if (["1", "true", "yes", "on"].includes(raw)) return true;
   if (["0", "false", "no", "off"].includes(raw)) return false;
   throw new Error(`${name} must be true or false.`);
+}
+
+function commaSeparatedModelNames(name: string, fallback: readonly string[]) {
+  const values = (process.env[name]?.split(",") ?? fallback)
+    .map((value) => value.trim())
+    .filter(Boolean);
+  if (values.length === 0) throw new Error(`${name} must include a model.`);
+  for (const value of values) {
+    if (!/^[a-z0-9][a-z0-9._-]*$/i.test(value)) {
+      throw new Error(`${name} contains an invalid model name: ${value}`);
+    }
+  }
+  return [...new Set(values)];
 }
 
 export function secretValue(valueName: string, fileName: string) {
@@ -348,6 +369,17 @@ export const serverConfig = {
   modelName,
   modelId: `${modelProvider}/${modelName}`,
   reasoningEffort: process.env.REASONING_EFFORT?.trim().toLowerCase(),
+  chatgptSubscription: {
+    enabled: booleanValue("CHATGPT_SUBSCRIPTION_ENABLED", false),
+    baseUrl:
+      optionalHttpUrl("CHATGPT_SUBSCRIPTION_BASE_URL") ||
+      "http://127.0.0.1:4000/v1",
+    models: commaSeparatedModelNames(
+      "CHATGPT_SUBSCRIPTION_MODELS",
+      DEFAULT_CHATGPT_SUBSCRIPTION_MODELS,
+    ),
+    proxyKey: secretValue("LITELLM_PROXY_KEY", "LITELLM_PROXY_KEY_FILE"),
+  },
   codexAgentEnabled: process.env.CODEX_AGENT_ENABLED !== "false",
   codexAgentMode,
   codexWorkspacePath:

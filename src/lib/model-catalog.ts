@@ -47,6 +47,12 @@ export type ModelSelection = {
   reasoningEffort: ReasoningEffort | null;
 };
 
+export type AdditionalModelSource = {
+  provider: string;
+  modelNames: readonly string[];
+  description: string;
+};
+
 export function createAgentCatalog(codexEnabled: boolean): ChatAgentDefinition[] {
   return codexEnabled
     ? [
@@ -115,10 +121,18 @@ function formatOpenAiModelName(modelName: string) {
   return isGpt ? `GPT-${formatted}` : formatted.replace(/^O(?=\d)/, "o");
 }
 
-function createModelDefinition(provider: string, modelName: string) {
-  const efforts = provider === "openai" ? getReasoningEfforts(modelName) : [];
+function createModelDefinition(
+  provider: string,
+  modelName: string,
+  description?: string,
+) {
+  const usesOpenAiResponses =
+    provider === "openai" || provider === "subscription/chatgpt";
+  const efforts = usesOpenAiResponses ? getReasoningEfforts(modelName) : [];
   const label =
-    provider === "openai" ? formatOpenAiModelName(modelName) : titleCase(modelName);
+    usesOpenAiResponses
+      ? `${formatOpenAiModelName(modelName)}${provider === "subscription/chatgpt" ? " · ChatGPT" : ""}`
+      : titleCase(modelName);
   const shortLabel = label.replace(/^GPT-/, "");
 
   return {
@@ -127,9 +141,10 @@ function createModelDefinition(provider: string, modelName: string) {
     shortLabel,
     provider,
     description:
-      efforts.length > 0
+      description ??
+      (efforts.length > 0
         ? "Reasoning model available to this API key."
-        : "Chat model available to this API key.",
+        : "Chat model available to this API key."),
     reasoningEfforts: efforts,
     defaultReasoningEffort: efforts.includes("medium") ? "medium" : null,
   } satisfies ChatModelDefinition;
@@ -141,6 +156,7 @@ export function createModelCatalog(
   configuredReasoning: string | undefined,
   discoveredModelNames?: string[],
   agents: ChatAgentDefinition[] = [],
+  additionalSources: readonly AdditionalModelSource[] = [],
 ): ModelCatalogResponse {
   const configuredModelName =
     defaultModelId.split("/").slice(1).join("/") || defaultModelId;
@@ -151,8 +167,14 @@ export function createModelCatalog(
       ) ?? [configuredModelName],
     ),
   );
-  const models = modelNames
-    .map((modelName) => createModelDefinition(provider, modelName))
+  const models = [
+    ...modelNames.map((modelName) => createModelDefinition(provider, modelName)),
+    ...additionalSources.flatMap((source) =>
+      source.modelNames.map((modelName) =>
+        createModelDefinition(source.provider, modelName, source.description),
+      ),
+    ),
+  ]
     .sort((left, right) => {
       if (left.id === defaultModelId) return -1;
       if (right.id === defaultModelId) return 1;

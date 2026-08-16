@@ -7,6 +7,11 @@ import { webSearchTool } from "@mastra/core/tools";
 import { serverConfig } from "@/lib/config";
 import { SCHEDULE_JOB_CONTEXT_KEY } from "@/lib/schedules";
 import {
+  ChatGptSubscriptionGateway,
+  CHATGPT_SUBSCRIPTION_GATEWAY_ID,
+  CHATGPT_SUBSCRIPTION_PROVIDER_ID,
+} from "@/mastra/chatgpt-subscription-gateway";
+import {
   createAgentCatalog,
   createModelCatalog,
   MODEL_CONTEXT_KEY,
@@ -21,12 +26,29 @@ if (!process.env.OPENAI_API_KEY && serverConfig.openaiApiKey) {
   process.env.OPENAI_API_KEY = serverConfig.openaiApiKey;
 }
 
+const subscriptionModelProvider = `${CHATGPT_SUBSCRIPTION_GATEWAY_ID}/${CHATGPT_SUBSCRIPTION_PROVIDER_ID}`;
+const additionalModelSources = serverConfig.chatgptSubscription.enabled
+  ? [
+      {
+        provider: subscriptionModelProvider,
+        modelNames: serverConfig.chatgptSubscription.models,
+        description:
+          "OpenAI Responses model authenticated through the local ChatGPT subscription.",
+      },
+    ]
+  : [];
+
+export const chatGptSubscriptionGateway = serverConfig.chatgptSubscription.enabled
+  ? new ChatGptSubscriptionGateway(serverConfig.chatgptSubscription)
+  : undefined;
+
 let cachedModelCatalog = createModelCatalog(
   serverConfig.modelProvider,
   serverConfig.modelId,
   serverConfig.reasoningEffort,
   undefined,
   createAgentCatalog(serverConfig.codexAgentEnabled),
+  additionalModelSources,
 );
 let modelCatalogExpiresAt = 0;
 let pendingModelCatalog: Promise<typeof cachedModelCatalog> | null = null;
@@ -74,6 +96,7 @@ async function discoverOpenAiModels() {
     serverConfig.reasoningEffort,
     modelNames,
     createAgentCatalog(serverConfig.codexAgentEnabled),
+    additionalModelSources,
   );
   modelCatalogExpiresAt = Date.now() + MODEL_CATALOG_TTL_MS;
   return cachedModelCatalog;
@@ -147,7 +170,9 @@ export function resolveRuntimeOptions(requestContext?: RequestContext) {
   return {
     maxSteps: serverConfig.agentMaxSteps,
     providerOptions:
-      model?.provider === "openai" && selection.reasoningEffort
+      (model?.provider === "openai" ||
+        model?.provider === subscriptionModelProvider) &&
+      selection.reasoningEffort
         ? {
             openai: {
               reasoningEffort: selection.reasoningEffort,

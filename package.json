@@ -28,6 +28,7 @@
     "dev": "bun run --parallel \"dev:*\"",
     "dev:web": "next dev --hostname 127.0.0.1",
     "dev:mastra": "MASTRA_HOST=127.0.0.1 bun --watch src/server/index.ts",
+    "dev:litellm": "bun scripts/litellm.ts",
     "dev:caddy": "bun scripts/caddy.ts",
     "build": "bun run build:mastra && bun run build:web",
     "build:web": "next build",

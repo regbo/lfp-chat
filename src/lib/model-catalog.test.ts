@@ -23,6 +23,33 @@ describe("most powerful model selection", () => {
       reasoningEffort: "max",
     });
   });
+
+  test("includes ChatGPT subscription models as normal controller models", () => {
+    const catalog = createModelCatalog(
+      "openai",
+      "openai/gpt-5.6-luna",
+      "medium",
+      ["gpt-5.6-luna"],
+      [],
+      [
+        {
+          provider: "subscription/chatgpt",
+          modelNames: ["gpt-5.4", "gpt-5.3-codex"],
+          description: "Subscription model.",
+        },
+      ],
+    );
+
+    expect(
+      catalog.models.map((model) => ({
+        id: model.id,
+        description: model.description,
+      })),
+    ).toContainEqual({
+      id: "subscription/chatgpt/gpt-5.4",
+      description: "Subscription model.",
+    });
+  });
 });
 
 describe("controller agent selection", () => {

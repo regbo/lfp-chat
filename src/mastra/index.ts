@@ -13,6 +13,7 @@ import {
   LFP_CHAT_CONTROLLER_ID,
 } from "@/lib/agent-controller";
 import {
+  chatGptSubscriptionGateway,
   modelProvider,
   resolveBackgroundModel,
   resolveRuntimeModel,
@@ -232,6 +233,9 @@ or financial account credentials.`;
     Record<string, unknown>
   > = {
     id: LFP_CHAT_CONTROLLER_ID,
+    gateways: chatGptSubscriptionGateway
+      ? [chatGptSubscriptionGateway]
+      : undefined,
     agent: chatAgent,
     storage,
     memory,
@@ -339,6 +343,13 @@ or financial account credentials.`;
 
   const baseMastraConfig: MastraConfig = {
     ...(observability ? { observability } : {}),
+    ...(chatGptSubscriptionGateway
+      ? {
+          gateways: {
+            [chatGptSubscriptionGateway.id]: chatGptSubscriptionGateway,
+          },
+        }
+      : {}),
     agents: {
       chatAgent,
       ...(codexAgent ? { codexAgent } : {}),
