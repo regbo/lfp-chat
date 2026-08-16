@@ -353,6 +353,7 @@ export const serverConfig = {
   codexWorkspacePath:
     process.env.CODEX_WORKSPACE_PATH?.trim() || process.cwd(),
   codexAcpCommand: process.env.CODEX_ACP_COMMAND?.trim(),
+  codexCommand: process.env.CODEX_PATH?.trim(),
   webOrigin: process.env.WEB_ORIGIN ?? "http://localhost:3000",
   userScope: {
     mode: userScopeMode as "local" | "header" | "jwt",

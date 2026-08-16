@@ -1,7 +1,9 @@
 import { AcpAgent } from "@mastra/acp";
 import { Agent } from "@mastra/core/agent";
+import { createTool } from "@mastra/core/tools";
 import { LocalFilesystem, Workspace } from "@mastra/core/workspace";
 import { resolve } from "node:path";
+import { z } from "zod";
 
 import { serverConfig } from "@/lib/config";
 import { SCHEDULE_JOB_CONTEXT_KEY } from "@/lib/schedules";
@@ -23,6 +25,16 @@ function getCodexAcpCommand() {
   );
 }
 
+function getCodexCommand() {
+  if (serverConfig.codexCommand) return serverConfig.codexCommand;
+  return resolve(
+    process.cwd(),
+    "node_modules",
+    ".bin",
+    process.platform === "win32" ? "codex.exe" : "codex",
+  );
+}
+
 const codexWorkspace = new Workspace({
   id: "lfp-codex-workspace",
   filesystem: new LocalFilesystem({
@@ -38,12 +50,64 @@ const codexCli = new AcpAgent({
   command: getCodexAcpCommand(),
   cwd: serverConfig.codexWorkspacePath,
   workspace: codexWorkspace,
-  authMethodId: "api-key",
-  persistSession: false,
+  // codex-acp launches app-server and explicitly verifies ChatGPT account auth
+  // before opening the durable ACP session. Empty key variables prevent an
+  // inherited API key from becoming an accidental fallback.
+  authMethodId: "chat-gpt",
+  persistSession: true,
   env: {
-    NO_BROWSER: "1",
+    CODEX_PATH: getCodexCommand(),
+    CODEX_API_KEY: "",
+    OPENAI_API_KEY: "",
     INITIAL_AGENT_MODE: serverConfig.codexAgentMode,
-    DEFAULT_AUTH_REQUEST: JSON.stringify({ methodId: "api-key" }),
+  },
+});
+
+const codexAppServerTool = createTool({
+  id: "codex_app_server",
+  description:
+    "Run a task in the current workspace with the subscription-backed Codex app-server.",
+  inputSchema: z.object({
+    prompt: z.string().min(1).max(50_000),
+  }),
+  outputSchema: z.object({
+    text: z.string(),
+    events: z.array(z.unknown()),
+  }),
+  toModelOutput: (output) => ({
+    type: "text",
+    value: output.text,
+  }),
+  execute: async ({ prompt }, context) => {
+    const result = await codexCli.stream(prompt, {
+      abortSignal: context?.abortSignal,
+    });
+    const events: unknown[] = [];
+
+    const reader = result.fullStream.getReader();
+    try {
+      while (true) {
+        const { done, value: chunk } = await reader.read();
+        if (done) break;
+        // Keep the parent agent's lifecycle authoritative while preserving the
+        // Codex reasoning, tool activity, and command output it can render.
+        if (
+          chunk.type === "start" ||
+          chunk.type === "finish" ||
+          chunk.type === "step-start" ||
+          chunk.type === "step-finish" ||
+          chunk.type === "text-start" ||
+          chunk.type === "text-delta" ||
+          chunk.type === "text-end"
+        ) continue;
+        if (events.length < 500) events.push(chunk);
+        await context?.writer?.write(chunk);
+      }
+    } finally {
+      reader.releaseLock();
+    }
+
+    return { text: await result.text, events };
   },
 });
 
@@ -51,25 +115,28 @@ export function createCodexAgent(memory: ConstructorParameters<typeof Agent>[0][
   const openAiConversationState = new OpenAiConversationStateProcessor();
   return new Agent({
     id: "codexAgent",
-    name: "Codex CLI",
-    description: "A coding assistant backed by the Codex CLI over ACP.",
+    name: "Codex (ChatGPT)",
+    description:
+      "A coding assistant backed by Codex app-server using ChatGPT subscription auth.",
     model: ({ requestContext }) => resolveRuntimeModel(requestContext),
     memory,
     inputProcessors: [openAiConversationState],
     outputProcessors: [openAiConversationState],
     errorProcessors: [openAiConversationState],
-    agents: { codexCli },
     tools: ({ requestContext }) =>
       Object.fromEntries(
-        requestContext.get(SCHEDULE_JOB_CONTEXT_KEY) === true
-          ? [["job_memory_recall", jobMemoryRecallTool]]
-          : [],
+        [
+          ["codex_app_server", codexAppServerTool],
+          ...(requestContext.get(SCHEDULE_JOB_CONTEXT_KEY) === true
+            ? [["job_memory_recall", jobMemoryRecallTool]]
+            : []),
+        ],
       ),
     workspace: codexWorkspace,
     instructions: ({ requestContext }) => `You are the supervisor for the Codex CLI coding agent.
 
 ${requestContext.get(SCHEDULE_JOB_CONTEXT_KEY) === true ? "This is a scheduled job. When its result depends on prior runs or must not repeat them, call job_memory_recall first and include the relevant job history in the delegation." : ""}
-Delegate every user request to codexCli. Include the user's complete request, any relevant conversation context, and the default writing rules below. Do not attempt the task yourself and do not call unrelated tools. Return the Codex result directly. The Codex workspace is restricted to ${serverConfig.codexWorkspacePath}.
+Call codex_app_server exactly once for every user request. Put the user's complete request and any relevant conversation context in its prompt. Do not attempt the task yourself and do not call unrelated tools. Return the tool's text directly. The Codex workspace is restricted to ${serverConfig.codexWorkspacePath}.
 
 ${DEFAULT_WRITING_STYLE_INSTRUCTIONS}`,
     defaultOptions: ({ requestContext }) => ({

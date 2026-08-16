@@ -4,6 +4,7 @@ export const TOOL_MODEL_SELECTIONS_CONTEXT_KEY = "lfp.toolModels";
 
 export const DEFAULT_CHAT_AGENT_ID = "chatAgent";
 export const CODEX_CHAT_AGENT_ID = "codexAgent";
+export const CODEX_CONTROLLER_MODE_ID = "code";
 
 export const reasoningEfforts = [
   "none",
@@ -51,9 +52,10 @@ export function createAgentCatalog(codexEnabled: boolean): ChatAgentDefinition[]
     ? [
         {
           id: CODEX_CHAT_AGENT_ID,
-          label: "Codex CLI",
+          label: "Codex (ChatGPT)",
           shortLabel: "Codex",
-          description: "Coding agent with scoped workspace and shell access.",
+          description:
+            "Subscription-backed Codex app-server with scoped workspace and shell access.",
         },
       ]
     : [];
@@ -209,6 +211,22 @@ export function normalizeModelSelection(
         ? requestedEffort
         : model.defaultReasoningEffort,
   };
+}
+
+export function modelSelectionForControllerMode(
+  catalog: ModelCatalogResponse,
+  selection: Partial<ModelSelection> | undefined,
+  modeId: string,
+): ModelSelection {
+  return normalizeModelSelection(catalog, {
+    ...selection,
+    agentId:
+      modeId === CODEX_CONTROLLER_MODE_ID
+        ? CODEX_CHAT_AGENT_ID
+        : selection?.agentId === CODEX_CHAT_AGENT_ID
+          ? DEFAULT_CHAT_AGENT_ID
+          : selection?.agentId,
+  });
 }
 
 export function mostPowerfulModelSelection(

@@ -115,9 +115,12 @@ import {
   type ChatSessionStatus,
 } from "@/lib/chat-session-store";
 import {
+  CODEX_CHAT_AGENT_ID,
+  CODEX_CONTROLLER_MODE_ID,
   DEFAULT_CHAT_AGENT_ID,
   formatReasoningEffort,
   MODEL_CONTEXT_KEY,
+  modelSelectionForControllerMode,
   normalizeModelSelection,
   REASONING_CONTEXT_KEY,
   TOOL_MODEL_SELECTIONS_CONTEXT_KEY,
@@ -1011,38 +1014,64 @@ function ChatSession({
   const isEmpty = renderedMessages.length === 0;
   const hasStreamingAssistant =
     renderedMessages.at(-1)?.role === "assistant";
+  const sessionModeId = session.modeId;
+  const sessionModelId = session.modelId;
   const effectiveModelSelection = (() => {
     if (!modelCatalog) return modelSelection;
-    return normalizeModelSelection(modelCatalog, {
-      agentId: DEFAULT_CHAT_AGENT_ID,
-      modelId: session.modelId ?? modelSelection?.modelId,
+    return modelSelectionForControllerMode(modelCatalog, {
+      agentId: modelSelection?.agentId,
+      modelId: sessionModelId ?? modelSelection?.modelId,
       reasoningEffort: modelSelection?.reasoningEffort,
-    });
+    }, sessionModeId);
   })();
   const effectiveModelId = effectiveModelSelection?.modelId;
   const effectiveReasoningEffort = effectiveModelSelection?.reasoningEffort;
-
-  const requestContext = useMemo(() => ({
-    [TOOLS_CONTEXT_KEY]: enabledToolIds,
-    [TOOL_MODEL_SELECTIONS_CONTEXT_KEY]: toolModelSelections,
-    [SCHEDULE_TIMEZONE_CONTEXT_KEY]:
-      Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
-    ...(effectiveModelId
-      ? {
-          [MODEL_CONTEXT_KEY]: effectiveModelId,
-          [REASONING_CONTEXT_KEY]: effectiveReasoningEffort,
-        }
-      : {}),
-  }), [
-    effectiveModelId,
-    effectiveReasoningEffort,
-    enabledToolIds,
-    toolModelSelections,
+  const modelContextSignature = JSON.stringify([
+    effectiveModelId ?? null,
+    effectiveReasoningEffort ?? null,
   ]);
+
+  const requestContext = useMemo(() => {
+    const [modelId, reasoningEffort] = JSON.parse(modelContextSignature) as [
+      string | null,
+      ModelSelection["reasoningEffort"],
+    ];
+    return {
+      [TOOLS_CONTEXT_KEY]: enabledToolIds,
+      [TOOL_MODEL_SELECTIONS_CONTEXT_KEY]: toolModelSelections,
+      [SCHEDULE_TIMEZONE_CONTEXT_KEY]:
+        Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+      ...(modelId
+        ? {
+            [MODEL_CONTEXT_KEY]: modelId,
+            [REASONING_CONTEXT_KEY]: reasoningEffort,
+          }
+        : {}),
+    };
+  }, [enabledToolIds, modelContextSignature, toolModelSelections]);
 
   useEffect(() => {
     void ensureBrowserControllerSession(resourceId, threadId).catch(() => undefined);
   }, [resourceId, threadId]);
+
+  useEffect(() => {
+    if (
+      !session.controllerReady ||
+      modelSelection?.agentId !== CODEX_CHAT_AGENT_ID ||
+      sessionModeId === CODEX_CONTROLLER_MODE_ID
+    ) return;
+    void switchControllerMode(
+      resourceId,
+      threadId,
+      CODEX_CONTROLLER_MODE_ID,
+    ).catch((caught) => setSteerError(readableError(caught)));
+  }, [
+    modelSelection?.agentId,
+    resourceId,
+    session.controllerReady,
+    sessionModeId,
+    threadId,
+  ]);
 
   useEffect(() => {
     if (!autoFocusComposer || !isEmpty) return;
@@ -1231,17 +1260,42 @@ function ChatSession({
 
   const changeMode = useCallback((modeId: string) => {
     setSteerError("");
+    if (modelCatalog && modelSelection) {
+      onModelSelectionChange(
+        modelSelectionForControllerMode(modelCatalog, modelSelection, modeId),
+      );
+    }
     void switchControllerMode(resourceId, threadId, modeId).catch((caught) => {
       setSteerError(readableError(caught));
     });
-  }, [resourceId, threadId]);
+  }, [
+    modelCatalog,
+    modelSelection,
+    onModelSelectionChange,
+    resourceId,
+    threadId,
+  ]);
 
-  const changeModel = useCallback((selection: ModelSelection) => {
+  const changeModel = (selection: ModelSelection) => {
     onModelSelectionChange(selection);
-    void switchControllerModel(resourceId, threadId, selection.modelId).catch((caught) => {
+    setSteerError("");
+    void (async () => {
+      if (selection.agentId === CODEX_CHAT_AGENT_ID) {
+        await switchControllerMode(
+          resourceId,
+          threadId,
+          CODEX_CONTROLLER_MODE_ID,
+        );
+        return;
+      }
+      if (sessionModeId === CODEX_CONTROLLER_MODE_ID) {
+        await switchControllerMode(resourceId, threadId, "chat");
+      }
+      await switchControllerModel(resourceId, threadId, selection.modelId);
+    })().catch((caught) => {
       setSteerError(readableError(caught));
     });
-  }, [onModelSelectionChange, resourceId, threadId]);
+  };
 
   const composerProps = {
     draft,
