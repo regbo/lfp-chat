@@ -19,6 +19,7 @@ type ThreadFixture = {
 
 type AppApiFixture = {
   controllerEvents?: readonly Record<string, unknown>[];
+  controllerRunning?: boolean | (() => boolean);
   messagesByThread?: Readonly<Record<string, readonly UIMessage[]>>;
   threads?: readonly ThreadFixture[];
 };
@@ -82,6 +83,10 @@ export async function installAppApiFixture(
   const threads = fixture.threads ?? sidebarThreads;
   const messagesByThread = fixture.messagesByThread ?? {};
   const controllerEvents = fixture.controllerEvents ?? [];
+  const controllerRunning = () =>
+    typeof fixture.controllerRunning === "function"
+      ? fixture.controllerRunning()
+      : fixture.controllerRunning ?? false;
 
   const controllerMessages = (threadId: string) =>
     (messagesByThread[threadId] ?? []).map((message) => ({
@@ -161,7 +166,7 @@ export async function installAppApiFixture(
             threadId: scopedThreadId,
             modeId: "chat",
             modelId: "openai/gpt-5.6-luna",
-            running: false,
+            running: controllerRunning(),
             tokenUsage: {},
             settings: { yolo: false, notifications: "off", smartEditing: true },
           },

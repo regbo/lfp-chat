@@ -200,6 +200,58 @@ test("mobile composer centers its prompt and controls", async ({ page }, testInf
   expect(alignment.controlOffsets.every((offset) => Math.abs(offset) <= 1)).toBe(true);
 });
 
+test("mobile follow-ups remain queryable without wrapping the composer", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "mobile-webkit", "The compact queue layout is mobile-specific.");
+  await page.unroute("**/api/**");
+  let controllerRunning = true;
+  await installAppApiFixture(page, {
+    controllerRunning: () => controllerRunning,
+    messagesByThread: { "smoke-queue-thread": [] },
+    threads: [{
+      id: "smoke-queue-thread",
+      title: "Queue smoke",
+      createdAt: "2026-01-15T12:00:00.000Z",
+      updatedAt: "2026-01-15T12:00:00.000Z",
+    }],
+  });
+  await page.goto("/c/smoke-queue-thread");
+
+  const composer = page.getByRole("textbox", { name: "Message" });
+  await composer.fill("Look up the next appointment after this run.");
+  await page.getByRole("button", { name: "Send message" }).click();
+
+  const queueButton = page.getByRole("button", { name: "Open 1 queued message" });
+  await expect(queueButton).toHaveText("Queue · 1");
+  const queueLayout = await queueButton.evaluate((button) => ({
+    noHorizontalOverflow: button.scrollWidth <= button.clientWidth,
+    whiteSpace: getComputedStyle(button).whiteSpace,
+  }));
+  expect(queueLayout).toEqual({
+    noHorizontalOverflow: true,
+    whiteSpace: "nowrap",
+  });
+  await expect(page.getByText("1 queued", { exact: true })).toHaveCount(0);
+
+  await page.reload();
+  await page.getByRole("button", { name: "Open 1 queued message" }).click();
+  await expect(
+    page.getByText("Look up the next appointment after this run.").filter({ visible: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Edit queued message" }).filter({ visible: true }).click();
+  await expect(composer).toHaveValue("Look up the next appointment after this run.");
+  await expect(page.getByRole("button", { name: /queued message/ })).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Send message" }).click();
+  await expect(page.getByRole("button", { name: "Open 1 queued message" })).toBeVisible();
+  controllerRunning = false;
+  await expect(page.getByRole("button", { name: /queued message/ })).toHaveCount(0, {
+    timeout: 5_000,
+  });
+  await expect(
+    page.getByText("Look up the next appointment after this run.").filter({ visible: true }),
+  ).toBeVisible();
+});
+
 test("a terminal AgentController event clears the streaming state", async ({ page }) => {
   await page.unroute("**/api/**");
   await installAppApiFixture(page, {
@@ -235,6 +287,55 @@ test("a terminal AgentController event clears the streaming state", async ({ pag
   await expect(page.getByRole("button", { name: "Stop response" })).toHaveCount(0);
   await expect(page.getByText("Thinking…")).toHaveCount(0);
   await expect(page.getByRole("button", { name: /^Thought for/ })).toBeVisible();
+});
+
+test("tool-loop fragments render as one linked thought trail", async ({ page }, testInfo) => {
+  await page.unroute("**/api/**");
+  await installAppApiFixture(page, {
+    messagesByThread: { "smoke-linked-thoughts": [] },
+    threads: [{
+      id: "smoke-linked-thoughts",
+      title: "Linked thought smoke",
+      createdAt: "2026-01-15T12:00:00.000Z",
+      updatedAt: "2026-01-15T12:00:00.000Z",
+    }],
+    controllerEvents: [
+      { type: "agent_start" },
+      ...["Searching home data.", "Checking the newest result.", "Summarizing the answer."].map(
+        (reasoning, index) => ({
+          type: "message_end",
+          message: {
+            id: `smoke-linked-assistant-${index}`,
+            role: "assistant",
+            createdAt: "2026-01-15T12:00:00.000Z",
+            threadId: "smoke-linked-thoughts",
+            content: {
+              format: 2,
+              parts: [
+                {
+                  type: "reasoning",
+                  reasoning,
+                  details: [{ type: "text", text: reasoning }],
+                },
+                ...(index === 2 ? [{ type: "text", text: "The linked answer is ready." }] : []),
+              ],
+            },
+          },
+        }),
+      ),
+      { type: "agent_end", reason: "complete" },
+    ],
+  });
+  await page.goto("/c/smoke-linked-thoughts");
+
+  const thought = page.getByRole("button", { name: /^Thought for/ });
+  await expect(thought).toHaveCount(1);
+  if (testInfo.project.name === "mobile-webkit") return;
+  await thought.click();
+  await expect(page.getByText("Searching home data.")).toBeVisible();
+  await expect(page.getByText("Checking the newest result.")).toBeVisible();
+  await expect(page.getByText("Summarizing the answer.")).toBeVisible();
+  await expect(page.getByText("The linked answer is ready.")).toBeVisible();
 });
 
 test("an AgentController error surfaces the reason and clears the streaming state", async ({ page }) => {

@@ -218,8 +218,12 @@ export function AgentGoalButton({
 }
 
 export function AgentRunPanel({
+  onQueueClick,
+  queueOpen = false,
   session,
 }: {
+  onQueueClick?: () => void;
+  queueOpen?: boolean;
   session: ChatSessionState;
 }) {
   const hasDetails = session.tasks.length > 0 || session.subagents.length > 0;
@@ -227,7 +231,7 @@ export function AgentRunPanel({
   const hasProgress =
     session.status === "streaming" ||
     session.status === "submitted" ||
-    session.queuedFollowUps > 0 ||
+    session.followUpQueue.length > 0 ||
     Boolean(session.goal) ||
     Boolean(session.omProgress?.status && session.omProgress.status !== "idle") ||
     (typeof totalTokens === "number" && totalTokens > 0) ||
@@ -240,7 +244,18 @@ export function AgentRunPanel({
           {session.status === "streaming" || session.status === "submitted" ? <Circle className="size-2.5 animate-pulse fill-current text-primary" /> : <Circle className="size-2.5 text-muted-foreground" />}
           {session.modeId}
         </Badge>
-        {session.queuedFollowUps > 0 ? <Badge variant="secondary">{session.queuedFollowUps} queued</Badge> : null}
+        {session.followUpQueue.length > 0 ? (
+          <Badge
+            aria-expanded={queueOpen}
+            aria-label={`Open ${session.followUpQueue.length} queued ${session.followUpQueue.length === 1 ? "message" : "messages"}`}
+            className="cursor-pointer whitespace-nowrap"
+            onClick={onQueueClick}
+            render={<button type="button" />}
+            variant="secondary"
+          >
+            Queue · {session.followUpQueue.length}
+          </Badge>
+        ) : null}
         {session.omProgress?.status && session.omProgress.status !== "idle" ? <Badge variant="outline">Memory {session.omProgress.status}</Badge> : null}
         {typeof totalTokens === "number" && totalTokens > 0 ? <span className="chat-meta-text ml-auto text-muted-foreground">{formatTokens(totalTokens)} tokens</span> : <span className="ml-auto" />}
         {session.goal ? <Badge variant="outline"><Target className="size-3" /> Goal active</Badge> : null}

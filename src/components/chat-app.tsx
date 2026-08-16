@@ -84,14 +84,20 @@ import {
   AgentModePicker,
   AgentRunPanel,
 } from "@/components/agent-controller-ui";
+import { SteerQueue } from "@/components/steer-queue";
 import { formatAttachmentLinks } from "@/lib/attachment-links";
 import { DEFAULT_APP_BRANDING, type AppBranding } from "@/lib/app-branding";
 import { isChatChartSpec } from "@/lib/chart-spec";
+import { groupConsecutiveAssistantMessages } from "@/lib/chat-message-groups";
 import { formatCitationMarkers } from "@/lib/citations";
 import {
   abortController,
   ensureBrowserControllerSession,
   followUpController,
+  refreshBrowserControllerSession,
+  removeControllerFollowUp,
+  reorderControllerFollowUpQueue,
+  restoreControllerFollowUp,
   sendControllerMessage,
   steerController,
   switchControllerMode,
@@ -605,7 +611,12 @@ type ChatComposerProps = {
   onDraftChange: (value: string) => void;
   modeId: string;
   modes: ChatSessionState["modes"];
-  queuedFollowUps: number;
+  followUpQueue: ChatSessionState["followUpQueue"];
+  queueOpen: boolean;
+  onDeleteQueuedFollowUp: (id: string) => void;
+  onEditQueuedFollowUp: (id: string) => void;
+  onReorderQueuedFollowUps: (sourceId: string, targetId: string) => void;
+  onSteerQueuedFollowUp: (id: string) => void;
   onModeChange: (modeId: string) => void;
   resourceId: string;
   session: ChatSessionState;
@@ -798,10 +809,19 @@ function ModelSelector({
   );
 }
 
-function ChatComposer({ draft, modeId, modes, modelCatalog, modelSelection, onDraftChange, onModeChange, onModelSelectionChange, onSubmit, onStop, onSteer, queuedFollowUps, resourceId, session, status, threadId }: ChatComposerProps) {
+function ChatComposer({ draft, followUpQueue, modeId, modes, modelCatalog, modelSelection, onDeleteQueuedFollowUp, onDraftChange, onEditQueuedFollowUp, onModeChange, onModelSelectionChange, onReorderQueuedFollowUps, onSteer, onSteerQueuedFollowUp, onSubmit, onStop, queueOpen, resourceId, session, status, threadId }: ChatComposerProps) {
   const running = status === "submitted" || status === "streaming";
   return (
     <div className="relative w-full">
+      {queueOpen ? (
+        <SteerQueue
+          items={followUpQueue}
+          onDelete={onDeleteQueuedFollowUp}
+          onEdit={onEditQueuedFollowUp}
+          onReorder={onReorderQueuedFollowUps}
+          onSteer={onSteerQueuedFollowUp}
+        />
+      ) : null}
       <PromptInput
         accept="image/*,application/pdf,text/plain,text/csv,application/json"
         className="chat-composer relative z-10 w-full"
@@ -856,11 +876,6 @@ function ChatComposer({ draft, modeId, modes, modelCatalog, modelSelection, onDr
             <CornerDownRight className="size-4" />
             Steer
           </PromptInputButton>
-        )}
-        {queuedFollowUps > 0 && (
-          <span className="chat-meta-text px-1 text-muted-foreground">
-            {queuedFollowUps} queued
-          </span>
         )}
         <ChatSubmitButton
           draft={draft}
@@ -982,14 +997,17 @@ function ChatSession({
   const [draft, setDraft] = useState("");
   const suggestions = useStarterSuggestions(resourceId, recentSuggestionTitles);
   const [steerError, setSteerError] = useState("");
+  const [queueOpen, setQueueOpen] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [submitScrollRequest, setSubmitScrollRequest] = useState(0);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const composerDockRef = useRef<HTMLDivElement>(null);
+  const drainingQueueRef = useRef(false);
   const isStreaming = status === "submitted" || status === "streaming";
-  const renderedMessages = Array.from(
+  const queueVisible = queueOpen && session.followUpQueue.length > 0;
+  const renderedMessages = groupConsecutiveAssistantMessages(Array.from(
     new Map(messages.map((message) => [message.id, message])).values(),
-  );
+  ));
   const isEmpty = renderedMessages.length === 0;
   const hasStreamingAssistant =
     renderedMessages.at(-1)?.role === "assistant";
@@ -1043,8 +1061,12 @@ function ChatSession({
 
   const runMessage = useCallback(async (
     message: PromptInputMessage,
+    options?: {
+      id?: string;
+      requestContext?: Record<string, unknown>;
+    },
   ) => {
-    const userMessage = promptMessageToUserMessage(message);
+    const userMessage = promptMessageToUserMessage(message, options?.id);
     updateChatSession(threadId, (current) => ({
       ...current,
       messages: current.messages.some((item) => item.id === userMessage.id)
@@ -1057,7 +1079,20 @@ function ChatSession({
     onConversationChange(threadId);
     window.setTimeout(onThreadListChange, 500);
 
-    await sendControllerMessage({ resourceId, threadId, message, requestContext });
+    try {
+      await sendControllerMessage({
+        resourceId,
+        threadId,
+        message,
+        requestContext: options?.requestContext ?? requestContext,
+      });
+    } catch (caught) {
+      updateChatSession(threadId, (current) => ({
+        ...current,
+        messages: current.messages.filter((item) => item.id !== userMessage.id),
+      }));
+      throw caught;
+    }
   }, [onConversationChange, onThreadListChange, requestContext, resourceId, threadId]);
 
   const stop = useCallback(() => {
@@ -1074,14 +1109,25 @@ function ChatSession({
           setSteerError("Attachments can be sent as soon as the active run finishes.");
           return;
         }
-        await followUpController(resourceId, threadId, text.trim(), requestContext);
+        await followUpController(
+          resourceId,
+          threadId,
+          { text: text.trim(), files: [] },
+          requestContext,
+        );
         setDraft("");
+        setQueueOpen(true);
         return;
       }
       setDraft("");
-      await runMessage({ text, files });
+      try {
+        await runMessage({ text, files });
+      } catch (caught) {
+        setDraft(text);
+        setSteerError(readableError(caught));
+      }
     },
-    [isStreaming, requestContext, resourceId, runMessage, threadId],
+    [isStreaming, requestContext, resourceId, runMessage, setQueueOpen, threadId],
   );
 
   const steer = useCallback(async () => {
@@ -1096,6 +1142,92 @@ function ChatSession({
       setSteerError(readableError(caught));
     }
   }, [draft, isStreaming, requestContext, resourceId, threadId]);
+
+  const deleteQueuedFollowUp = useCallback((id: string) => {
+    removeControllerFollowUp(resourceId, threadId, id);
+  }, [resourceId, threadId]);
+
+  const editQueuedFollowUp = useCallback((id: string) => {
+    const removed = removeControllerFollowUp(resourceId, threadId, id);
+    if (!removed) return;
+    setDraft(removed.item.message.text);
+    window.requestAnimationFrame(focusVisibleComposer);
+  }, [resourceId, threadId]);
+
+  const reorderQueuedFollowUps = useCallback((sourceId: string, targetId: string) => {
+    reorderControllerFollowUpQueue(resourceId, threadId, sourceId, targetId);
+  }, [resourceId, threadId]);
+
+  const steerQueuedFollowUp = useCallback(async (id: string) => {
+    const removed = removeControllerFollowUp(resourceId, threadId, id);
+    if (!removed) return;
+    setSteerError("");
+    try {
+      if (isStreaming) {
+        await steerController(
+          resourceId,
+          threadId,
+          removed.item.message.text,
+          removed.item.requestContext,
+        );
+      } else {
+        await runMessage(removed.item.message, {
+          id: removed.item.id,
+          requestContext: removed.item.requestContext,
+        });
+      }
+    } catch (caught) {
+      restoreControllerFollowUp(
+        resourceId,
+        threadId,
+        removed.item,
+        removed.index,
+      );
+      setSteerError(readableError(caught));
+    }
+  }, [isStreaming, resourceId, runMessage, threadId]);
+
+  useEffect(() => {
+    if (session.followUpQueue.length === 0 || status === "ready") return;
+    const refresh = () => {
+      void refreshBrowserControllerSession(resourceId, threadId).catch(() => undefined);
+    };
+    const timer = window.setInterval(refresh, 1_500);
+    return () => window.clearInterval(timer);
+  }, [resourceId, session.followUpQueue.length, status, threadId]);
+
+  useEffect(() => {
+    const next = session.followUpQueue[0];
+    if (
+      !next ||
+      !session.controllerReady ||
+      status !== "ready" ||
+      drainingQueueRef.current
+    ) return;
+    drainingQueueRef.current = true;
+    const timer = window.setTimeout(() => {
+      const removed = removeControllerFollowUp(resourceId, threadId, next.id);
+      if (!removed) {
+        drainingQueueRef.current = false;
+        return;
+      }
+      void runMessage(removed.item.message, {
+        id: removed.item.id,
+        requestContext: removed.item.requestContext,
+      }).catch((caught) => {
+        restoreControllerFollowUp(
+          resourceId,
+          threadId,
+          removed.item,
+          removed.index,
+        );
+        setSteerError(readableError(caught));
+      }).finally(() => {
+        drainingQueueRef.current = false;
+      });
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [resourceId, runMessage, session.controllerReady, session.followUpQueue, status, threadId]);
 
   const changeMode = useCallback((modeId: string) => {
     setSteerError("");
@@ -1113,15 +1245,20 @@ function ChatSession({
 
   const composerProps = {
     draft,
+    followUpQueue: session.followUpQueue,
     modeId: session.modeId,
     modes: session.modes,
     onDraftChange: setDraft,
+    onDeleteQueuedFollowUp: deleteQueuedFollowUp,
+    onEditQueuedFollowUp: editQueuedFollowUp,
     onModeChange: changeMode,
     onModelSelectionChange: changeModel,
+    onReorderQueuedFollowUps: reorderQueuedFollowUps,
     onSteer: () => void steer(),
+    onSteerQueuedFollowUp: (id: string) => void steerQueuedFollowUp(id),
     onStop: stop,
     onSubmit: submit,
-    queuedFollowUps: session.queuedFollowUps,
+    queueOpen: queueVisible,
     resourceId,
     session,
     status,
@@ -1189,7 +1326,11 @@ function ChatSession({
                   What&apos;s on your mind today?
                 </h1>
                 <div className="hidden md:block">
-                  <AgentRunPanel session={session} />
+                  <AgentRunPanel
+                    onQueueClick={() => setQueueOpen((current) => !current)}
+                    queueOpen={queueVisible}
+                    session={session}
+                  />
                   <ChatComposer {...composerProps} />
                 </div>
                 <div className="mx-auto flex max-w-[650px] flex-col gap-1.5 px-4">
@@ -1244,7 +1385,11 @@ function ChatSession({
         ref={composerDockRef}
       >
           <div className="chat-column pointer-events-auto">
-            <AgentRunPanel session={session} />
+            <AgentRunPanel
+              onQueueClick={() => setQueueOpen((current) => !current)}
+              queueOpen={queueVisible}
+              session={session}
+            />
             <ChatComposer {...composerProps} />
           </div>
       </div>

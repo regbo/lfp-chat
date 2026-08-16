@@ -7,6 +7,7 @@ import type {
   AgentControllerOMProgress,
   AgentControllerTaskSnapshot,
 } from "@mastra/client-js";
+import type { QueuedControllerFollowUp } from "@/lib/controller-follow-up-queue";
 
 export type ChatSessionStatus = "ready" | "submitted" | "streaming" | "error";
 
@@ -23,7 +24,7 @@ export type ChatSessionState = {
   modeId: string;
   modelId: string | null;
   modes: AgentControllerModeInfo[];
-  queuedFollowUps: number;
+  followUpQueue: QueuedControllerFollowUp[];
   pendingApproval: {
     toolCallId: string;
     toolName: string;
@@ -70,7 +71,7 @@ export function createChatSession(messages: UIMessage[] = []): ChatSessionState 
     modeId: "chat",
     modelId: null,
     modes: [],
-    queuedFollowUps: 0,
+    followUpQueue: [],
     pendingApproval: null,
     pendingSuspensions: [],
     tasks: [],

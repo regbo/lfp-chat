@@ -22,6 +22,13 @@ import {
   getChatSession,
   updateChatSession,
 } from "@/lib/chat-session-store";
+import {
+  insertControllerFollowUp,
+  loadControllerFollowUpQueue,
+  reorderControllerFollowUps,
+  saveControllerFollowUpQueue,
+  type QueuedControllerFollowUp,
+} from "@/lib/controller-follow-up-queue";
 import { readableError } from "@/lib/readable-error";
 
 const controller = browserMastraClient.getAgentController(
@@ -129,10 +136,8 @@ function handleEvent(threadId: string, event: AgentControllerEvent) {
       }));
       return;
     case "follow_up_queued":
-      updateChatSession(threadId, (current) => ({
-        ...current,
-        queuedFollowUps: Number(payload.count ?? current.queuedFollowUps),
-      }));
+      // Mastra's native follow-up queue only exposes a transient count. The web
+      // client uses its inspectable persisted queue instead.
       return;
     case "tool_approval_required":
       updateChatSession(threadId, (current) => ({
@@ -261,10 +266,6 @@ function handleEvent(threadId: string, event: AgentControllerEvent) {
             : current.status === "error"
               ? "error"
               : "ready",
-        queuedFollowUps:
-          typeof displayState.queuedFollowUps === "number"
-            ? displayState.queuedFollowUps
-            : current.queuedFollowUps,
         tokenUsage:
           displayState.tokenUsage && typeof displayState.tokenUsage === "object"
             ? displayState.tokenUsage as Record<string, unknown>
@@ -366,6 +367,17 @@ export function ensureBrowserControllerSession(
   threadId: string,
 ) {
   ensureChatSession(threadId);
+  const storedQueue = loadControllerFollowUpQueue(
+    resourceId,
+    threadId,
+    window.localStorage,
+  );
+  updateChatSession(threadId, (current) => ({
+    ...current,
+    followUpQueue: current.followUpQueue?.length
+      ? current.followUpQueue
+      : storedQueue,
+  }));
   const existing = connections.get(threadId);
   if (existing) return existing.ready;
 
@@ -455,15 +467,79 @@ export async function sendControllerMessage(options: {
 export async function followUpController(
   resourceId: string,
   threadId: string,
-  message: string,
+  message: PromptInputMessage,
   requestContext: Record<string, unknown>,
 ) {
-  const current = await connection(resourceId, threadId);
+  const queued: QueuedControllerFollowUp = {
+    id: crypto.randomUUID(),
+    message,
+    requestContext,
+    createdAt: new Date().toISOString(),
+  };
   updateChatSession(threadId, (state) => ({
     ...state,
-    queuedFollowUps: state.queuedFollowUps + 1,
+    followUpQueue: [...(state.followUpQueue ?? []), queued],
   }));
-  await current.session.followUp(message, { requestContext });
+  saveControllerFollowUpQueue(
+    resourceId,
+    threadId,
+    getChatSession(threadId)?.followUpQueue ?? [],
+    window.localStorage,
+  );
+  return queued;
+}
+
+export function removeControllerFollowUp(
+  resourceId: string,
+  threadId: string,
+  id: string,
+) {
+  const queue = getChatSession(threadId)?.followUpQueue ?? [];
+  const index = queue.findIndex((item) => item.id === id);
+  if (index < 0) return null;
+  const item = queue[index];
+  const next = queue.filter((candidate) => candidate.id !== id);
+  updateChatSession(threadId, (state) => ({ ...state, followUpQueue: next }));
+  saveControllerFollowUpQueue(resourceId, threadId, next, window.localStorage);
+  return item ? { item, index } : null;
+}
+
+export function restoreControllerFollowUp(
+  resourceId: string,
+  threadId: string,
+  item: QueuedControllerFollowUp,
+  index?: number,
+) {
+  const queue = insertControllerFollowUp(
+    getChatSession(threadId)?.followUpQueue ?? [],
+    item,
+    index,
+  );
+  updateChatSession(threadId, (state) => ({ ...state, followUpQueue: queue }));
+  saveControllerFollowUpQueue(resourceId, threadId, queue, window.localStorage);
+}
+
+export function reorderControllerFollowUpQueue(
+  resourceId: string,
+  threadId: string,
+  sourceId: string,
+  targetId: string,
+) {
+  const queue = reorderControllerFollowUps(
+    getChatSession(threadId)?.followUpQueue ?? [],
+    sourceId,
+    targetId,
+  );
+  updateChatSession(threadId, (state) => ({ ...state, followUpQueue: queue }));
+  saveControllerFollowUpQueue(resourceId, threadId, queue, window.localStorage);
+}
+
+export async function refreshBrowserControllerSession(
+  resourceId: string,
+  threadId: string,
+) {
+  const current = await connection(resourceId, threadId);
+  await hydrateConnection(threadId, current.session, false);
 }
 
 export async function steerController(
