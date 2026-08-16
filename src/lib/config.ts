@@ -8,7 +8,6 @@ const LOCAL_DATABASE_URL =
 const LOCAL_MASTRA_API_URL = "http://127.0.0.1:4111";
 const DEFAULT_MODEL_PROVIDER = "openai";
 const DEFAULT_OPENAI_MODEL = "gpt-5.6-luna";
-const DEFAULT_CODEX_AGENT_MODE = "agent";
 const DEFAULT_USER_SCOPE_MODE = "local";
 const DEFAULT_CHATGPT_SUBSCRIPTION_MODELS = [
   "gpt-5.6",
@@ -69,15 +68,6 @@ export function secretValue(valueName: string, fileName: string) {
     return value;
   }
   return process.env[valueName]?.trim();
-}
-
-const codexAgentMode =
-  process.env.CODEX_AGENT_MODE?.trim().toLowerCase() || DEFAULT_CODEX_AGENT_MODE;
-
-if (!["read-only", "agent"].includes(codexAgentMode)) {
-  throw new Error(
-    `Invalid CODEX_AGENT_MODE: ${codexAgentMode}. Use read-only or agent.`,
-  );
 }
 
 const modelProvider =
@@ -386,12 +376,6 @@ export const serverConfig = {
     ),
     proxyKey: secretValue("LITELLM_PROXY_KEY", "LITELLM_PROXY_KEY_FILE"),
   },
-  codexAgentEnabled: process.env.CODEX_AGENT_ENABLED !== "false",
-  codexAgentMode,
-  codexWorkspacePath:
-    process.env.CODEX_WORKSPACE_PATH?.trim() || process.cwd(),
-  codexAcpCommand: process.env.CODEX_ACP_COMMAND?.trim(),
-  codexCommand: process.env.CODEX_PATH?.trim(),
   webOrigin: process.env.WEB_ORIGIN ?? "http://localhost:3000",
   userScope: {
     mode: userScopeMode as "local" | "header" | "jwt",

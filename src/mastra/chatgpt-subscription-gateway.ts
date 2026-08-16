@@ -1,7 +1,6 @@
 import { createOpenAI } from "@ai-sdk/openai";
 import {
   MastraModelGateway,
-  type GatewayAuthRequest,
   type GatewayAuthResult,
   type GatewayLanguageModel,
   type ProviderConfig,
@@ -89,7 +88,7 @@ export class ChatGptSubscriptionGateway extends MastraModelGateway {
     return this.#proxyKey;
   }
 
-  resolveAuth(_request: GatewayAuthRequest): GatewayAuthResult {
+  resolveAuth(): GatewayAuthResult {
     return { apiKey: this.#proxyKey, source: "gateway" };
   }
 

@@ -11,11 +11,23 @@ export function PwaRegister() {
     const controlledAtMount = Boolean(navigator.serviceWorker.controller);
 
     const register = async () => {
-      registration = await navigator.serviceWorker.register("/sw.js", {
-        scope: "/",
-        updateViaCache: "none",
-      });
-      await registration.update();
+      try {
+        const nextRegistration = await navigator.serviceWorker.register(
+          "/sw.js",
+          {
+            scope: "/",
+            updateViaCache: "none",
+          },
+        );
+        // Browser automation and privacy controls may intentionally suppress
+        // registration while still exposing the Service Worker API.
+        if (!nextRegistration) return;
+        registration = nextRegistration;
+        await nextRegistration.update();
+      } catch {
+        // PWA updates are an enhancement; chat must remain usable when a
+        // browser or proxy blocks Service Worker registration.
+      }
     };
 
     const checkForUpdate = () => {

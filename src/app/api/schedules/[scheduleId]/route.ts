@@ -2,7 +2,6 @@ import { mastraClient } from "@/lib/mastra-client";
 import { RequestContext } from "@mastra/core/request-context";
 import type { AgentSchedule, ScheduleResponse } from "@mastra/client-js";
 import {
-  CODEX_CHAT_AGENT_ID,
   DEFAULT_CHAT_AGENT_ID,
   MODEL_CONTEXT_KEY,
   REASONING_CONTEXT_KEY,
@@ -33,7 +32,7 @@ const actionSchema = z.discriminatedUnion("action", [
     cron: z.string().trim().min(1).max(100).optional(),
     timezone: z.string().trim().min(1).max(100),
     modelSelection: z.object({
-      agentId: z.enum([DEFAULT_CHAT_AGENT_ID, CODEX_CHAT_AGENT_ID]),
+      agentId: z.literal(DEFAULT_CHAT_AGENT_ID),
       modelId: z.string().min(1),
       reasoningEffort: z.enum(reasoningEfforts).nullable(),
     }).optional(),

@@ -1,8 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
 import {
-  CODEX_CHAT_AGENT_ID,
-  createAgentCatalog,
   createModelCatalog,
   modelSelectionForControllerMode,
   mostPowerfulModelSelection,
@@ -52,27 +50,37 @@ describe("most powerful model selection", () => {
   });
 });
 
-describe("controller agent selection", () => {
+describe("controller mode selection", () => {
   const catalog = createModelCatalog(
     "openai",
     "openai/gpt-5.6-luna",
     "medium",
     ["gpt-5.6-luna"],
-    createAgentCatalog(true),
+    [],
+    [
+      {
+        provider: "subscription/chatgpt",
+        modelNames: ["gpt-5.6-sol"],
+        description: "Subscription model.",
+      },
+    ],
   );
 
-  test("selects Codex when the controller enters code mode", () => {
+  test("selects the LiteLLM subscription model in code mode", () => {
     expect(
-      modelSelectionForControllerMode(catalog, catalog.defaultSelection, "code")
-        .agentId,
-    ).toBe(CODEX_CHAT_AGENT_ID);
+      modelSelectionForControllerMode(catalog, catalog.defaultSelection, "code"),
+    ).toEqual({
+      agentId: "chatAgent",
+      modelId: "subscription/chatgpt/gpt-5.6-sol",
+      reasoningEffort: "medium",
+    });
   });
 
-  test("returns to the standard agent when leaving code mode", () => {
+  test("keeps an explicit model when leaving code mode", () => {
     expect(
       modelSelectionForControllerMode(
         catalog,
-        { ...catalog.defaultSelection, agentId: CODEX_CHAT_AGENT_ID },
+        catalog.defaultSelection,
         "chat",
       ),
     ).toEqual(catalog.defaultSelection);

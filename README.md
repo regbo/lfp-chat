@@ -198,7 +198,7 @@ Tags must use semantic versions such as `v0.2.0`. The GitHub Actions workflow va
 - `@mastra/client-js` for the native AgentController session protocol plus thread and memory operations
 - AI Elements for the conversation, messages, reasoning, tools, and prompt input
 - Mastra Model Router with provider-specific API keys
-- Codex CLI as a separately selectable Mastra ACP coding agent
+- LiteLLM-backed ChatGPT subscription models alongside API-key models
 - Caddy as the single loopback/ZeroTier entrypoint
 - Docker Compose for a local PostgreSQL service
 
@@ -293,11 +293,12 @@ bun run db:up
 bun dev
 ```
 
-`bun dev` starts three independent processes:
+`bun dev` starts four independent processes:
 
 - Caddy entrypoint: [http://127.0.0.1:7777](http://127.0.0.1:7777)
 - Next.js web client (loopback only): [http://127.0.0.1:3000](http://127.0.0.1:3000)
 - Mastra Server (loopback only): [http://127.0.0.1:4111](http://127.0.0.1:4111)
+- LiteLLM subscription proxy (loopback only): [http://127.0.0.1:4000](http://127.0.0.1:4000)
 
 Caddy detects ZeroTier IPv4 interfaces at startup and binds those addresses in addition to loopback without exposing a wildcard listener. Its site address is host-agnostic, so reverse proxies can preserve the public `Host` header. With the current interface, the remote URL is `http://100.100.100.126:7777`. Override the port or upstream with `CADDY_PORT` and `CADDY_UPSTREAM`; use `CADDY_EXTRA_BIND_ADDRESSES` for additional comma-separated IPv4 addresses.
 
@@ -312,13 +313,9 @@ REASONING_EFFORT=medium
 OPENAI_API_KEY=...
 ```
 
-For OpenAI Responses models, Mastra still owns the PostgreSQL transcript, while
-an agent processor chains OpenAI's stored response ID. Provider requests keep
-the current instructions and new turn or tool output instead of replaying the
-last 24 messages. If a stored response has expired, the agent retries once from
-the local transcript and starts a fresh chain. This reduces request payload and
-history bookkeeping; prior context still counts toward the model context and
-input-token billing.
+Mastra owns the PostgreSQL transcript for both provider paths. Both OpenAI
+Responses routes use `store: false` so a conversation can switch between an
+API key and LiteLLM without replaying provider-local response item IDs.
 
 Scheduled automation remains on the private local Ollama route. A host can send
 lightweight background UI work to a separate CPU runtime without changing
@@ -347,17 +344,23 @@ PHOENIX_PROJECT_NAME=LFP Chat
 PHOENIX_SERVICE_NAME=LFP Chat
 ```
 
-The composer also lists **Codex CLI** as an agent rather than a model. Mastra runs it through `@mastra/acp` and `@agentclientprotocol/codex-acp`, while PostgreSQL remains the durable conversation store. Codex runs in an isolated ACP session for each request and defaults to workspace-write access without network access. Configure its boundary explicitly when the server should operate on another repository:
-
-The application intentionally uses Mastra AgentController instead of maintaining its own run reducer, queue, timeout, or replay adapter. Codex remains a controller mode backed by Mastra ACP when enabled.
+The composer groups API-key and ChatGPT subscription models separately. The
+subscription group is routed through LiteLLM's OpenAI-compatible Responses API,
+while Mastra AgentController continues to own modes, tools, memory, planning,
+steering, approvals, and the agent loop. Code mode is a normal controller mode
+with Mastra's host workspace and defaults to the strongest configured
+subscription model.
 
 ```env
-CODEX_AGENT_ENABLED=true
-CODEX_AGENT_MODE=agent
-CODEX_WORKSPACE_PATH=C:/Users/you/Projects/target-repo
+CHATGPT_SUBSCRIPTION_ENABLED=true
+CHATGPT_SUBSCRIPTION_BASE_URL=http://127.0.0.1:4000/v1
+CHATGPT_SUBSCRIPTION_MODELS=gpt-5.6-sol,gpt-5.6-terra,gpt-5.6-luna
 ```
 
-Set `CODEX_AGENT_MODE=read-only` for inspection-only use. Full host access is intentionally not exposed by this application configuration.
+Run `bun run dev:litellm` for the first subscription login. LiteLLM opens its
+device authorization flow and stores the resulting ChatGPT tokens under
+`~/.secrets/litellm/chatgpt`, outside the repository. API-key models remain
+available through the ordinary provider configuration at the same time.
 
 The Mastra server exposes `GET http://localhost:4111/models`, with a same-origin browser proxy at `GET /api/models`. For OpenAI, the server discovers the models available to the configured API key from OpenAI's `/v1/models` endpoint and caches the filtered chat-model catalog for 10 minutes. Reasoning choices are attached per model family, and the selected model and effort are passed through Mastra request context on every chat run.
 

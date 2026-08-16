@@ -3,8 +3,7 @@ export const REASONING_CONTEXT_KEY = "lfp.reasoning";
 export const TOOL_MODEL_SELECTIONS_CONTEXT_KEY = "lfp.toolModels";
 
 export const DEFAULT_CHAT_AGENT_ID = "chatAgent";
-export const CODEX_CHAT_AGENT_ID = "codexAgent";
-export const CODEX_CONTROLLER_MODE_ID = "code";
+export const CODE_CONTROLLER_MODE_ID = "code";
 
 export const reasoningEfforts = [
   "none",
@@ -52,20 +51,6 @@ export type AdditionalModelSource = {
   modelNames: readonly string[];
   description: string;
 };
-
-export function createAgentCatalog(codexEnabled: boolean): ChatAgentDefinition[] {
-  return codexEnabled
-    ? [
-        {
-          id: CODEX_CHAT_AGENT_ID,
-          label: "Codex (ChatGPT)",
-          shortLabel: "Codex",
-          description:
-            "Subscription-backed Codex app-server with scoped workspace and shell access.",
-        },
-      ]
-    : [];
-}
 
 function titleCase(value: string) {
   return value
@@ -240,14 +225,21 @@ export function modelSelectionForControllerMode(
   selection: Partial<ModelSelection> | undefined,
   modeId: string,
 ): ModelSelection {
+  if (modeId !== CODE_CONTROLLER_MODE_ID) {
+    return normalizeModelSelection(catalog, selection);
+  }
+  const codeModel =
+    catalog.models.find(
+      (model) =>
+        model.provider === "subscription/chatgpt" &&
+        /^gpt-5\.6-sol(?:-|$)/i.test(model.id.split("/").at(-1) ?? ""),
+    ) ??
+    catalog.models.find((model) => model.provider === "subscription/chatgpt") ??
+    catalog.models.find((model) => model.id === selection?.modelId);
   return normalizeModelSelection(catalog, {
-    ...selection,
-    agentId:
-      modeId === CODEX_CONTROLLER_MODE_ID
-        ? CODEX_CHAT_AGENT_ID
-        : selection?.agentId === CODEX_CHAT_AGENT_ID
-          ? DEFAULT_CHAT_AGENT_ID
-          : selection?.agentId,
+    agentId: DEFAULT_CHAT_AGENT_ID,
+    modelId: codeModel?.id,
+    reasoningEffort: codeModel?.defaultReasoningEffort,
   });
 }
 

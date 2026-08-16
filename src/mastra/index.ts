@@ -15,7 +15,8 @@ import {
 import {
   chatGptSubscriptionGateway,
   modelProvider,
-  resolveBackgroundModel,
+  resolveCodeModeModelId,
+  resolveBackgroundModelFallbacks,
   supportsConfiguredProviderTools,
   resolveRuntimeModel,
   resolveRuntimeOptions,
@@ -24,7 +25,6 @@ import {
   hostWorkspace,
   planWorkspaceForResource,
 } from "@/mastra/host-workspace";
-import { createCodexAgent } from "@/mastra/codex-agent";
 import {
   normalizeEnabledToolIds,
   TOOLS_CONTEXT_KEY,
@@ -39,7 +39,6 @@ import {
   type LfpChatToolRegistryOverrides,
 } from "@/mastra/tool-registry";
 import { registerDashboardMastraTools } from "@/lib/dashboard-runtime";
-import { OpenAiConversationStateProcessor } from "@/mastra/openai-conversation-state";
 
 export type LfpChatMastraCustomization = {
   /** Keyed native Mastra tool overrides; existing keys update and new keys register. */
@@ -165,7 +164,7 @@ export function createLfpChatMastra(
       },
       observationalMemory: {
         enabled: true,
-        model: resolveBackgroundModel(),
+        model: resolveBackgroundModelFallbacks(),
         // Keep observations isolated to a conversation. Working memory remains
         // resource-scoped so the compact user profile is still shared.
         scope: "thread",
@@ -175,8 +174,6 @@ export function createLfpChatMastra(
       },
     },
   });
-  const openAiConversationState = new OpenAiConversationStateProcessor();
-
   const resolveAgentTools: NonNullable<AgentConfig["tools"]> = async ({
     requestContext,
   }) => {
@@ -218,12 +215,10 @@ export function createLfpChatMastra(
     const controller = requestContext.get("controller") as
       | { resourceId?: unknown; session?: { modeId?: unknown } }
       | undefined;
-    if (
-      controller?.session?.modeId === "plan" &&
-      typeof controller.resourceId === "string"
-    ) {
+    if (controller?.session?.modeId === "plan" && typeof controller.resourceId === "string") {
       return planWorkspaceForResource(controller.resourceId);
     }
+    if (controller?.session?.modeId === "code") return hostWorkspace;
     return resolvedEnabledCapabilities(requestContext.get(TOOLS_CONTEXT_KEY)).has(
       "code_mode",
     )
@@ -237,9 +232,6 @@ export function createLfpChatMastra(
     description: "A concise, tool-capable assistant with persistent memory.",
     model: ({ requestContext }) => resolveRuntimeModel(requestContext),
     memory,
-    inputProcessors: [openAiConversationState],
-    outputProcessors: [openAiConversationState],
-    errorProcessors: [openAiConversationState],
     tools: resolveAgentTools,
     workspace: resolveAgentWorkspace,
     instructions: ({ requestContext }) => {
@@ -283,9 +275,6 @@ or financial account credentials.`;
 
   const chatAgent = new Agent(chatAgentConfig);
 
-  const codexAgent = serverConfig.codexAgentEnabled
-    ? createCodexAgent(memory)
-    : undefined;
   const observability = createObservability();
 
   const baseAgentControllerConfig: AgentControllerConfig<
@@ -322,6 +311,10 @@ or financial account credentials.`;
           monty: "allow",
           code_interpreter: "allow",
           write_file: "allow",
+          // submit_plan already suspends for an explicit plan decision. A
+          // second generic tool-approval gate on resume would turn an approved
+          // plan into an output-denied result before Act can continue.
+          submit_plan: "allow",
         },
       },
     },
@@ -365,21 +358,16 @@ or financial account credentials.`;
         instructions:
           "Carry the work through to a verified outcome. Keep the built-in task list current, use focused subagents when they improve the result, and rely on approval gates for writes or execution. Report concrete outcomes and remaining risks.",
       },
-      ...(codexAgent
-        ? [
-            {
-              id: "code",
-              name: "Code",
-              description:
-                "Delegate repository work to the configured Codex ACP agent.",
-              defaultModelId: serverConfig.modelId,
-              agent: codexAgent,
-              metadata: { icon: "terminal" },
-              instructions:
-                "Use the Codex ACP agent for repository work and keep the controller task list current for longer changes.",
-            },
-          ]
-        : []),
+      {
+        id: "code",
+        name: "Code",
+        description:
+          "Work directly in the repository with LiteLLM subscription or API-key models.",
+        defaultModelId: resolveCodeModeModelId(),
+        metadata: { icon: "terminal" },
+        instructions:
+          "Work like a capable coding agent. Inspect the repository before editing, use the host workspace tools directly, keep the built-in task list current for longer changes, verify proportionally, and report concrete outcomes. Never create chat task lists for trivial work.",
+      },
     ],
     subagents: [
       {
@@ -424,7 +412,6 @@ or financial account credentials.`;
       : {}),
     agents: {
       chatAgent,
-      ...(codexAgent ? { codexAgent } : {}),
     },
     agentControllers: {
       [LFP_CHAT_CONTROLLER_ID]: agentController,

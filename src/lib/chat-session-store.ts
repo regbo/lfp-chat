@@ -2,7 +2,9 @@
 
 import type { UIMessage } from "ai";
 import type {
+  AgentControllerEvent,
   AgentControllerGoalRecord,
+  KnownAgentControllerEvent,
   AgentControllerModeInfo,
   AgentControllerOMProgress,
   AgentControllerTaskSnapshot,
@@ -10,6 +12,20 @@ import type {
 import type { QueuedControllerFollowUp } from "@/lib/controller-follow-up-queue";
 
 export type ChatSessionStatus = "ready" | "submitted" | "streaming" | "error";
+
+export type AgentControllerDisplayState = Extract<
+  KnownAgentControllerEvent,
+  { type: "display_state_changed" }
+>["displayState"];
+
+export type AgentControllerPendingSuspension = NonNullable<
+  AgentControllerDisplayState["pendingSuspensions"]
+>[string];
+
+export type AgentControllerPendingApproval = Pick<
+  Extract<AgentControllerEvent, { type: "tool_approval_required" }>,
+  "toolCallId" | "toolName" | "args"
+>;
 
 export type ChatSessionState = {
   messages: UIMessage[];
@@ -25,17 +41,8 @@ export type ChatSessionState = {
   modelId: string | null;
   modes: AgentControllerModeInfo[];
   followUpQueue: QueuedControllerFollowUp[];
-  pendingApproval: {
-    toolCallId: string;
-    toolName: string;
-    args: unknown;
-  } | null;
-  pendingSuspensions: Array<{
-    toolCallId: string;
-    toolName: string;
-    args: unknown;
-    suspendPayload: unknown;
-  }>;
+  pendingApproval: AgentControllerPendingApproval | null;
+  pendingSuspensions: AgentControllerPendingSuspension[];
   tasks: AgentControllerTaskSnapshot[];
   subagents: Array<{
     toolCallId: string;

@@ -19,6 +19,7 @@ await mkdir(tokenDirectory, { recursive: true });
 // The chat app's PostgreSQL URL is unrelated to LiteLLM and would otherwise
 // make the proxy attempt to initialize its optional Prisma management store.
 const { DATABASE_URL: _databaseUrl, ...proxyEnvironment } = process.env;
+void _databaseUrl;
 
 const child = spawn(
   "uvx",

@@ -12,7 +12,6 @@ import {
   CHATGPT_SUBSCRIPTION_PROVIDER_ID,
 } from "@/mastra/chatgpt-subscription-gateway";
 import {
-  createAgentCatalog,
   createModelCatalog,
   MODEL_CONTEXT_KEY,
   normalizeModelSelection,
@@ -47,7 +46,7 @@ let cachedModelCatalog = createModelCatalog(
   serverConfig.modelId,
   serverConfig.reasoningEffort,
   undefined,
-  createAgentCatalog(serverConfig.codexAgentEnabled),
+  undefined,
   additionalModelSources,
 );
 let modelCatalogExpiresAt = 0;
@@ -65,9 +64,25 @@ const webOllama = createOpenAI({
   apiKey: "local-bridge",
 });
 
-/** Use the inexpensive local model for background UI assistance. */
+/** Use the inexpensive local model for non-critical UI assistance. */
 export function resolveBackgroundModel() {
   return webOllama.chat(serverConfig.webModelName);
+}
+
+/** Keep memory maintenance available when the local background model is offline. */
+export function resolveBackgroundModelFallbacks() {
+  return [
+    {
+      id: "local-background",
+      model: resolveBackgroundModel(),
+      maxRetries: 0,
+    },
+    {
+      id: "hosted-background-fallback",
+      model: serverConfig.modelId,
+      maxRetries: 2,
+    },
+  ];
 }
 
 type OpenAiModelsResponse = {
@@ -95,7 +110,7 @@ async function discoverOpenAiModels() {
     serverConfig.modelId,
     serverConfig.reasoningEffort,
     modelNames,
-    createAgentCatalog(serverConfig.codexAgentEnabled),
+    undefined,
     additionalModelSources,
   );
   modelCatalogExpiresAt = Date.now() + MODEL_CATALOG_TTL_MS;
@@ -158,6 +173,16 @@ export function resolveRuntimeModel(requestContext?: RequestContext) {
   return selection.modelId as ModelRouterModelId;
 }
 
+/** Code mode prefers the strongest configured LiteLLM subscription model. */
+export function resolveCodeModeModelId() {
+  if (!serverConfig.chatgptSubscription.enabled) return serverConfig.modelId;
+  const modelName =
+    serverConfig.chatgptSubscription.models.find((model) =>
+      /^gpt-5\.6-sol(?:-|$)/i.test(model),
+    ) ?? serverConfig.chatgptSubscription.models[0];
+  return `${subscriptionModelProvider}/${modelName}`;
+}
+
 export function resolveRuntimeOptions(requestContext?: RequestContext) {
   if (requestContext?.get(SCHEDULE_JOB_CONTEXT_KEY) === true) {
     return { maxSteps: serverConfig.agentMaxSteps, providerOptions: undefined };
@@ -171,8 +196,7 @@ export function resolveRuntimeOptions(requestContext?: RequestContext) {
     maxSteps: serverConfig.agentMaxSteps,
     providerOptions:
       (model?.provider === "openai" ||
-        model?.provider === subscriptionModelProvider) &&
-      (selection.reasoningEffort || model.provider === subscriptionModelProvider)
+        model?.provider === subscriptionModelProvider)
         ? {
             openai: {
               ...(selection.reasoningEffort
@@ -181,15 +205,12 @@ export function resolveRuntimeOptions(requestContext?: RequestContext) {
                     reasoningSummary: "auto" as const,
                   }
                 : {}),
+              // Keep history portable between API-key and LiteLLM subscription
+              // models. Mastra persists the transcript; Responses item IDs are
+              // provider-local and cannot be referenced after a model-route switch.
+              store: false,
               ...(model.provider === subscriptionModelProvider
-                ? {
-                    // The ChatGPT subscription backend does not persist
-                    // Responses items. Tell the AI SDK before it serializes
-                    // history so reasoning is replayed with encrypted content
-                    // instead of as invalid rs_* item references.
-                    store: false,
-                    strictJsonSchema: false,
-                  }
+                ? { strictJsonSchema: false }
                 : {}),
             },
           }

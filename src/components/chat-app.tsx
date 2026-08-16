@@ -120,8 +120,6 @@ import {
   type ChatSessionStatus,
 } from "@/lib/chat-session-store";
 import {
-  CODEX_CHAT_AGENT_ID,
-  CODEX_CONTROLLER_MODE_ID,
   DEFAULT_CHAT_AGENT_ID,
   formatReasoningEffort,
   MODEL_CONTEXT_KEY,
@@ -1056,25 +1054,6 @@ function ChatSession({
   }, [resourceId, threadId]);
 
   useEffect(() => {
-    if (
-      !session.controllerReady ||
-      modelSelection?.agentId !== CODEX_CHAT_AGENT_ID ||
-      sessionModeId === CODEX_CONTROLLER_MODE_ID
-    ) return;
-    void switchControllerMode(
-      resourceId,
-      threadId,
-      CODEX_CONTROLLER_MODE_ID,
-    ).catch((caught) => setSteerError(readableError(caught)));
-  }, [
-    modelSelection?.agentId,
-    resourceId,
-    session.controllerReady,
-    sessionModeId,
-    threadId,
-  ]);
-
-  useEffect(() => {
     if (!autoFocusComposer || !isEmpty) return;
     let secondFrame = 0;
     const firstFrame = window.requestAnimationFrame(() => {
@@ -1281,17 +1260,6 @@ function ChatSession({
     onModelSelectionChange(selection);
     setSteerError("");
     void (async () => {
-      if (selection.agentId === CODEX_CHAT_AGENT_ID) {
-        await switchControllerMode(
-          resourceId,
-          threadId,
-          CODEX_CONTROLLER_MODE_ID,
-        );
-        return;
-      }
-      if (sessionModeId === CODEX_CONTROLLER_MODE_ID) {
-        await switchControllerMode(resourceId, threadId, "chat");
-      }
       await switchControllerModel(resourceId, threadId, selection.modelId);
     })().catch((caught) => {
       setSteerError(readableError(caught));
@@ -2238,6 +2206,10 @@ export function ChatApp({ branding = DEFAULT_APP_BRANDING, mods = [], plugins = 
     previousPathname.current = pathname;
     const routedThreadId = threadIdFromPathname(pathname);
     if (routedThreadId && resourceId) {
+      // newChat updates the mounted session before the pathname hook observes
+      // history.pushState. Do not let the stale conversation path reopen the
+      // prior thread during that single render.
+      if (skipNextRootReset.current && routedThreadId !== threadId) return;
       if (routedThreadId === threadId && threadLoaded) return;
       const timer = window.setTimeout(
         () => void openThread(routedThreadId, false),

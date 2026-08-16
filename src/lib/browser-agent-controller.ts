@@ -21,6 +21,8 @@ import {
   ensureChatSession,
   getChatSession,
   updateChatSession,
+  type AgentControllerDisplayState,
+  type AgentControllerPendingSuspension,
 } from "@/lib/chat-session-store";
 import { mergeHydratedMessages } from "@/lib/chat-message-groups";
 import {
@@ -64,6 +66,25 @@ function upsertMessage(messages: UIMessage[], message: UIMessage) {
   const next = [...messages];
   next[index] = message;
   return next;
+}
+
+function pendingSuspensionsFromMessages(
+  messages: readonly MastraDBMessage[],
+): AgentControllerPendingSuspension[] {
+  const latestAssistant = messages.findLast(
+    (message) => message.role === "assistant",
+  );
+  const suspendedTools = latestAssistant?.content.metadata?.suspendedTools;
+  if (!suspendedTools || typeof suspendedTools !== "object") return [];
+  return Object.values(suspendedTools).filter(
+    (value): value is AgentControllerPendingSuspension =>
+      Boolean(
+        value &&
+          typeof value === "object" &&
+          typeof value.toolCallId === "string" &&
+          typeof value.toolName === "string",
+      ),
+  );
 }
 
 async function listModes() {
@@ -128,6 +149,12 @@ function handleEvent(threadId: string, event: AgentControllerEvent) {
       updateChatSession(threadId, (current) => ({
         ...current,
         modeId: String(payload.modeId ?? current.modeId),
+        pendingSuspensions:
+          payload.modeId === "plan"
+            ? current.pendingSuspensions
+            : current.pendingSuspensions.filter(
+                (item) => item.toolName !== "submit_plan",
+              ),
       }));
       return;
     case "model_changed":
@@ -156,7 +183,10 @@ function handleEvent(threadId: string, event: AgentControllerEvent) {
         status: "ready",
         pendingSuspensions: [
           ...current.pendingSuspensions.filter(
-            (item) => item.toolCallId !== payload.toolCallId,
+            (item) =>
+              item.toolCallId !== payload.toolCallId &&
+              (payload.toolName !== "submit_plan" ||
+                item.toolName !== "submit_plan"),
           ),
           {
             toolCallId: String(payload.toolCallId ?? ""),
@@ -255,10 +285,7 @@ function handleEvent(threadId: string, event: AgentControllerEvent) {
       }));
       return;
     case "display_state_changed": {
-      const displayState = payload.displayState as
-        | Record<string, unknown>
-        | undefined;
-      if (!displayState) return;
+      const displayState = event.displayState as AgentControllerDisplayState;
       updateChatSession(threadId, (current) => ({
         ...current,
         status:
@@ -275,6 +302,12 @@ function handleEvent(threadId: string, event: AgentControllerEvent) {
           displayState.omProgress && typeof displayState.omProgress === "object"
             ? displayState.omProgress as AgentControllerOMProgress
             : current.omProgress,
+        pendingSuspensions: displayState.pendingSuspensions
+          ? Object.values(displayState.pendingSuspensions).filter(
+              (item) =>
+                item.toolName !== "submit_plan" || current.modeId === "plan",
+            )
+          : current.pendingSuspensions,
       }));
       return;
     }
@@ -316,16 +349,19 @@ async function hydrateConnection(
   session: ControllerSession,
   includeMessages: boolean,
 ) {
-  const [state, modes, goal, messages] = await Promise.all([
+  const [state, modes, goal, controllerMessages] = await Promise.all([
     session.state(),
     listModes(),
     session.getGoal(),
-    includeMessages ? session.listMessages(threadId, 200) : Promise.resolve(null),
+    session.listMessages(threadId, includeMessages ? 200 : 20),
   ]);
+  const pendingSuspensions = pendingSuspensionsFromMessages(
+    controllerMessages,
+  ).filter((item) => item.toolName !== "submit_plan" || state.modeId === "plan");
   updateChatSession(threadId, (current) => ({
     ...current,
-    ...(messages
-      ? { messages: mergeHydratedMessages(current.messages, uiMessages(messages)) }
+    ...(includeMessages
+      ? { messages: mergeHydratedMessages(current.messages, uiMessages(controllerMessages)) }
       : {}),
     controllerReady: true,
     modeId: state.modeId,
@@ -335,6 +371,7 @@ async function hydrateConnection(
     tokenUsage: state.tokenUsage ?? {},
     omProgress: state.omProgress ?? null,
     goal: goal ?? null,
+    pendingSuspensions,
   }));
 }
 
@@ -614,7 +651,19 @@ export async function resumeControllerTool(
     ),
     status: "streaming",
   }));
-  await current.session.respondToToolSuspension(toolCallId, resumeData);
+  const controllerResume =
+    typeof resumeData === "object" &&
+    resumeData !== null &&
+    "action" in resumeData
+      ? { ...resumeData, approved: true }
+      : resumeData;
+  // AgentController 1.59 re-applies its generic tool-approval gate before a
+  // suspended submit_plan receives its domain-specific action. Mark that gate
+  // approved so the stock tool can process either approval or revision data.
+  await current.session.respondToToolSuspension(
+    toolCallId,
+    controllerResume as PlanResume,
+  );
 }
 
 export async function refreshControllerGoal(threadId: string) {

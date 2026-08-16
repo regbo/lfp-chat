@@ -1,7 +1,6 @@
 import { mastraClient } from "@/lib/mastra-client";
 import { serverConfig } from "@/lib/config";
 import {
-  CODEX_CHAT_AGENT_ID,
   DEFAULT_CHAT_AGENT_ID,
   MODEL_CONTEXT_KEY,
   normalizeModelSelection,
@@ -36,7 +35,7 @@ const createScheduleSchema = z.object({
   resourceId: z.string().min(1),
   enabledToolIds: z.array(z.string()).optional(),
   modelSelection: z.object({
-    agentId: z.enum([DEFAULT_CHAT_AGENT_ID, CODEX_CHAT_AGENT_ID]),
+    agentId: z.literal(DEFAULT_CHAT_AGENT_ID),
     modelId: z.string().min(1),
     reasoningEffort: z.enum(reasoningEfforts).nullable(),
   }).nullable().optional(),
@@ -80,16 +79,14 @@ export async function GET(request: Request) {
   const { resourceId } = resolved.scope;
 
   try {
-    const agentIds = serverConfig.codexAgentEnabled
-      ? [DEFAULT_CHAT_AGENT_ID, CODEX_CHAT_AGENT_ID]
-      : [DEFAULT_CHAT_AGENT_ID];
     const [modelCatalog, results] = await Promise.all([
       getModelCatalog(),
-      Promise.all(
-        agentIds.map((agentId) =>
-          mastraClient.listSchedules({ agentId, resourceId }),
-        ),
-      ),
+      Promise.all([
+        mastraClient.listSchedules({
+          agentId: DEFAULT_CHAT_AGENT_ID,
+          resourceId,
+        }),
+      ]),
     ]);
     const schedules = await Promise.all(
       results
