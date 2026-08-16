@@ -1,7 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import type { UIMessage } from "ai";
 
-import { groupConsecutiveAssistantMessages } from "@/lib/chat-message-groups";
+import {
+  filterRenderableMessages,
+  groupConsecutiveAssistantMessages,
+  mergeHydratedMessages,
+} from "@/lib/chat-message-groups";
 
 const message = (
   id: string,
@@ -43,5 +47,29 @@ describe("groupConsecutiveAssistantMessages", () => {
       "user-1",
       "assistant-2",
     ]);
+  });
+
+  test("removes empty persisted bubbles while retaining visible message parts", () => {
+    const empty = message("user-empty", "user", "   ");
+    const attachment: UIMessage = {
+      id: "user-file",
+      role: "user",
+      parts: [{ type: "file", mediaType: "text/plain", url: "data:,hello" }],
+    };
+
+    expect(filterRenderableMessages([
+      empty,
+      message("assistant-empty", "assistant", ""),
+      message("assistant-visible", "assistant", "Answer"),
+      attachment,
+    ]).map(({ id }) => id)).toEqual(["assistant-visible", "user-file"]);
+  });
+
+  test("keeps optimistic messages until polling observes their persisted copy", () => {
+    const optimistic = message("local-user", "user", "Queued follow-up");
+    expect(mergeHydratedMessages([optimistic], [])).toEqual([optimistic]);
+
+    const persisted = message("server-user", "user", "Queued follow-up");
+    expect(mergeHydratedMessages([optimistic], [persisted])).toEqual([persisted]);
   });
 });

@@ -89,7 +89,10 @@ import { SteerQueue } from "@/components/steer-queue";
 import { formatAttachmentLinks } from "@/lib/attachment-links";
 import { DEFAULT_APP_BRANDING, type AppBranding } from "@/lib/app-branding";
 import { isChatChartSpec } from "@/lib/chart-spec";
-import { groupConsecutiveAssistantMessages } from "@/lib/chat-message-groups";
+import {
+  filterRenderableMessages,
+  groupConsecutiveAssistantMessages,
+} from "@/lib/chat-message-groups";
 import { formatCitationMarkers } from "@/lib/citations";
 import {
   abortController,
@@ -1002,9 +1005,11 @@ function ChatSession({
   const drainingQueueRef = useRef(false);
   const isStreaming = status === "submitted" || status === "streaming";
   const queueVisible = queueOpen && session.followUpQueue.length > 0;
-  const renderedMessages = groupConsecutiveAssistantMessages(Array.from(
-    new Map(messages.map((message) => [message.id, message])).values(),
-  ));
+  const renderedMessages = groupConsecutiveAssistantMessages(
+    filterRenderableMessages(Array.from(
+      new Map(messages.map((message) => [message.id, message])).values(),
+    )),
+  );
   const isEmpty = renderedMessages.length === 0;
   const hasStreamingAssistant =
     renderedMessages.at(-1)?.role === "assistant";

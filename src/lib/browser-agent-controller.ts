@@ -22,6 +22,7 @@ import {
   getChatSession,
   updateChatSession,
 } from "@/lib/chat-session-store";
+import { mergeHydratedMessages } from "@/lib/chat-message-groups";
 import {
   insertControllerFollowUp,
   loadControllerFollowUpQueue,
@@ -323,7 +324,9 @@ async function hydrateConnection(
   ]);
   updateChatSession(threadId, (current) => ({
     ...current,
-    ...(messages ? { messages: uiMessages(messages) } : {}),
+    ...(messages
+      ? { messages: mergeHydratedMessages(current.messages, uiMessages(messages)) }
+      : {}),
     controllerReady: true,
     modeId: state.modeId,
     modelId: state.modelId,

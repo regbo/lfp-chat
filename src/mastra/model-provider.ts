@@ -182,7 +182,14 @@ export function resolveRuntimeOptions(requestContext?: RequestContext) {
                   }
                 : {}),
               ...(model.provider === subscriptionModelProvider
-                ? { strictJsonSchema: false }
+                ? {
+                    // The ChatGPT subscription backend does not persist
+                    // Responses items. Tell the AI SDK before it serializes
+                    // history so reasoning is replayed with encrypted content
+                    // instead of as invalid rs_* item references.
+                    store: false,
+                    strictJsonSchema: false,
+                  }
                 : {}),
             },
           }
