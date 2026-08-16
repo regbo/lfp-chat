@@ -19,7 +19,7 @@ import {
   Terminal,
   X,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { MessageResponse } from "@/components/ai-elements/message";
 import { Badge } from "@/components/ui/badge";
@@ -328,14 +328,44 @@ function AskUserDialog({
 
 function PlanDialog({
   onRespond,
+  resourceId,
   suspension,
 }: {
   onRespond: (value: { action: "approved" | "rejected"; feedback?: string }) => Promise<void>;
+  resourceId: string;
   suspension: Suspension;
 }) {
   const payload = suspensionPayload(suspension);
+  const submittedPath = typeof payload.path === "string" ? payload.path : "";
+  const [submittedPlan, setSubmittedPlan] = useState(() => ({
+    title: typeof payload.title === "string" ? payload.title : "Review the plan",
+    plan: typeof payload.plan === "string" ? payload.plan : "",
+  }));
+  const [loadError, setLoadError] = useState("");
   const [feedback, setFeedback] = useState("");
   const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (submittedPlan.plan || !submittedPath) return;
+    const controller = new AbortController();
+    const params = new URLSearchParams({ path: submittedPath, resourceId });
+    void fetch(`/api/plans?${params}`, { cache: "no-store", signal: controller.signal })
+      .then(async (response) => {
+        const result = await response.json() as { title?: string; plan?: string; error?: string };
+        if (!response.ok || !result.plan) {
+          throw new Error(result.error || "The submitted plan could not be loaded.");
+        }
+        setSubmittedPlan({
+          title: result.title || "Review the plan",
+          plan: result.plan,
+        });
+      })
+      .catch((error) => {
+        if (!controller.signal.aborted) {
+          setLoadError(error instanceof Error ? error.message : "The submitted plan could not be loaded.");
+        }
+      });
+    return () => controller.abort();
+  }, [resourceId, submittedPath, submittedPlan.plan]);
   const respond = (action: "approved" | "rejected") => {
     setBusy(true);
     void onRespond({ action, ...(feedback.trim() ? { feedback: feedback.trim() } : {}) }).finally(() => setBusy(false));
@@ -343,12 +373,14 @@ function PlanDialog({
   return (
     <Dialog open>
       <DialogContent className="sm:max-w-2xl" showCloseButton={false}>
-        <DialogHeader><DialogTitle>{String(payload.title ?? "Review the plan")}</DialogTitle><DialogDescription>Approval moves this thread into Act mode and resumes the same run.</DialogDescription></DialogHeader>
-        <div className="max-h-[55dvh] overflow-y-auto rounded-xl border bg-background p-3"><MessageResponse>{String(payload.plan ?? "The agent submitted a plan for approval.")}</MessageResponse></div>
+        <DialogHeader><DialogTitle>{submittedPlan.title}</DialogTitle><DialogDescription>Approval moves this thread into Act mode and resumes the same run.</DialogDescription></DialogHeader>
+        <div className="max-h-[55dvh] overflow-y-auto rounded-xl border bg-background p-3">
+          <MessageResponse>{submittedPlan.plan || (loadError || "Loading plan…")}</MessageResponse>
+        </div>
         <Textarea onChange={(event) => setFeedback(event.target.value)} placeholder="Feedback for a revision (optional)" value={feedback} />
         <DialogFooter>
           <Button disabled={busy} onClick={() => respond("rejected")} variant="outline"><X className="size-4" /> Request changes</Button>
-          <Button disabled={busy} onClick={() => respond("approved")}><Check className="size-4" /> Approve and act</Button>
+          <Button disabled={busy || !submittedPlan.plan} onClick={() => respond("approved")}><Check className="size-4" /> Approve and act</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -384,7 +416,7 @@ export function AgentControllerDialogs({
         </Dialog>
       ) : null}
       {suspension?.toolName === "submit_plan" ? (
-        <PlanDialog key={suspension.toolCallId} suspension={suspension} onRespond={(value) => resumeControllerTool(resourceId, threadId, suspension.toolCallId, value)} />
+        <PlanDialog key={suspension.toolCallId} resourceId={resourceId} suspension={suspension} onRespond={(value) => resumeControllerTool(resourceId, threadId, suspension.toolCallId, value)} />
       ) : suspension ? (
         <AskUserDialog key={suspension.toolCallId} suspension={suspension} onRespond={(value) => resumeControllerTool(resourceId, threadId, suspension.toolCallId, value)} />
       ) : null}

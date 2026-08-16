@@ -20,7 +20,10 @@ import {
   resolveRuntimeModel,
   resolveRuntimeOptions,
 } from "@/mastra/model-provider";
-import { hostWorkspace, planWorkspace } from "@/mastra/host-workspace";
+import {
+  hostWorkspace,
+  planWorkspaceForResource,
+} from "@/mastra/host-workspace";
 import { createCodexAgent } from "@/mastra/codex-agent";
 import {
   normalizeEnabledToolIds,
@@ -50,6 +53,43 @@ export type LfpChatMastraCustomization = {
     config: AgentControllerConfig<Record<string, unknown>>,
   ) => AgentControllerConfig<Record<string, unknown>>;
 };
+
+const sharedReadTools = [
+  "ask_user",
+  "dashboard_list",
+  "schedule_list",
+  "task_list",
+  "task_list_lists",
+  "url_fetch",
+  "web_fetch",
+  "web_search",
+  "sql_query",
+] as string[];
+
+const planAvailableTools = [
+  ...sharedReadTools,
+  "view",
+  "find_files",
+  "search_content",
+  "write_file",
+  "submit_plan",
+];
+
+const researchAvailableTools = [
+  ...sharedReadTools,
+  "dashboard_run_tool",
+  "render_chart",
+  "monty",
+  "code_interpreter",
+  "subagent",
+];
+
+function addReadOnlyModeTools(toolIds: Iterable<string>) {
+  for (const id of toolIds) {
+    if (!planAvailableTools.includes(id)) planAvailableTools.push(id);
+    if (!researchAvailableTools.includes(id)) researchAvailableTools.push(id);
+  }
+}
 
 function resolvedEnabledCapabilities(value: unknown): Set<string> {
   const enabled = new Set(normalizeEnabledToolIds(value));
@@ -146,7 +186,12 @@ export function createLfpChatMastra(
     if (!serverConfig.taskServiceConfigured) enabled.delete("tasks");
     const isScheduledJob =
       requestContext.get(SCHEDULE_JOB_CONTEXT_KEY) === true;
-    await configuredMcpTools(enabled, toolRegistry);
+    const mcpTools = await configuredMcpTools(enabled, toolRegistry);
+    addReadOnlyModeTools(
+      Object.entries(mcpTools)
+        .filter(([, tool]) => tool.mcp?.annotations?.readOnlyHint === true)
+        .map(([id]) => id),
+    );
     const availableTools = {
       ...toolRegistry.resolve(enabled, {
         scheduled: isScheduledJob,
@@ -171,9 +216,14 @@ export function createLfpChatMastra(
     requestContext,
   }) => {
     const controller = requestContext.get("controller") as
-      | { session?: { modeId?: unknown } }
+      | { resourceId?: unknown; session?: { modeId?: unknown } }
       | undefined;
-    if (controller?.session?.modeId === "plan") return planWorkspace;
+    if (
+      controller?.session?.modeId === "plan" &&
+      typeof controller.resourceId === "string"
+    ) {
+      return planWorkspaceForResource(controller.resourceId);
+    }
     return resolvedEnabledCapabilities(requestContext.get(TOOLS_CONTEXT_KEY)).has(
       "code_mode",
     )
@@ -267,6 +317,11 @@ or financial account credentials.`;
           // approval event; archive and permanent delete remain edit-gated.
           dashboard_upsert_tool: "allow",
           dashboard_upsert_widget: "allow",
+          // These are isolated computation surfaces. The Plan writer is the
+          // contained workspace alias; Code mode retains its gated Mastra ID.
+          monty: "allow",
+          code_interpreter: "allow",
+          write_file: "allow",
         },
       },
     },
@@ -285,6 +340,7 @@ or financial account credentials.`;
         name: "Research",
         description: "Investigate across Home sources and the web before synthesizing.",
         defaultModelId: serverConfig.modelId,
+        availableTools: researchAvailableTools,
         metadata: { icon: "search" },
         instructions:
           "Investigate thoroughly before concluding. Search the relevant Home sources and current web sources, compare evidence, cite source links when available, surface uncertainty, and use a research subagent when an independent pass would improve confidence. Do not mutate user data unless the user explicitly asks.",
@@ -294,10 +350,11 @@ or financial account credentials.`;
         name: "Plan",
         description: "Inspect context, build a visible plan, and wait for approval.",
         defaultModelId: serverConfig.modelId,
+        availableTools: planAvailableTools,
         transitionsTo: "act",
         metadata: { icon: "clipboard-list" },
         instructions:
-          "Inspect the necessary context, maintain a concise built-in task list, and call submit_plan with an actionable plan before making consequential changes. Ask the user only for decisions that materially change the result.",
+          "You are in read-only Plan mode. Inspect the necessary context using only the available read tools. Do not execute the requested change. Create a concise markdown plan with the sections Overview, Complexity, Steps, and Verification; write it to plans/<short-slug>.md with write_file, then call submit_plan with that path. Ask the user only for decisions that materially change the plan.",
       },
       {
         id: "act",

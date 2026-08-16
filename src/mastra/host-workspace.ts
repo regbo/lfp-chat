@@ -2,7 +2,9 @@ import {
   LocalFilesystem,
   LocalSandbox,
   Workspace,
+  WORKSPACE_TOOLS,
 } from "@mastra/core/workspace";
+import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -34,14 +36,54 @@ export const hostWorkspace = new Workspace({
   operationTimeout: 120_000,
 });
 
-/** A contained scratch area for AgentController plan files and approvals. */
-export const planWorkspace = new Workspace({
-  id: "lfp-plan-workspace",
-  name: "Plan workspace",
-  filesystem: new LocalFilesystem({
-    id: "lfp-plan-filesystem",
-    basePath: join(tmpdir(), "lfp-chat-plans"),
-    contained: true,
-  }),
-  operationTimeout: 30_000,
-});
+const planWorkspaces = new Map<string, Workspace>();
+
+function planResourceKey(resourceId: string) {
+  return createHash("sha256").update(resourceId).digest("base64url").slice(0, 24);
+}
+
+/**
+ * Mastra Code gives Plan mode a contained, read-only workspace plus one safe
+ * markdown writer. Scope the workspace per resource so submitted plans cannot
+ * cross user boundaries when the host later enables authenticated identities.
+ */
+export function planWorkspaceForResource(resourceId: string) {
+  const key = planResourceKey(resourceId);
+  const existing = planWorkspaces.get(key);
+  if (existing) return existing;
+  const workspace = new Workspace({
+    id: `lfp-plan-${key}`,
+    name: "Plan workspace",
+    filesystem: new LocalFilesystem({
+      id: `lfp-plan-filesystem-${key}`,
+      basePath: join(tmpdir(), "lfp-chat-plans", key),
+      contained: true,
+    }),
+    tools: {
+      enabled: false,
+      [WORKSPACE_TOOLS.FILESYSTEM.READ_FILE]: {
+        enabled: true,
+        name: "view",
+        maxOutputTokens: 4_000,
+      },
+      [WORKSPACE_TOOLS.FILESYSTEM.LIST_FILES]: {
+        enabled: true,
+        name: "find_files",
+        maxOutputTokens: 2_000,
+      },
+      [WORKSPACE_TOOLS.FILESYSTEM.GREP]: {
+        enabled: true,
+        name: "search_content",
+        maxOutputTokens: 2_000,
+      },
+      [WORKSPACE_TOOLS.FILESYSTEM.WRITE_FILE]: {
+        enabled: true,
+        name: "write_file",
+        requireApproval: false,
+      },
+    },
+    operationTimeout: 30_000,
+  });
+  planWorkspaces.set(key, workspace);
+  return workspace;
+}

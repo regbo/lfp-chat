@@ -347,6 +347,30 @@ test("a terminal AgentController event clears the streaming state", async ({ pag
   await expect(page.getByRole("button", { name: /^Thought for/ })).toBeVisible();
 });
 
+test("a submitted Mastra plan opens the approval handoff", async ({ page }) => {
+  await page.unroute("**/api/**");
+  await installAppApiFixture(page, {
+    messagesByThread: { "smoke-plan-thread": [] },
+    controllerEvents: [
+      {
+        type: "tool_suspended",
+        toolCallId: "smoke-submit-plan",
+        toolName: "submit_plan",
+        suspendPayload: {
+          title: "Metrics dashboard plan",
+          plan: "# Metrics dashboard plan\n\n## Overview\n\nBuild the requested dashboard.\n\n## Complexity\n\nLow.\n\n## Steps\n\n1. Add the tool.\n2. Add the widget.\n\n## Verification\n\nRun both and inspect the result.",
+        },
+      },
+    ],
+  });
+  await page.goto("/c/smoke-plan-thread");
+
+  await expect(page.getByRole("heading", { name: "Metrics dashboard plan" })).toBeVisible();
+  await expect(page.getByText("Build the requested dashboard.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Approve and act" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Request changes" })).toBeEnabled();
+});
+
 test("tool-loop fragments render as one linked thought trail", async ({ page }, testInfo) => {
   await page.unroute("**/api/**");
   await installAppApiFixture(page, {
