@@ -57,6 +57,53 @@ test("theme selection applies immediately and persists", async ({ page }) => {
   await expect(theme).toContainText("Always dark");
 });
 
+test("model choices are grouped by access source", async ({ page }) => {
+  await installAppApiFixture(page, {
+    modelCatalog: {
+      defaultSelection: {
+        agentId: "chatAgent",
+        modelId: "openai/gpt-5.6-luna",
+        reasoningEffort: "medium",
+      },
+      agents: [],
+      models: [
+        {
+          id: "openai/gpt-5.6-luna",
+          label: "GPT-5.6 Luna",
+          shortLabel: "5.6 Luna",
+          provider: "openai",
+          description: "API model",
+          reasoningEfforts: ["medium"],
+          defaultReasoningEffort: "medium",
+        },
+        {
+          id: "subscription/chatgpt/gpt-5.4",
+          label: "GPT-5.4 · ChatGPT",
+          shortLabel: "5.4 · ChatGPT",
+          provider: "subscription/chatgpt",
+          description: "Subscription model",
+          reasoningEfforts: ["medium"],
+          defaultReasoningEffort: "medium",
+        },
+      ],
+    },
+  });
+  await page.goto("/");
+
+  await page
+    .getByRole("button", { name: "Select model, agent, and reasoning" })
+    .click();
+  await page.getByRole("combobox", { name: "Model" }).click();
+
+  await expect(page.getByText("API key", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText("ChatGPT subscription", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("option", { name: "GPT-5.4 · ChatGPT" }),
+  ).toBeVisible();
+});
+
 test("tool-call details stay within the chat column", async ({ page }) => {
   await page.goto(`/c/${TOOL_LAYOUT_THREAD_ID}`);
   await expect(page.getByText("Tool layout smoke fixture complete.")).toBeVisible();

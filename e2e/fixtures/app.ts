@@ -1,5 +1,6 @@
 import type { Page } from "@playwright/test";
 import type { UIMessage } from "ai";
+import type { ModelCatalogResponse } from "../../src/lib/model-catalog";
 
 declare global {
   interface Window {
@@ -21,6 +22,7 @@ type AppApiFixture = {
   controllerEvents?: readonly Record<string, unknown>[];
   controllerRunning?: boolean | (() => boolean);
   messagesByThread?: Readonly<Record<string, readonly UIMessage[]>>;
+  modelCatalog?: ModelCatalogResponse;
   threads?: readonly ThreadFixture[];
 };
 
@@ -196,7 +198,11 @@ export async function installAppApiFixture(
       return;
     }
     if (url.pathname === "/api/models") {
-      await route.fulfill({ status: 503, json: { error: "Smoke fixture" } });
+      await route.fulfill(
+        fixture.modelCatalog
+          ? { json: fixture.modelCatalog }
+          : { status: 503, json: { error: "Smoke fixture" } },
+      );
       return;
     }
     if (url.pathname === "/api/suggestions") {

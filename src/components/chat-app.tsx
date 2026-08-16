@@ -34,6 +34,7 @@ import {
 import type { ToolPart } from "@/components/ai-elements/tool";
 import { Button } from "@/components/ui/button";
 import { BrandLockup } from "@/components/brand-lockup";
+import { ModelSelectGroups } from "@/components/model-select-groups";
 import { DashboardPanel } from "@/components/dashboard-panel";
 import { BrowserNotificationListener } from "@/components/browser-notification-listener";
 import {
@@ -757,14 +758,7 @@ function ModelSelector({
                       ))}
                     </SelectGroup>
                   )}
-                  <SelectGroup>
-                    <SelectLabel>Models</SelectLabel>
-                    {catalog?.models.map((model) => (
-                      <SelectItem key={model.id} value={`model:${model.id}`}>
-                        {model.label}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
+                  <ModelSelectGroups models={catalog?.models ?? []} />
                 </SelectContent>
               </Select>
             </div>

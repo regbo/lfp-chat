@@ -25,6 +25,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { MessageResponse } from "@/components/ai-elements/message";
 import { CodeBlock } from "@/components/ai-elements/code-block";
+import { ModelSelectGroups } from "@/components/model-select-groups";
 import { cn } from "@/lib/utils";
 import { cleanTaskTitle } from "@/lib/task-metadata";
 import type { Task, TaskList } from "@/lib/tasks";
@@ -395,14 +396,7 @@ function ModelSelectionFields({
                 ))}
               </SelectGroup>
             )}
-            <SelectGroup>
-              <SelectLabel>Models</SelectLabel>
-              {catalog.models.map((model) => (
-                <SelectItem key={model.id} value={`model:${model.id}`}>
-                  {model.label}
-                </SelectItem>
-              ))}
-            </SelectGroup>
+            <ModelSelectGroups models={catalog.models} />
           </SelectContent>
         </Select>
       </div>
