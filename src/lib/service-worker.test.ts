@@ -12,16 +12,23 @@ type FetchEvent = {
   waitUntil(work: Promise<unknown>): void;
 };
 
-async function loadFetchHandler(fetch: (request: FetchEvent["request"]) => Promise<unknown>) {
-  const listeners = new Map<string, (event: FetchEvent) => void>();
+type InstallEvent = {
+  waitUntil(work: Promise<unknown>): void;
+};
+
+async function loadServiceWorker(
+  fetch: (request: FetchEvent["request"]) => Promise<unknown>,
+  caches: Record<string, unknown> = {},
+) {
+  const listeners = new Map<string, (event: unknown) => void>();
   const source = await readFile(new URL("../../public/sw.js", import.meta.url), "utf8");
 
   runInNewContext(source, {
-    caches: {},
+    caches,
     fetch,
     Response,
     self: {
-      addEventListener(type: string, listener: (event: FetchEvent) => void) {
+      addEventListener(type: string, listener: (event: unknown) => void) {
         listeners.set(type, listener);
       },
       clients: {},
@@ -32,18 +39,49 @@ async function loadFetchHandler(fetch: (request: FetchEvent["request"]) => Promi
     URL,
   });
 
-  const handler = listeners.get("fetch");
-  if (!handler) throw new Error("Service worker did not register a fetch handler");
-  return handler;
+  return listeners;
 }
 
 describe("service worker fetch routing", () => {
-  test("leaves lfp-pipe authentication endpoints to the network", async () => {
-    const handler = await loadFetchHandler(async () => {
-      throw new Error("The service worker should not fetch an excluded request");
-    });
+  test("does not precache the authenticated root document", async () => {
+    let precachedUrls: string[] | undefined;
+    let installWork: Promise<unknown> | undefined;
+    const listeners = await loadServiceWorker(
+      async () => {
+        throw new Error("Installation should not fetch through the worker fetch handler");
+      },
+      {
+        async open() {
+          return {
+            async addAll(urls: string[]) {
+              precachedUrls = urls;
+            },
+          };
+        },
+      },
+    );
+    const handler = listeners.get("install") as ((event: InstallEvent) => void) | undefined;
+    if (!handler) throw new Error("Service worker did not register an install handler");
 
-    for (const pathname of ["/_lfp/auth/logout", "/_lfp/auth/callback?code=oidc-code"]) {
+    handler({
+      waitUntil(work) {
+        installWork = work;
+      },
+    });
+    await installWork;
+
+    expect(precachedUrls).not.toContain("/");
+    expect(precachedUrls).toContain("/manifest.webmanifest");
+  });
+
+  test("leaves root and nested navigations to the browser", async () => {
+    const listeners = await loadServiceWorker(async () => {
+      throw new Error("The service worker should not fetch a navigation request");
+    });
+    const handler = listeners.get("fetch") as ((event: FetchEvent) => void) | undefined;
+    if (!handler) throw new Error("Service worker did not register a fetch handler");
+
+    for (const pathname of ["/", "/tasks", "/_lfp/auth/logout"]) {
       let response: Promise<unknown> | undefined;
       handler({
         request: {
@@ -61,15 +99,17 @@ describe("service worker fetch routing", () => {
     }
   });
 
-  test("continues to intercept regular same-origin navigation", async () => {
+  test("continues to intercept same-origin static assets", async () => {
     let response: Promise<unknown> | undefined;
-    const handler = await loadFetchHandler(async () => ({ ok: false }));
+    const listeners = await loadServiceWorker(async () => ({ ok: false }));
+    const handler = listeners.get("fetch") as ((event: FetchEvent) => void) | undefined;
+    if (!handler) throw new Error("Service worker did not register a fetch handler");
 
     handler({
       request: {
         method: "GET",
-        mode: "navigate",
-        url: "https://chat.pipe.lfpconnect.io/tasks",
+        mode: "no-cors",
+        url: "https://chat.pipe.lfpconnect.io/icon-192.png?v=4",
       },
       respondWith(value) {
         response = value;

@@ -1,6 +1,5 @@
-const CACHE_NAME = "lfp-chat-shell-v4";
+const CACHE_NAME = "lfp-chat-shell-v5";
 const APP_SHELL = [
-  "/",
   "/manifest.webmanifest",
   "/home-icon.svg?v=4",
   "/apple-touch-icon.png?v=4",
@@ -28,6 +27,7 @@ self.addEventListener("fetch", (event) => {
 
   if (
     request.method !== "GET" ||
+    request.mode === "navigate" ||
     url.origin !== self.location.origin ||
     url.pathname.startsWith("/api/") ||
     url.pathname.startsWith("/_lfp/auth/")
@@ -47,7 +47,6 @@ self.addEventListener("fetch", (event) => {
       .catch(async () => {
         const cached = await caches.match(request);
         if (cached) return cached;
-        if (request.mode === "navigate") return caches.match("/");
         return Response.error();
       }),
   );
