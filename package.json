@@ -90,6 +90,7 @@
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "react-grid-layout": "2.2.4",
+    "react-resizable": "3.2.0",
     "safe-stable-stringify": "^2.5.0",
     "shadcn": "^4.16.2",
     "shiki": "^4.4.3",
