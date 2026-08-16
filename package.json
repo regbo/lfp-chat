@@ -79,6 +79,7 @@
     "croner": "^10.0.1",
     "echarts": "^6.1.0",
     "got-scraping": "^4.2.1",
+    "header-generator": "2.1.88",
     "hono": "^4.13.1",
     "jose": "^6.2.8",
     "lucide-react": "^1.31.0",
