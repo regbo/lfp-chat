@@ -371,6 +371,48 @@ test("a submitted Mastra plan opens the approval handoff", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Request changes" })).toBeEnabled();
 });
 
+test("an approved plan is not reopened by stale fallback polling", async ({ page }) => {
+  const suspension = {
+    toolCallId: "smoke-stale-submit-plan",
+    toolName: "submit_plan",
+    suspendPayload: {
+      title: "One-shot dashboard plan",
+      plan: "# One-shot dashboard plan\n\nBuild the dashboard once.",
+    },
+  };
+  await page.unroute("**/api/**");
+  await installAppApiFixture(page, {
+    controllerMessagesByThread: {
+      "smoke-stale-plan-thread": [
+        {
+          id: "smoke-stale-plan-message",
+          role: "assistant",
+          createdAt: "2026-01-15T12:00:00.000Z",
+          threadId: "smoke-stale-plan-thread",
+          content: {
+            format: 2,
+            parts: [],
+            metadata: {
+              suspendedTools: { "smoke-stale-submit-plan": suspension },
+            },
+          },
+        },
+      ],
+    },
+    controllerModeId: "plan",
+    controllerStreamStatus: 503,
+    messagesByThread: { "smoke-stale-plan-thread": [] },
+  });
+  await page.goto("/c/smoke-stale-plan-thread");
+
+  const approve = page.getByRole("button", { name: "Approve and act" });
+  await expect(approve).toBeVisible();
+  await approve.click();
+  await expect(approve).toHaveCount(0);
+  await page.waitForTimeout(1_500);
+  await expect(approve).toHaveCount(0);
+});
+
 test("tool-loop fragments render as one linked thought trail", async ({ page }, testInfo) => {
   await page.unroute("**/api/**");
   await installAppApiFixture(page, {

@@ -48,12 +48,30 @@ type ControllerConnection = {
 };
 
 const connections = new Map<string, ControllerConnection>();
+const acknowledgedSuspensions = new Set<string>();
 const CONTROLLER_POLL_INTERVAL_MS = 1_000;
 let modeCatalog: AgentControllerModeInfo[] | null = null;
 let modeCatalogPromise: Promise<AgentControllerModeInfo[]> | null = null;
 
 function controllerScope(threadId: string) {
   return `web:${threadId}`;
+}
+
+function suspensionKey(threadId: string, toolCallId: string) {
+  return `${threadId}:${toolCallId}`;
+}
+
+function isAcknowledgedSuspension(threadId: string, toolCallId: string) {
+  return acknowledgedSuspensions.has(suspensionKey(threadId, toolCallId));
+}
+
+function activeSuspensions(
+  threadId: string,
+  suspensions: readonly AgentControllerPendingSuspension[],
+) {
+  return suspensions.filter(
+    (item) => !isAcknowledgedSuspension(threadId, item.toolCallId),
+  );
 }
 
 function uiMessages(messages: MastraDBMessage[]): UIMessage[] {
@@ -69,6 +87,7 @@ function upsertMessage(messages: UIMessage[], message: UIMessage) {
 }
 
 function pendingSuspensionsFromMessages(
+  threadId: string,
   messages: readonly MastraDBMessage[],
 ): AgentControllerPendingSuspension[] {
   const latestAssistant = messages.findLast(
@@ -76,14 +95,17 @@ function pendingSuspensionsFromMessages(
   );
   const suspendedTools = latestAssistant?.content.metadata?.suspendedTools;
   if (!suspendedTools || typeof suspendedTools !== "object") return [];
-  return Object.values(suspendedTools).filter(
-    (value): value is AgentControllerPendingSuspension =>
-      Boolean(
-        value &&
-          typeof value === "object" &&
-          typeof value.toolCallId === "string" &&
-          typeof value.toolName === "string",
-      ),
+  return activeSuspensions(
+    threadId,
+    Object.values(suspendedTools).filter(
+      (value): value is AgentControllerPendingSuspension =>
+        Boolean(
+          value &&
+            typeof value === "object" &&
+            typeof value.toolCallId === "string" &&
+            typeof value.toolName === "string",
+        ),
+    ),
   );
 }
 
@@ -177,7 +199,9 @@ function handleEvent(threadId: string, event: AgentControllerEvent) {
         },
       }));
       return;
-    case "tool_suspended":
+    case "tool_suspended": {
+      const toolCallId = String(payload.toolCallId ?? "");
+      if (isAcknowledgedSuspension(threadId, toolCallId)) return;
       updateChatSession(threadId, (current) => ({
         ...current,
         status: "ready",
@@ -189,7 +213,7 @@ function handleEvent(threadId: string, event: AgentControllerEvent) {
                 item.toolName !== "submit_plan"),
           ),
           {
-            toolCallId: String(payload.toolCallId ?? ""),
+            toolCallId,
             toolName: String(payload.toolName ?? "tool"),
             args: payload.args,
             suspendPayload: payload.suspendPayload,
@@ -197,6 +221,7 @@ function handleEvent(threadId: string, event: AgentControllerEvent) {
         ],
       }));
       return;
+    }
     case "task_updated":
       updateChatSession(threadId, (current) => ({
         ...current,
@@ -303,7 +328,10 @@ function handleEvent(threadId: string, event: AgentControllerEvent) {
             ? displayState.omProgress as AgentControllerOMProgress
             : current.omProgress,
         pendingSuspensions: displayState.pendingSuspensions
-          ? Object.values(displayState.pendingSuspensions).filter(
+          ? activeSuspensions(
+              threadId,
+              Object.values(displayState.pendingSuspensions),
+            ).filter(
               (item) =>
                 item.toolName !== "submit_plan" || current.modeId === "plan",
             )
@@ -356,6 +384,7 @@ async function hydrateConnection(
     session.listMessages(threadId, includeMessages ? 200 : 20),
   ]);
   const pendingSuspensions = pendingSuspensionsFromMessages(
+    threadId,
     controllerMessages,
   ).filter((item) => item.toolName !== "submit_plan" || state.modeId === "plan");
   updateChatSession(threadId, (current) => ({
@@ -643,7 +672,9 @@ export async function resumeControllerTool(
   toolCallId: string,
   resumeData: string | string[] | PlanResume,
 ) {
-  const current = await connection(resourceId, threadId);
+  const key = suspensionKey(threadId, toolCallId);
+  if (acknowledgedSuspensions.has(key)) return;
+  acknowledgedSuspensions.add(key);
   updateChatSession(threadId, (state) => ({
     ...state,
     pendingSuspensions: state.pendingSuspensions.filter(
@@ -651,19 +682,30 @@ export async function resumeControllerTool(
     ),
     status: "streaming",
   }));
-  const controllerResume =
-    typeof resumeData === "object" &&
-    resumeData !== null &&
-    "action" in resumeData
-      ? { ...resumeData, approved: true }
-      : resumeData;
-  // AgentController 1.59 re-applies its generic tool-approval gate before a
-  // suspended submit_plan receives its domain-specific action. Mark that gate
-  // approved so the stock tool can process either approval or revision data.
-  await current.session.respondToToolSuspension(
-    toolCallId,
-    controllerResume as PlanResume,
-  );
+  try {
+    const current = await connection(resourceId, threadId);
+    const controllerResume =
+      typeof resumeData === "object" &&
+      resumeData !== null &&
+      "action" in resumeData
+        ? { ...resumeData, approved: true }
+        : resumeData;
+    // AgentController 1.59 re-applies its generic tool-approval gate before a
+    // suspended submit_plan receives its domain-specific action. Mark that gate
+    // approved so the stock tool can process either approval or revision data.
+    await current.session.respondToToolSuspension(
+      toolCallId,
+      controllerResume as PlanResume,
+    );
+    await hydrateConnection(threadId, current.session, true);
+  } catch (error) {
+    acknowledgedSuspensions.delete(key);
+    updateChatSession(threadId, (state) => ({
+      ...state,
+      status: "error",
+      error: new Error(readableError(error)),
+    }));
+  }
 }
 
 export async function refreshControllerGoal(threadId: string) {

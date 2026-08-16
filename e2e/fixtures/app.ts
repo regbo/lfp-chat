@@ -19,8 +19,13 @@ type ThreadFixture = {
 };
 
 type AppApiFixture = {
+  controllerMessagesByThread?: Readonly<
+    Record<string, readonly Record<string, unknown>[]>
+  >;
+  controllerModeId?: string;
   controllerEvents?: readonly Record<string, unknown>[];
   controllerRunning?: boolean | (() => boolean);
+  controllerStreamStatus?: number;
   messagesByThread?: Readonly<Record<string, readonly UIMessage[]>>;
   modelCatalog?: ModelCatalogResponse;
   threads?: readonly ThreadFixture[];
@@ -84,6 +89,7 @@ export async function installAppApiFixture(
 ) {
   const threads = fixture.threads ?? sidebarThreads;
   const messagesByThread = fixture.messagesByThread ?? {};
+  const controllerMessagesByThread = fixture.controllerMessagesByThread ?? {};
   const controllerEvents = fixture.controllerEvents ?? [];
   const controllerRunning = () =>
     typeof fixture.controllerRunning === "function"
@@ -91,6 +97,7 @@ export async function installAppApiFixture(
       : fixture.controllerRunning ?? false;
 
   const controllerMessages = (threadId: string) =>
+    controllerMessagesByThread[threadId] ??
     (messagesByThread[threadId] ?? []).map((message) => ({
       id: message.id,
       role: message.role,
@@ -141,6 +148,10 @@ export async function installAppApiFixture(
       const scopedThreadId = scope.startsWith("web:") ? scope.slice(4) : "";
       const messageMatch = suffix.match(/^\/threads\/([^/]+)\/messages$/);
       if (suffix === "/stream") {
+        if (fixture.controllerStreamStatus) {
+          await route.fulfill({ status: fixture.controllerStreamStatus });
+          return;
+        }
         await route.fulfill({
           body: [
             ": connected",
@@ -166,7 +177,7 @@ export async function installAppApiFixture(
             controllerId: "lfpChat",
             resourceId: decodeURIComponent(controllerSessionMatch[1]),
             threadId: scopedThreadId,
-            modeId: "chat",
+            modeId: fixture.controllerModeId ?? "chat",
             modelId: "openai/gpt-5.6-luna",
             running: controllerRunning(),
             tokenUsage: {},
