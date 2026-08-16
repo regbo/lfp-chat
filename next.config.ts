@@ -3,6 +3,14 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   devIndicators: false,
   output: "standalone",
+  async rewrites() {
+    return [
+      {
+        source: "/chat",
+        destination: "/",
+      },
+    ];
+  },
   async headers() {
     return [
       {

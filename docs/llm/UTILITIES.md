@@ -2,8 +2,11 @@
 
 Read `LFP_HOME_HOST.md` before modifying Home-specific host composition.
 
-- `src/lib/browser-mastra-client.ts` — browser-facing Mastra client and per-call agent streaming with explicit run, thread, resource, and abort identity.
-- `src/lib/chat-session-store.ts` — shared per-thread transcript/run registry; keeps background streams alive across route and chat selection changes.
+- `packages/shared/src/agent-controller.ts` — controller ID, mode IDs, and the permission-category classifier shared by the server policy and client approval UI.
+- `src/lib/browser-mastra-client.ts` — shared browser-facing `MastraClient` transport used by controller, thread, and memory resources.
+- `src/lib/browser-agent-controller.ts` — native AgentController session lifecycle, event projection, steering, follow-ups, approvals, plan/ask-user resumption, goals, and SSE-to-poll recovery.
+- `src/lib/chat-session-store.ts` — shared per-thread AgentController projection; keeps transcripts and live controller state available across route and chat selection changes.
+- `src/components/agent-controller-ui.tsx` — compact mode, task/subagent, approval, suspension, goal, token, and memory-progress surfaces.
 - `src/lib/chat-app-plugins.ts` — public plugin contract and registration validation for adding self-contained views to the primary ChatApp menu.
 - `src/lib/app-branding.ts` — centralized short/full product naming, favicon configuration, and the palette mirrored from `lfpconnect-assets`; `ChatApp`, metadata, manifests, and agent identity consume its typed branding object.
 - `src/lib/config.ts` — typed environment parsing plus shared file-first secret and HTTP URL resolvers; host-only integrations compose these without entering package defaults.
@@ -11,6 +14,7 @@ Read `LFP_HOME_HOST.md` before modifying Home-specific host composition.
 - `src/lib/model-catalog.ts` — model selection, reasoning-effort normalization, and request-context keys.
 - `src/lib/tool-catalog.ts` — selectable tool definitions, defaults, and request-context keys.
 - `src/mastra/tool-registry.ts` — typed native Mastra tool registry shared by agent resolution, the serialized UI catalog, global Mastra registration, and explicit Monty capability exposure.
+- `src/mastra/index.ts` — stock agent plus AgentController composition, including chat/research/plan/act/code modes, permission defaults, task planning, and forked researcher/reviewer subagents.
 - `src/host/transaction-tool.ts` — Home-host composition that calls the authoritative typed transaction API; it is intentionally excluded from the reusable package entrypoints.
 - `src/lib/schedules.ts` — shared schedule deduplication, timezone context, and safe scheduled-run request-context construction.
 - `src/lib/vikunja.ts` — centralized server-only task client used by chat tools and the Tasks menu.

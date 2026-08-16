@@ -108,8 +108,19 @@ export async function getModelCatalog() {
 }
 
 function selectionFromRequestContext(requestContext?: RequestContext) {
+  const controller = requestContext?.get("controller") as
+    | { session?: { modelId?: unknown } }
+    | undefined;
+  const controllerModelId =
+    typeof controller?.session?.modelId === "string"
+      ? controller.session.modelId
+      : undefined;
   return normalizeModelSelection(cachedModelCatalog, {
-    modelId: requestContext?.get(MODEL_CONTEXT_KEY) as string | undefined,
+    // AgentController persists the selected model per mode and thread. Legacy
+    // direct-agent and scheduled calls continue to use the request-context key.
+    modelId:
+      controllerModelId ??
+      (requestContext?.get(MODEL_CONTEXT_KEY) as string | undefined),
     reasoningEffort: requestContext?.get(REASONING_CONTEXT_KEY) as
       | ModelSelection["reasoningEffort"]
       | undefined,

@@ -2,7 +2,7 @@ import { lookup as dnsLookup } from "node:dns";
 import { isIP } from "node:net";
 
 import { createTool } from "@mastra/core/tools";
-import { gotScraping } from "got-scraping";
+import { gotScraping, type Response } from "got-scraping";
 import { z } from "zod";
 
 function isPrivateAddress(address: string) {
@@ -56,7 +56,9 @@ export const urlFetchTool = createTool({
     if (!(["http:", "https:"] as string[]).includes(parsed.protocol)) {
       throw new Error("url_fetch only supports HTTP and HTTPS URLs.");
     }
-    const response = await gotScraping({
+    // got-scraping's broad fallback overload currently masks its thenable
+    // response type under TypeScript's bundler resolution.
+    const response = await (gotScraping({
       url: parsed,
       headers,
       dnsLookup: safeLookup,
@@ -69,7 +71,7 @@ export const urlFetchTool = createTool({
       // Bun's Node compatibility layer currently mis-normalizes HTTP/2 origins.
       // Header generation and TLS/browser fingerprinting remain enabled on HTTP/1.1.
       http2: false,
-    });
+    }) as unknown as Promise<Response<string>>);
     const limit = 200_000;
     return {
       url: response.url,

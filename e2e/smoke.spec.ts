@@ -200,33 +200,36 @@ test("mobile composer centers its prompt and controls", async ({ page }, testInf
   expect(alignment.controlOffsets.every((offset) => Math.abs(offset) <= 1)).toBe(true);
 });
 
-test("a terminal Mastra step clears the streaming state", async ({ page }) => {
+test("a terminal AgentController event clears the streaming state", async ({ page }) => {
   await page.unroute("**/api/**");
-  const chatChunks = [
-    { type: "reasoning-start", runId: "smoke-chat-run", payload: { id: "reasoning-1" } },
-    { type: "reasoning-delta", runId: "smoke-chat-run", payload: { id: "reasoning-1", text: "Checked the fixture." } },
-    { type: "text-start", runId: "smoke-chat-run", payload: { id: "text-1" } },
-    { type: "text-delta", runId: "smoke-chat-run", payload: { id: "text-1", text: "The response is complete." } },
-    { type: "step-finish", runId: "smoke-chat-run", payload: { stepResult: { isContinued: false, reason: "stop" } } },
-  ];
   await installAppApiFixture(page, {
     messagesByThread: { "smoke-thread-1": [] },
-  });
-  await page.route("**/api/mastra/**", async (route) => {
-    const pathname = new URL(route.request().url()).pathname;
-    if (pathname.endsWith("/threads/subscribe")) {
-      await route.fulfill({
-        body: chatChunks.map((chunk) => `data: ${JSON.stringify(chunk)}\n\n`).join(""),
-        contentType: "text/event-stream",
-      });
-      return;
-    }
-    await route.fulfill({ json: { runId: "smoke-chat-run" } });
+    controllerEvents: [
+      { type: "agent_start" },
+      {
+        type: "message_end",
+        message: {
+          id: "smoke-assistant-terminal",
+          role: "assistant",
+          createdAt: "2026-01-15T12:00:00.000Z",
+          threadId: "smoke-thread-1",
+          content: {
+            format: 2,
+            parts: [
+              {
+                type: "reasoning",
+                reasoning: "Checked the fixture.",
+                details: [{ type: "text", text: "Checked the fixture." }],
+              },
+              { type: "text", text: "The response is complete." },
+            ],
+          },
+        },
+      },
+      { type: "agent_end", reason: "complete" },
+    ],
   });
   await page.goto("/c/smoke-thread-1");
-
-  await page.getByRole("textbox", { name: "Message" }).fill("Complete this turn");
-  await page.getByRole("button", { name: "Send message" }).click();
 
   await expect(page.getByText("The response is complete.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Stop response" })).toHaveCount(0);
@@ -234,30 +237,19 @@ test("a terminal Mastra step clears the streaming state", async ({ page }) => {
   await expect(page.getByRole("button", { name: /^Thought for/ })).toBeVisible();
 });
 
-test("a Mastra tripwire surfaces the reason and clears the streaming state", async ({ page }) => {
+test("an AgentController error surfaces the reason and clears the streaming state", async ({ page }) => {
   await page.unroute("**/api/**");
   await installAppApiFixture(page, {
     messagesByThread: { "smoke-tripwire-thread": [] },
-  });
-  await page.route("**/api/mastra/**", async (route) => {
-    const pathname = new URL(route.request().url()).pathname;
-    if (pathname.endsWith("/threads/subscribe")) {
-      await route.fulfill({
-        body: `data: ${JSON.stringify({
-          type: "tripwire",
-          runId: "smoke-tripwire-run",
-          payload: { reason: "Memory observation could not process this conversation." },
-        })}\n\n`,
-        contentType: "text/event-stream",
-      });
-      return;
-    }
-    await route.fulfill({ json: { runId: "smoke-tripwire-run" } });
+    controllerEvents: [
+      { type: "agent_start" },
+      {
+        type: "error",
+        error: "Memory observation could not process this conversation.",
+      },
+    ],
   });
   await page.goto("/c/smoke-tripwire-thread");
-
-  await page.getByRole("textbox", { name: "Message" }).fill("Trigger the processor guard");
-  await page.getByRole("button", { name: "Send message" }).click();
 
   await expect(page.getByText("Memory observation could not process this conversation.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Stop response" })).toHaveCount(0);

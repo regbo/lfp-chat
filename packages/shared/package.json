@@ -1,0 +1,11 @@
+{
+  "name": "@regbo/lfp-chat-shared",
+  "version": "0.3.28",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./agent-controller": "./src/agent-controller.ts",
+    "./app-branding": "./src/app-branding.ts"
+  }
+}

@@ -78,17 +78,25 @@ import {
   getRunningToolLabel,
   ToolEventSummary,
 } from "@/components/tool-event-summary";
-import { type PendingSteer, SteerQueue } from "@/components/steer-queue";
+import {
+  AgentControllerDialogs,
+  AgentGoalButton,
+  AgentModePicker,
+  AgentRunPanel,
+} from "@/components/agent-controller-ui";
 import { formatAttachmentLinks } from "@/lib/attachment-links";
 import { DEFAULT_APP_BRANDING, type AppBranding } from "@/lib/app-branding";
 import { isChatChartSpec } from "@/lib/chart-spec";
 import { formatCitationMarkers } from "@/lib/citations";
 import {
-  browserMastraClient,
-  isTerminalMastraChunk,
-  type MastraStreamChunk,
-  threadMessageOptions,
-} from "@/lib/browser-mastra-client";
+  abortController,
+  ensureBrowserControllerSession,
+  followUpController,
+  sendControllerMessage,
+  steerController,
+  switchControllerMode,
+  switchControllerModel,
+} from "@/lib/browser-agent-controller";
 import {
   deleteChatSession,
   ensureChatSession,
@@ -97,6 +105,7 @@ import {
   getRunningChatThreadIds,
   subscribeToChatSessions,
   updateChatSession,
+  type ChatSessionState,
   type ChatSessionStatus,
 } from "@/lib/chat-session-store";
 import {
@@ -111,7 +120,6 @@ import {
 } from "@/lib/model-catalog";
 import { cn } from "@/lib/utils";
 import { readableError } from "@/lib/readable-error";
-import { truncateToolValue } from "@/lib/tool-output";
 import { SCHEDULE_TIMEZONE_CONTEXT_KEY } from "@/lib/schedules";
 import {
   fallbackStarterSuggestions,
@@ -154,6 +162,7 @@ import {
   ChevronRight,
   Clock3,
   Copy,
+  CornerDownRight,
   Database,
   FileText,
   Folder,
@@ -542,18 +551,15 @@ function SelectedAttachments() {
 
 function ChatSubmitButton({
   draft,
-  editingSteerId,
   onStop,
   status,
 }: {
   draft: string;
-  editingSteerId: string | null;
   onStop: () => void;
   status: ChatSessionStatus;
 }) {
   const attachments = usePromptInputAttachments();
   const hasPendingSubmission =
-    Boolean(editingSteerId) ||
     draft.trim().length > 0 ||
     attachments.files.length > 0;
   const emphasizeSubmit = hasPendingSubmission || status === "submitted" || status === "streaming";
@@ -590,22 +596,20 @@ function MessageAttachments({ files }: { files: FileUIPart[] }) {
   );
 }
 
-const INITIAL_RESPONSE_TIMEOUT_MS = 180_000;
-const STREAM_INACTIVITY_TIMEOUT_MS = 180_000;
-const TOOL_INACTIVITY_TIMEOUT_MS = 10 * 60_000;
-
 type ChatComposerProps = {
   onSubmit: (message: PromptInputMessage) => Promise<void>;
   onStop: () => void;
+  onSteer: () => void;
   status: ChatSessionStatus;
-  steers: PendingSteer[];
   draft: string;
-  editingSteerId: string | null;
   onDraftChange: (value: string) => void;
-  onDeleteSteer: (id: string) => void;
-  onEditSteer: (id: string) => void;
-  onReorderSteer: (sourceId: string, targetId: string) => void;
-  onSteer: (id: string) => void;
+  modeId: string;
+  modes: ChatSessionState["modes"];
+  queuedFollowUps: number;
+  onModeChange: (modeId: string) => void;
+  resourceId: string;
+  session: ChatSessionState;
+  threadId: string;
   modelCatalog: ModelCatalogResponse | null;
   modelSelection: ModelSelection | null;
   onModelSelectionChange: (selection: ModelSelection) => void;
@@ -614,13 +618,25 @@ type ChatComposerProps = {
 function ModelSelector({
   catalog,
   disabled,
+  modeId,
+  modes,
+  onModeChange,
   onSelect,
+  resourceId,
   selection,
+  session,
+  threadId,
 }: {
   catalog: ModelCatalogResponse | null;
   disabled: boolean;
+  modeId: string;
+  modes: ChatSessionState["modes"];
+  onModeChange: (modeId: string) => void;
   onSelect: (selection: ModelSelection) => void;
+  resourceId: string;
   selection: ModelSelection | null;
+  session: ChatSessionState;
+  threadId: string;
 }) {
   const [open, setOpen] = useState(false);
   const selectedModel = catalog?.models.find(
@@ -687,6 +703,26 @@ function ModelSelector({
               Choose the model and its reasoning effort.
             </DialogDescription>
           </DialogHeader>
+          <div className="overflow-hidden rounded-[1.35rem] bg-muted/75 md:hidden">
+            <div className="model-picker-row">
+              <span>Mode</span>
+              <AgentModePicker
+                disabled={disabled}
+                modeId={modeId}
+                modes={modes}
+                onChange={onModeChange}
+              />
+            </div>
+            <div className="mx-4 h-px bg-border" />
+            <div className="model-picker-row">
+              <span>Goal</span>
+              <AgentGoalButton
+                resourceId={resourceId}
+                session={session}
+                threadId={threadId}
+              />
+            </div>
+          </div>
           <div className="overflow-hidden rounded-[1.35rem] bg-muted/75">
             <div className="model-picker-row">
               <span>Model</span>
@@ -762,14 +798,14 @@ function ModelSelector({
   );
 }
 
-function ChatComposer({ draft, editingSteerId, modelCatalog, modelSelection, onDraftChange, onModelSelectionChange, onSubmit, onStop, status, steers, onDeleteSteer, onEditSteer, onReorderSteer, onSteer }: ChatComposerProps) {
+function ChatComposer({ draft, modeId, modes, modelCatalog, modelSelection, onDraftChange, onModeChange, onModelSelectionChange, onSubmit, onStop, onSteer, queuedFollowUps, resourceId, session, status, threadId }: ChatComposerProps) {
+  const running = status === "submitted" || status === "streaming";
   return (
     <div className="relative w-full">
-      <SteerQueue items={steers} onDelete={onDeleteSteer} onEdit={onEditSteer} onReorder={onReorderSteer} onSteer={onSteer} />
       <PromptInput
         accept="image/*,application/pdf,text/plain,text/csv,application/json"
         className="chat-composer relative z-10 w-full"
-        data-expanded={Boolean(draft.trim() || editingSteerId)}
+        data-expanded={Boolean(draft.trim())}
         globalDrop
         maxFileSize={10 * 1024 * 1024}
         maxFiles={5}
@@ -785,20 +821,49 @@ function ChatComposer({ draft, editingSteerId, modelCatalog, modelSelection, onD
             className="flex-1"
             data-chat-composer-input
             onChange={(event) => onDraftChange(event.currentTarget.value)}
-            placeholder={editingSteerId ? "Edit steer" : "Ask anything"}
+            placeholder={running ? "Add a follow-up or steer the active run" : "Ask anything"}
             rows={1}
             value={draft}
           />
         </PromptInputBody>
+        <div className="hidden md:contents">
+          <AgentModePicker
+            disabled={running}
+            modeId={modeId}
+            modes={modes}
+            onChange={onModeChange}
+          />
+          <AgentGoalButton resourceId={resourceId} session={session} threadId={threadId} />
+        </div>
         <ModelSelector
           catalog={modelCatalog}
-          disabled={status === "submitted" || status === "streaming"}
+          disabled={running}
+          modeId={modeId}
+          modes={modes}
+          onModeChange={onModeChange}
           onSelect={onModelSelectionChange}
+          resourceId={resourceId}
           selection={modelSelection}
+          session={session}
+          threadId={threadId}
         />
+        {running && draft.trim() && (
+          <PromptInputButton
+            aria-label="Steer the active run"
+            className="chat-ui-text gap-1 rounded-full"
+            onClick={onSteer}
+          >
+            <CornerDownRight className="size-4" />
+            Steer
+          </PromptInputButton>
+        )}
+        {queuedFollowUps > 0 && (
+          <span className="chat-meta-text px-1 text-muted-foreground">
+            {queuedFollowUps} queued
+          </span>
+        )}
         <ChatSubmitButton
           draft={draft}
-          editingSteerId={editingSteerId}
           onStop={onStop}
           status={status}
         />
@@ -892,25 +957,6 @@ type ChatSessionProps = {
   recentSuggestionTitles: readonly string[];
 };
 
-type ActiveChatRun = {
-  operationId: string;
-  runId: string | null;
-  assistantId: string;
-  reasoning: Map<string, string>;
-  reasoningOrder: string[];
-  text: Map<string, string>;
-  textOrder: string[];
-  toolParts: Map<string, UIMessage["parts"][number]>;
-  activeToolCallIds: Set<string>;
-  inactivityTimer: number;
-  timedOut: boolean;
-  terminalSettled: boolean;
-  abortRun: () => Promise<void>;
-  unsubscribe: (() => void) | null;
-  resolveAccepted: () => void;
-  accepted: Promise<void>;
-};
-
 function ChatSession({
   threadId,
   resourceId,
@@ -933,18 +979,13 @@ function ChatSession({
   );
   const session = getChatSession(threadId) ?? ensureChatSession(threadId, initialMessages);
   const { error, messages, status } = session;
-  const [steers, setSteers] = useState<PendingSteer[]>([]);
   const [draft, setDraft] = useState("");
   const suggestions = useStarterSuggestions(resourceId, recentSuggestionTitles);
-  const [editingSteerId, setEditingSteerId] = useState<string | null>(null);
-  const [steeringSteerId, setSteeringSteerId] = useState<string | null>(null);
   const [steerError, setSteerError] = useState("");
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [submitScrollRequest, setSubmitScrollRequest] = useState(0);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const composerDockRef = useRef<HTMLDivElement>(null);
-  const activeRunRef = useRef<ActiveChatRun | null>(null);
-  const steeringSteerIdRef = useRef<string | null>(null);
   const isStreaming = status === "submitted" || status === "streaming";
   const renderedMessages = Array.from(
     new Map(messages.map((message) => [message.id, message])).values(),
@@ -952,6 +993,38 @@ function ChatSession({
   const isEmpty = renderedMessages.length === 0;
   const hasStreamingAssistant =
     renderedMessages.at(-1)?.role === "assistant";
+  const effectiveModelSelection = (() => {
+    if (!modelCatalog) return modelSelection;
+    return normalizeModelSelection(modelCatalog, {
+      agentId: DEFAULT_CHAT_AGENT_ID,
+      modelId: session.modelId ?? modelSelection?.modelId,
+      reasoningEffort: modelSelection?.reasoningEffort,
+    });
+  })();
+  const effectiveModelId = effectiveModelSelection?.modelId;
+  const effectiveReasoningEffort = effectiveModelSelection?.reasoningEffort;
+
+  const requestContext = useMemo(() => ({
+    [TOOLS_CONTEXT_KEY]: enabledToolIds,
+    [TOOL_MODEL_SELECTIONS_CONTEXT_KEY]: toolModelSelections,
+    [SCHEDULE_TIMEZONE_CONTEXT_KEY]:
+      Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+    ...(effectiveModelId
+      ? {
+          [MODEL_CONTEXT_KEY]: effectiveModelId,
+          [REASONING_CONTEXT_KEY]: effectiveReasoningEffort,
+        }
+      : {}),
+  }), [
+    effectiveModelId,
+    effectiveReasoningEffort,
+    enabledToolIds,
+    toolModelSelections,
+  ]);
+
+  useEffect(() => {
+    void ensureBrowserControllerSession(resourceId, threadId).catch(() => undefined);
+  }, [resourceId, threadId]);
 
   useEffect(() => {
     if (!autoFocusComposer || !isEmpty) return;
@@ -968,219 +1041,10 @@ function ChatSession({
     };
   }, [autoFocusComposer, isEmpty, onAutoFocusComposer]);
 
-  const settleRun = useCallback((
-    run: ActiveChatRun,
-    next: { status: "ready" | "error"; error?: Error | null },
-  ) => {
-    if (run.terminalSettled) return;
-    run.terminalSettled = true;
-    window.clearTimeout(run.inactivityTimer);
-    run.unsubscribe?.();
-    run.resolveAccepted();
-    if (activeRunRef.current === run) activeRunRef.current = null;
-    const expectedRunId = run.runId ?? run.operationId;
-    updateChatSession(threadId, (current) => {
-      if (current.runId !== expectedRunId) return current;
-      return {
-        ...current,
-        status: next.status,
-        error: next.error ?? null,
-        runId: null,
-        abortRun: null,
-      };
-    });
-    window.setTimeout(onThreadListChange, 500);
-  }, [onThreadListChange, threadId]);
-
-  const upsertAssistant = useCallback((run: ActiveChatRun) => {
-    const expectedRunId = run.runId ?? run.operationId;
-    const parts: UIMessage["parts"] = [];
-    const reasoning = run.reasoningOrder
-      .map((id) => run.reasoning.get(id) ?? "")
-      .join("");
-    if (reasoning) parts.push({ type: "reasoning", text: reasoning });
-    parts.push(...run.toolParts.values());
-    for (const id of run.textOrder) {
-      const text = run.text.get(id) ?? "";
-      if (text) parts.push({ type: "text", text });
-    }
-    updateChatSession(threadId, (current) => {
-      if (current.runId !== expectedRunId) return current;
-      const messages = [...current.messages];
-      const index = messages.findIndex((candidate) => candidate.id === run.assistantId);
-      const assistant: UIMessage = {
-        id: run.assistantId,
-        role: "assistant",
-        parts: parts.length > 0 ? parts : [{ type: "text", text: "" }],
-      };
-      if (index < 0) messages.push(assistant);
-      else messages[index] = assistant;
-      return { ...current, messages, status: "streaming" };
-    });
-  }, [threadId]);
-
-  const handleRunChunk = useCallback((run: ActiveChatRun, chunk: MastraStreamChunk) => {
-    if (!run.runId || chunk.runId !== run.runId || run.terminalSettled) return;
-    const payload = chunk.payload && typeof chunk.payload === "object"
-      ? chunk.payload as Record<string, unknown>
-      : {};
-    const partId = String(payload.id ?? chunk.type.replace(/-(start|delta|end)$/, ""));
-    switch (chunk.type) {
-      case "reasoning-start":
-        if (!run.reasoning.has(partId)) run.reasoningOrder.push(partId);
-        run.reasoning.set(partId, "");
-        break;
-      case "reasoning-delta":
-        if (!run.reasoning.has(partId)) run.reasoningOrder.push(partId);
-        run.reasoning.set(
-          partId,
-          `${run.reasoning.get(partId) ?? ""}${typeof payload.text === "string" ? payload.text : ""}`,
-        );
-        upsertAssistant(run);
-        break;
-      case "text-start":
-        if (!run.text.has(partId)) run.textOrder.push(partId);
-        run.text.set(partId, "");
-        break;
-      case "text-delta":
-        if (!run.text.has(partId)) run.textOrder.push(partId);
-        run.text.set(
-          partId,
-          `${run.text.get(partId) ?? ""}${typeof payload.text === "string" ? payload.text : ""}`,
-        );
-        upsertAssistant(run);
-        break;
-      case "tool-call": {
-        const toolCallId = String(payload.toolCallId ?? "");
-        if (!toolCallId) break;
-        run.activeToolCallIds.add(toolCallId);
-        run.toolParts.set(toolCallId, {
-          type: "dynamic-tool",
-          toolCallId,
-          toolName: String(payload.toolName ?? "tool"),
-          state: "input-available",
-          input: payload.args,
-        });
-        upsertAssistant(run);
-        break;
-      }
-      case "tool-result": {
-        const toolCallId = String(payload.toolCallId ?? "");
-        run.activeToolCallIds.delete(toolCallId);
-        const previous = run.toolParts.get(toolCallId);
-        if (!previous || previous.type !== "dynamic-tool") break;
-        run.toolParts.set(toolCallId, {
-          ...previous,
-          state: "output-available",
-          output: truncateToolValue(payload.result ?? payload.output),
-        } as UIMessage["parts"][number]);
-        upsertAssistant(run);
-        break;
-      }
-      case "tool-error": {
-        const toolCallId = String(payload.toolCallId ?? "");
-        run.activeToolCallIds.delete(toolCallId);
-        const previous = run.toolParts.get(toolCallId);
-        if (!previous || previous.type !== "dynamic-tool") break;
-        run.toolParts.set(toolCallId, {
-          ...previous,
-          state: "output-error",
-          errorText: readableError(payload.error ?? payload.message ?? "Tool failed."),
-        } as UIMessage["parts"][number]);
-        upsertAssistant(run);
-        break;
-      }
-    }
-
-    if (isTerminalMastraChunk(chunk)) {
-      if (chunk.type === "error" || chunk.type === "tripwire") {
-        settleRun(run, {
-          status: "error",
-          error: new Error(readableError(
-            payload.reason ?? payload.error ?? payload.message ?? "Chat stopped before it could respond.",
-          )),
-        });
-      } else if (run.timedOut) {
-        settleRun(run, {
-          status: "error",
-          error: new Error("The response stopped making progress. Try again or choose a faster intelligence level."),
-        });
-      } else {
-        settleRun(run, { status: "ready" });
-      }
-      return;
-    }
-
-    window.clearTimeout(run.inactivityTimer);
-    run.inactivityTimer = window.setTimeout(() => {
-      run.timedOut = true;
-      void run.abortRun().catch((caught) => {
-        settleRun(run, {
-          status: "error",
-          error: caught instanceof Error ? caught : new Error("Unable to stop the stalled response."),
-        });
-      });
-    }, run.activeToolCallIds.size > 0
-      ? TOOL_INACTIVITY_TIMEOUT_MS
-      : STREAM_INACTIVITY_TIMEOUT_MS);
-  }, [settleRun, upsertAssistant]);
-
   const runMessage = useCallback(async (
     message: PromptInputMessage,
-    clientMessageId = makeId(),
   ) => {
-    const userMessage = promptMessageToUserMessage(message, clientMessageId);
-    const operationId = makeId();
-    const agentId = modelSelection?.agentId ?? DEFAULT_CHAT_AGENT_ID;
-    const agent = browserMastraClient.getAgent(agentId);
-    let resolveAccepted: () => void = () => undefined;
-    const accepted = new Promise<void>((resolve) => { resolveAccepted = resolve; });
-    const run: ActiveChatRun = {
-      operationId,
-      runId: null,
-      assistantId: makeId(),
-      reasoning: new Map(),
-      reasoningOrder: [],
-      text: new Map(),
-      textOrder: [],
-      toolParts: new Map(),
-      activeToolCallIds: new Set(),
-      inactivityTimer: 0,
-      timedOut: false,
-      terminalSettled: false,
-      abortRun: async () => undefined,
-      unsubscribe: null,
-      resolveAccepted,
-      accepted,
-    };
-    let abortPromise: Promise<void> | null = null;
-    run.abortRun = () => {
-      if (abortPromise) return abortPromise;
-      abortPromise = (async () => {
-        await run.accepted;
-        if (run.terminalSettled || !run.runId) return;
-        await agent.abortThread({ resourceId, threadId });
-        if (run.timedOut) {
-          settleRun(run, {
-            status: "error",
-            error: new Error("The response stopped making progress. Try again or choose a faster intelligence level."),
-          });
-        } else {
-          settleRun(run, { status: "ready" });
-        }
-      })();
-      return abortPromise;
-    };
-    activeRunRef.current = run;
-    run.inactivityTimer = window.setTimeout(() => {
-      run.timedOut = true;
-      void run.abortRun().catch((caught) => {
-        settleRun(run, {
-          status: "error",
-          error: caught instanceof Error ? caught : new Error("Unable to stop the stalled response."),
-        });
-      });
-    }, INITIAL_RESPONSE_TIMEOUT_MS);
+    const userMessage = promptMessageToUserMessage(message);
     updateChatSession(threadId, (current) => ({
       ...current,
       messages: current.messages.some((item) => item.id === userMessage.id)
@@ -1188,210 +1052,82 @@ function ChatSession({
         : [...current.messages, userMessage],
       status: "submitted",
       error: null,
-      runId: operationId,
-      abortRun: run.abortRun,
     }));
     setSubmitScrollRequest((current) => current + 1);
     onConversationChange(threadId);
     window.setTimeout(onThreadListChange, 500);
 
-    try {
-      const requestContext = {
-        [TOOLS_CONTEXT_KEY]: enabledToolIds,
-        [TOOL_MODEL_SELECTIONS_CONTEXT_KEY]: toolModelSelections,
-        [SCHEDULE_TIMEZONE_CONTEXT_KEY]:
-          Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
-        ...(modelSelection?.agentId === DEFAULT_CHAT_AGENT_ID && modelSelection.modelId
-          ? {
-              [MODEL_CONTEXT_KEY]: modelSelection.modelId,
-              [REASONING_CONTEXT_KEY]: modelSelection.reasoningEffort,
-            }
-          : {}),
-      };
-      const subscription = await agent.subscribeToThread({ resourceId, threadId });
-      run.unsubscribe = subscription.unsubscribe;
-      if (activeRunRef.current !== run) {
-        subscription.unsubscribe();
-        run.resolveAccepted();
-        return;
-      }
-      const result = await agent.queueMessage(threadMessageOptions({
-        clientMessageId,
-        message,
-        resourceId,
-        threadId,
-        requestContext,
-      }));
-      run.runId = result.runId;
-      updateChatSession(threadId, (current) => current.runId === operationId
-        ? { ...current, runId: result.runId }
-        : current);
-      const consumer = subscription.processDataStream({
-        onChunk: (chunk) => handleRunChunk(run, chunk),
-        reconnect: { maxRetries: 8, delayMs: 1_000 },
-      });
-      run.resolveAccepted();
-      void consumer.then(() => {
-        if (activeRunRef.current !== run || run.terminalSettled) return;
-        settleRun(run, {
-          status: "error",
-          error: new Error("The chat connection ended before the response finished."),
-        });
-      }).catch((caught) => {
-        if (activeRunRef.current !== run || run.terminalSettled) return;
-        settleRun(run, {
-          status: "error",
-          error: caught instanceof Error ? caught : new Error("Chat failed."),
-        });
-      });
-    } catch (caught) {
-      run.resolveAccepted();
-      if (run.timedOut) {
-        settleRun(run, {
-          status: "error",
-          error: new Error("The response stopped making progress. Try again or choose a faster intelligence level."),
-        });
-      } else {
-        settleRun(run, {
-          status: "error",
-          error: caught instanceof Error ? caught : new Error("Chat failed."),
-        });
-      }
-    }
-  }, [enabledToolIds, handleRunChunk, modelSelection, onConversationChange, onThreadListChange, resourceId, settleRun, threadId, toolModelSelections]);
+    await sendControllerMessage({ resourceId, threadId, message, requestContext });
+  }, [onConversationChange, onThreadListChange, requestContext, resourceId, threadId]);
 
   const stop = useCallback(() => {
-    const abortRun = getChatSession(threadId)?.abortRun;
-    if (!abortRun) return;
-    void abortRun().catch((caught) => {
+    void abortController(resourceId, threadId).catch((caught) => {
       setSteerError(readableError(caught));
     });
-  }, [threadId]);
-
-  const deliverSteer = useCallback(async (item: PendingSteer) => {
-    steeringSteerIdRef.current = item.id;
-    setSteeringSteerId(item.id);
-    setSteerError("");
-    try {
-      await getChatSession(threadId)?.abortRun?.();
-      setSteers((current) => current.filter((candidate) => candidate.id !== item.id));
-      if (editingSteerId === item.id) {
-        setEditingSteerId(null);
-        setDraft("");
-      }
-      void runMessage(item.message, item.id);
-    } catch (caught) {
-      setSteerError(readableError(caught));
-    } finally {
-      steeringSteerIdRef.current = null;
-      setSteeringSteerId(null);
-    }
-  }, [editingSteerId, runMessage, threadId]);
+  }, [resourceId, threadId]);
 
   const submit = useCallback(
     async ({ text, files }: PromptInputMessage) => {
       if (!text.trim() && files.length === 0) return;
-      if (editingSteerId) {
-        setSteers((current) =>
-          current.map((item) =>
-            item.id === editingSteerId
-              ? {
-                  ...item,
-                  message: {
-                    text,
-                    files: files.length > 0 ? files : item.message.files,
-                  },
-                }
-              : item,
-          ),
-        );
-        setEditingSteerId(null);
-        setDraft("");
-        return;
-      }
       if (isStreaming) {
-        setSteers((current) => [
-          ...current,
-          { id: makeId(), message: { text, files } },
-        ]);
+        if (files.length > 0) {
+          setSteerError("Attachments can be sent as soon as the active run finishes.");
+          return;
+        }
+        await followUpController(resourceId, threadId, text.trim(), requestContext);
         setDraft("");
         return;
       }
       setDraft("");
-      void runMessage({ text, files });
+      await runMessage({ text, files });
     },
-    [editingSteerId, isStreaming, runMessage],
+    [isStreaming, requestContext, resourceId, runMessage, threadId],
   );
 
-  useEffect(() => {
-    if (
-      isStreaming ||
-      editingSteerId ||
-      steeringSteerId ||
-      steeringSteerIdRef.current ||
-      steers.length === 0
-    ) return;
-    const next = steers[0];
-    const timer = window.setTimeout(() => {
-      setSteers((current) => current.filter((item) => item.id !== next.id));
-      void runMessage(next.message);
-    }, 0);
-    return () => window.clearTimeout(timer);
-  }, [editingSteerId, isStreaming, runMessage, steers, steeringSteerId]);
-
-  const deleteSteer = useCallback((id: string) => {
-    setSteers((current) => current.filter((item) => item.id !== id));
-    if (editingSteerId === id) {
-      setEditingSteerId(null);
-      setDraft("");
+  const steer = useCallback(async () => {
+    const message = draft.trim();
+    if (!message || !isStreaming) return;
+    setSteerError("");
+    setDraft("");
+    try {
+      await steerController(resourceId, threadId, message, requestContext);
+    } catch (caught) {
+      setDraft(message);
+      setSteerError(readableError(caught));
     }
-  }, [editingSteerId]);
+  }, [draft, isStreaming, requestContext, resourceId, threadId]);
 
-  const editSteer = useCallback((id: string) => {
-    const item = steers.find((candidate) => candidate.id === id);
-    if (!item) return;
-    setEditingSteerId(id);
-    setDraft(item.message.text);
-    window.requestAnimationFrame(() => {
-      document
-        .querySelector<HTMLTextAreaElement>('[aria-label="Message"]')
-        ?.focus();
+  const changeMode = useCallback((modeId: string) => {
+    setSteerError("");
+    void switchControllerMode(resourceId, threadId, modeId).catch((caught) => {
+      setSteerError(readableError(caught));
     });
-  }, [steers]);
+  }, [resourceId, threadId]);
 
-  const reorderSteer = useCallback((sourceId: string, targetId: string) => {
-    setSteers((current) => {
-      const sourceIndex = current.findIndex((item) => item.id === sourceId);
-      const targetIndex = current.findIndex((item) => item.id === targetId);
-      if (sourceIndex < 0 || targetIndex < 0) return current;
-      const next = [...current];
-      const [moved] = next.splice(sourceIndex, 1);
-      next.splice(targetIndex, 0, moved);
-      return next;
+  const changeModel = useCallback((selection: ModelSelection) => {
+    onModelSelectionChange(selection);
+    void switchControllerModel(resourceId, threadId, selection.modelId).catch((caught) => {
+      setSteerError(readableError(caught));
     });
-  }, []);
-
-  const steer = useCallback((id: string) => {
-    const item = steers.find((candidate) => candidate.id === id);
-    if (!item) return;
-    deliverSteer(item);
-  }, [deliverSteer, steers]);
+  }, [onModelSelectionChange, resourceId, threadId]);
 
   const composerProps = {
     draft,
-    editingSteerId,
+    modeId: session.modeId,
+    modes: session.modes,
     onDraftChange: setDraft,
-    onDeleteSteer: deleteSteer,
-    onEditSteer: editSteer,
-    onModelSelectionChange,
-    onReorderSteer: reorderSteer,
-    onSteer: (id: string) => void steer(id),
+    onModeChange: changeMode,
+    onModelSelectionChange: changeModel,
+    onSteer: () => void steer(),
     onStop: stop,
     onSubmit: submit,
+    queuedFollowUps: session.queuedFollowUps,
+    resourceId,
+    session,
     status,
-    steers,
+    threadId,
     modelCatalog,
-    modelSelection,
+    modelSelection: effectiveModelSelection,
   } satisfies ChatComposerProps;
 
   const loadOlder = useCallback(async () => {
@@ -1453,6 +1189,7 @@ function ChatSession({
                   What&apos;s on your mind today?
                 </h1>
                 <div className="hidden md:block">
+                  <AgentRunPanel session={session} />
                   <ChatComposer {...composerProps} />
                 </div>
                 <div className="mx-auto flex max-w-[650px] flex-col gap-1.5 px-4">
@@ -1507,9 +1244,11 @@ function ChatSession({
         ref={composerDockRef}
       >
           <div className="chat-column pointer-events-auto">
+            <AgentRunPanel session={session} />
             <ChatComposer {...composerProps} />
           </div>
       </div>
+      <AgentControllerDialogs resourceId={resourceId} session={session} threadId={threadId} />
     </div>
   );
 }

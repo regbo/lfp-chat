@@ -20,6 +20,10 @@ This repository is a reusable chat package plus an LFP Home host. Preserve that 
 - Home-managed read tools for PostgreSQL schema, email, attachments, Graphiti, and Kestra remain MCP
   sources. Do not port their clients into this package. Home-only HTTP adapters are appropriate when
   they remain thin clients and preserve native Mastra streaming events.
+- Home-specific controller modes, subagents, instructions, and permission overrides belong in the
+  host's `configureAgentController` callback. Keep the shared client capable of rendering native
+  AgentController tasks, approvals, suspended plans/questions, goals, tokens, and OM progress
+  without importing Home services into the published package.
 - The host may use OpenAI for user-selected chat or explicitly configured structured parsing, but it
   must not introduce OpenAI embeddings into Home or Kestra transaction/content processing.
 

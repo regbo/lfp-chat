@@ -4,7 +4,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { spawn, spawnSync } from "node:child_process";
 import path from "node:path";
 
-const DEFAULT_PORT = 8080;
+const DEFAULT_PORT = 7777;
 const DEFAULT_UPSTREAM = "127.0.0.1:3000";
 const LOOPBACK_ADDRESS = "127.0.0.1";
 
@@ -46,7 +46,7 @@ function createCaddyfile(port: number, upstream: string, bindAddresses: string[]
   auto_https off
 }
 
-http://:${port} {
+:${port} {
   bind ${bindAddresses.join(" ")}
   encode zstd gzip
   reverse_proxy ${upstream}

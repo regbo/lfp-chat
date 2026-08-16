@@ -2,6 +2,7 @@
 
 # dependencies
 /node_modules
+**/node_modules/
 /.pnp
 .pnp.*
 .yarn/*
@@ -24,6 +25,7 @@
 /dist/
 /.mastra/
 /.caddy/
+/.dev/
 
 # misc
 .DS_Store

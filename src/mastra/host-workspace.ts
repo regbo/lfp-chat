@@ -3,6 +3,8 @@ import {
   LocalSandbox,
   Workspace,
 } from "@mastra/core/workspace";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 /**
  * Code mode intentionally runs on the host and can reach paths outside the
@@ -30,4 +32,16 @@ export const hostWorkspace = new Workspace({
     mastra_workspace_get_process_output: { maxOutputTokens: 2_000 },
   },
   operationTimeout: 120_000,
+});
+
+/** A contained scratch area for AgentController plan files and approvals. */
+export const planWorkspace = new Workspace({
+  id: "lfp-plan-workspace",
+  name: "Plan workspace",
+  filesystem: new LocalFilesystem({
+    id: "lfp-plan-filesystem",
+    basePath: join(tmpdir(), "lfp-chat-plans"),
+    contained: true,
+  }),
+  operationTimeout: 30_000,
 });

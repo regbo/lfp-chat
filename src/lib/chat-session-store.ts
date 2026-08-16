@@ -1,6 +1,12 @@
 "use client";
 
 import type { UIMessage } from "ai";
+import type {
+  AgentControllerGoalRecord,
+  AgentControllerModeInfo,
+  AgentControllerOMProgress,
+  AgentControllerTaskSnapshot,
+} from "@mastra/client-js";
 
 export type ChatSessionStatus = "ready" | "submitted" | "streaming" | "error";
 
@@ -13,6 +19,37 @@ export type ChatSessionState = {
   historyLoaded: boolean;
   historyPage: number;
   hasMoreHistory: boolean;
+  controllerReady: boolean;
+  modeId: string;
+  modelId: string | null;
+  modes: AgentControllerModeInfo[];
+  queuedFollowUps: number;
+  pendingApproval: {
+    toolCallId: string;
+    toolName: string;
+    args: unknown;
+  } | null;
+  pendingSuspensions: Array<{
+    toolCallId: string;
+    toolName: string;
+    args: unknown;
+    suspendPayload: unknown;
+  }>;
+  tasks: AgentControllerTaskSnapshot[];
+  subagents: Array<{
+    toolCallId: string;
+    agentType: string;
+    task: string;
+    modelId?: string;
+    status: "running" | "completed" | "error";
+    text: string;
+    toolCalls: Array<{ name: string; isError?: boolean }>;
+    result?: string;
+    durationMs?: number;
+  }>;
+  tokenUsage: Record<string, unknown>;
+  omProgress: AgentControllerOMProgress | null;
+  goal: AgentControllerGoalRecord | null;
 };
 
 const sessions = new Map<string, ChatSessionState>();
@@ -29,6 +66,18 @@ export function createChatSession(messages: UIMessage[] = []): ChatSessionState 
     historyLoaded: true,
     historyPage: 1,
     hasMoreHistory: false,
+    controllerReady: false,
+    modeId: "chat",
+    modelId: null,
+    modes: [],
+    queuedFollowUps: 0,
+    pendingApproval: null,
+    pendingSuspensions: [],
+    tasks: [],
+    subagents: [],
+    tokenUsage: {},
+    omProgress: null,
+    goal: null,
   };
 }
 

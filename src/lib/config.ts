@@ -5,7 +5,7 @@ import { createAppBranding } from "@/lib/app-branding";
 const LOCAL_DATABASE_URL =
   "postgresql://mastra:mastra@localhost:5432/mastra";
 
-const LOCAL_MASTRA_API_URL = "http://localhost:4111";
+const LOCAL_MASTRA_API_URL = "http://127.0.0.1:4111";
 const DEFAULT_MODEL_PROVIDER = "openai";
 const DEFAULT_OPENAI_MODEL = "gpt-5.6-luna";
 const DEFAULT_CODEX_AGENT_MODE = "agent";

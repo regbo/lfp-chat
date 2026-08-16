@@ -24,7 +24,7 @@ const clientBundle = await Bun.build({
   // Bun otherwise selects the development JSX runtime for this standalone
   // library bundle, which is not available while Next.js prerenders consumers.
   define: { "process.env.NODE_ENV": '"production"' },
-  entrypoints: [resolve(projectRoot, "src/index.ts")],
+  entrypoints: [resolve(projectRoot, "packages/client/src/index.ts")],
   external: externalDependencies,
   format: "esm",
   minify: true,
@@ -42,7 +42,7 @@ if (!clientBundle.success) {
 
 const serverBundle = await Bun.build({
   define: { "process.env.NODE_ENV": '"production"' },
-  entrypoints: [resolve(projectRoot, "src/server-package.ts")],
+  entrypoints: [resolve(projectRoot, "packages/server/src/index.ts")],
   external: externalDependencies,
   format: "esm",
   minify: true,
@@ -115,12 +115,12 @@ const packageManifest = {
   sideEffects: ["./styles.css"],
   exports: {
     ".": {
-      types: "./types/index.d.ts",
+      types: "./types/packages/client/src/index.d.ts",
       import: "./index.js",
       default: "./index.js",
     },
     "./mastra": {
-      types: "./types/server-package.d.ts",
+      types: "./types/packages/server/src/index.d.ts",
       import: "./mastra.js",
       default: "./mastra.js",
     },

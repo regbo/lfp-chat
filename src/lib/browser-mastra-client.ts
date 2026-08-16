@@ -2,69 +2,9 @@
 
 import { MastraClient } from "@mastra/client-js";
 
-import type { PromptInputMessage } from "@/components/ai-elements/prompt-input";
-
-export type MastraStreamChunk = {
-  type: string;
-  payload?: unknown;
-  runId?: string;
-};
-
-export function messageContents(message: PromptInputMessage) {
-  return [
-    ...(message.text.trim()
-      ? [{ type: "text" as const, text: message.text.trim() }]
-      : []),
-    ...message.files.map((file) => ({
-      type: "file" as const,
-      data: file.url,
-      mediaType: file.mediaType,
-      filename: file.filename,
-    })),
-  ];
-}
-
-export function threadMessageOptions(options: {
-  clientMessageId: string;
-  message: PromptInputMessage;
-  resourceId: string;
-  threadId: string;
-  requestContext: Record<string, unknown>;
-}) {
-  return {
-    resourceId: options.resourceId,
-    threadId: options.threadId,
-    message: {
-      contents: messageContents(options.message),
-      metadata: { clientMessageId: options.clientMessageId },
-    },
-    ifIdle: {
-      behavior: "wake" as const,
-      attributes: { source: "user" },
-      streamOptions: {
-        requestContext: options.requestContext,
-      },
-    },
-  };
-}
-
-export function isTerminalMastraChunk(chunk: MastraStreamChunk) {
-  if (chunk.type === "error" || chunk.type === "abort" || chunk.type === "tripwire") return true;
-  const payload = chunk.payload && typeof chunk.payload === "object"
-    ? chunk.payload as Record<string, unknown>
-    : {};
-  const stepResult = payload.stepResult;
-  const result = stepResult && typeof stepResult === "object"
-    ? stepResult as Record<string, unknown>
-    : {};
-  if (chunk.type === "step-finish") return result.isContinued !== true;
-  if (chunk.type !== "finish") return false;
-  return result.isContinued !== true && result.reason !== "tool-calls";
-}
-
 /**
- * Mastra owns thread subscriptions, replay, reconnects, and aborts. Keeping the
- * browser client standard avoids a second stream lifecycle in the chat UI.
+ * AgentController owns session streaming, replay, reconnects, and aborts.
+ * Keeping one stock browser client avoids a parallel transport lifecycle.
  */
 export const browserMastraClient = new MastraClient({
   baseUrl: typeof window === "undefined" ? "http://localhost" : window.location.origin,

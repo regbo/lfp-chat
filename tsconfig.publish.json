@@ -7,8 +7,8 @@
     "incremental": false,
     "noEmit": false,
     "outDir": "./dist/.package-types",
-    "rootDir": "./src"
+    "rootDir": "."
   },
-  "include": ["src/index.ts", "src/server-package.ts"],
+  "include": ["packages/client/src/index.ts", "packages/server/src/index.ts"],
   "exclude": ["node_modules", ".next", "dist"]
 }

@@ -1,5 +1,7 @@
 import { Agent } from "@mastra/core/agent";
 import type { AgentConfig } from "@mastra/core/agent";
+import { AgentController } from "@mastra/core/agent-controller";
+import type { AgentControllerConfig } from "@mastra/core/agent-controller";
 import { Mastra } from "@mastra/core/mastra";
 import type { Config as MastraConfig } from "@mastra/core/mastra";
 import { Memory } from "@mastra/memory";
@@ -7,12 +9,16 @@ import { PostgresStore } from "@mastra/pg";
 
 import { serverConfig } from "@/lib/config";
 import {
+  controllerToolCategory,
+  LFP_CHAT_CONTROLLER_ID,
+} from "@/lib/agent-controller";
+import {
   modelProvider,
   resolveBackgroundModel,
   resolveRuntimeModel,
   resolveRuntimeOptions,
 } from "@/mastra/model-provider";
-import { hostWorkspace } from "@/mastra/host-workspace";
+import { hostWorkspace, planWorkspace } from "@/mastra/host-workspace";
 import { createCodexAgent } from "@/mastra/codex-agent";
 import {
   normalizeEnabledToolIds,
@@ -37,6 +43,10 @@ export type LfpChatMastraCustomization = {
   configureChatAgent?: (config: AgentConfig) => AgentConfig;
   /** Replace or extend any Mastra setting, including agents, workflows, tools, storage, and MCP. */
   configureMastra?: (config: MastraConfig) => MastraConfig;
+  /** Extend the interactive AgentController without moving host behavior into the package. */
+  configureAgentController?: (
+    config: AgentControllerConfig<Record<string, unknown>>,
+  ) => AgentControllerConfig<Record<string, unknown>>;
 };
 
 function resolvedEnabledCapabilities(value: unknown): Set<string> {
@@ -125,6 +135,44 @@ export function createLfpChatMastra(
   });
   const openAiConversationState = new OpenAiConversationStateProcessor();
 
+  const resolveAgentTools: NonNullable<AgentConfig["tools"]> = async ({
+    requestContext,
+  }) => {
+    const enabled = resolvedEnabledCapabilities(
+      requestContext.get(TOOLS_CONTEXT_KEY),
+    );
+    if (!serverConfig.taskServiceConfigured) enabled.delete("tasks");
+    const isScheduledJob =
+      requestContext.get(SCHEDULE_JOB_CONTEXT_KEY) === true;
+    await configuredMcpTools(enabled, toolRegistry);
+    const availableTools = {
+      ...toolRegistry.resolve(enabled, {
+        scheduled: isScheduledJob,
+        taskServiceConfigured: serverConfig.taskServiceConfigured,
+      }),
+    };
+    return Object.fromEntries(
+      Object.entries(availableTools).filter(([id]) => {
+        const policyDecision = exactToolPolicy(id, enabled);
+        return policyDecision ?? true;
+      }),
+    );
+  };
+
+  const resolveAgentWorkspace: NonNullable<AgentConfig["workspace"]> = ({
+    requestContext,
+  }) => {
+    const controller = requestContext.get("controller") as
+      | { session?: { modeId?: unknown } }
+      | undefined;
+    if (controller?.session?.modeId === "plan") return planWorkspace;
+    return resolvedEnabledCapabilities(requestContext.get(TOOLS_CONTEXT_KEY)).has(
+      "code_mode",
+    )
+      ? hostWorkspace
+      : undefined;
+  };
+
   const baseChatAgentConfig: AgentConfig = {
     id: "chatAgent",
     name: serverConfig.appBranding.fullName,
@@ -134,28 +182,8 @@ export function createLfpChatMastra(
     inputProcessors: [openAiConversationState],
     outputProcessors: [openAiConversationState],
     errorProcessors: [openAiConversationState],
-    tools: async ({ requestContext }) => {
-      const enabled = resolvedEnabledCapabilities(requestContext.get(TOOLS_CONTEXT_KEY));
-      if (!serverConfig.taskServiceConfigured) enabled.delete("tasks");
-      const isScheduledJob = requestContext.get(SCHEDULE_JOB_CONTEXT_KEY) === true;
-      await configuredMcpTools(enabled, toolRegistry);
-      const availableTools = {
-        ...toolRegistry.resolve(enabled, {
-          scheduled: isScheduledJob,
-          taskServiceConfigured: serverConfig.taskServiceConfigured,
-        }),
-      };
-      return Object.fromEntries(
-        Object.entries(availableTools).filter(([id]) => {
-          const policyDecision = exactToolPolicy(id, enabled);
-          return policyDecision ?? true;
-        }),
-      );
-    },
-    workspace: ({ requestContext }) =>
-      resolvedEnabledCapabilities(requestContext.get(TOOLS_CONTEXT_KEY)).has("code_mode")
-        ? hostWorkspace
-        : undefined,
+    tools: resolveAgentTools,
+    workspace: resolveAgentWorkspace,
     instructions: ({ requestContext }) => {
       const enabled = [...resolvedEnabledCapabilities(
         requestContext.get(TOOLS_CONTEXT_KEY),
@@ -200,11 +228,123 @@ or financial account credentials.`;
     : undefined;
   const observability = createObservability();
 
+  const baseAgentControllerConfig: AgentControllerConfig<
+    Record<string, unknown>
+  > = {
+    id: LFP_CHAT_CONTROLLER_ID,
+    agent: chatAgent,
+    storage,
+    memory,
+    observability,
+    workspace: resolveAgentWorkspace,
+    defaultModeId: "chat",
+    initialState: {
+      yolo: false,
+      permissionRules: {
+        categories: {
+          read: "allow",
+          edit: "ask",
+          execute: "ask",
+          mcp: "allow",
+          other: "allow",
+        },
+        tools: {},
+      },
+    },
+    modes: [
+      {
+        id: "chat",
+        name: "Chat",
+        description: "Collaborate, answer questions, and complete ordinary work.",
+        defaultModelId: serverConfig.modelId,
+        metadata: { default: true, icon: "message-circle" },
+        instructions:
+          "Work collaboratively and directly. For multi-step work, keep the built-in task list current so the user can follow progress.",
+      },
+      {
+        id: "research",
+        name: "Research",
+        description: "Investigate across Home sources and the web before synthesizing.",
+        defaultModelId: serverConfig.modelId,
+        metadata: { icon: "search" },
+        instructions:
+          "Investigate thoroughly before concluding. Search the relevant Home sources and current web sources, compare evidence, cite source links when available, surface uncertainty, and use a research subagent when an independent pass would improve confidence. Do not mutate user data unless the user explicitly asks.",
+      },
+      {
+        id: "plan",
+        name: "Plan",
+        description: "Inspect context, build a visible plan, and wait for approval.",
+        defaultModelId: serverConfig.modelId,
+        transitionsTo: "act",
+        metadata: { icon: "clipboard-list" },
+        instructions:
+          "Inspect the necessary context, maintain a concise built-in task list, and call submit_plan with an actionable plan before making consequential changes. Ask the user only for decisions that materially change the result.",
+      },
+      {
+        id: "act",
+        name: "Act",
+        description: "Carry out approved changes with visible progress and safeguards.",
+        defaultModelId: serverConfig.modelId,
+        metadata: { icon: "sparkles" },
+        instructions:
+          "Carry the work through to a verified outcome. Keep the built-in task list current, use focused subagents when they improve the result, and rely on approval gates for writes or execution. Report concrete outcomes and remaining risks.",
+      },
+      ...(codexAgent
+        ? [
+            {
+              id: "code",
+              name: "Code",
+              description:
+                "Delegate repository work to the configured Codex ACP agent.",
+              defaultModelId: serverConfig.modelId,
+              agent: codexAgent,
+              metadata: { icon: "terminal" },
+              instructions:
+                "Use the Codex ACP agent for repository work and keep the controller task list current for longer changes.",
+            },
+          ]
+        : []),
+    ],
+    subagents: [
+      {
+        id: "researcher",
+        name: "Researcher",
+        description:
+          "Performs a focused, independent evidence-gathering pass across available sources.",
+        instructions:
+          "Research the delegated question independently. Prefer primary evidence, cite links or record identifiers, distinguish facts from inference, and do not mutate user data.",
+        defaultModelId: serverConfig.modelId,
+        maxSteps: Math.min(serverConfig.agentMaxSteps, 16),
+        forked: true,
+      },
+      {
+        id: "reviewer",
+        name: "Reviewer",
+        description:
+          "Reviews a proposed plan or result for omissions, contradictions, and unsafe assumptions.",
+        instructions:
+          "Review the delegated material skeptically. Identify concrete gaps, contradictions, unsafe assumptions, and the smallest changes needed to improve it.",
+        defaultModelId: serverConfig.modelId,
+        maxSteps: 6,
+        forked: true,
+      },
+    ],
+    toolCategoryResolver: controllerToolCategory,
+  };
+
+  const agentControllerConfig =
+    customization.configureAgentController?.(baseAgentControllerConfig) ??
+    baseAgentControllerConfig;
+  const agentController = new AgentController(agentControllerConfig);
+
   const baseMastraConfig: MastraConfig = {
     ...(observability ? { observability } : {}),
     agents: {
       chatAgent,
       ...(codexAgent ? { codexAgent } : {}),
+    },
+    agentControllers: {
+      [LFP_CHAT_CONTROLLER_ID]: agentController,
     },
     tools: Object.fromEntries(
       Object.entries(toolRegistry.mastraTools()).filter(([id]) =>
@@ -286,6 +426,7 @@ or financial account credentials.`;
 
   return {
     mastra,
+    agentController,
     memory,
     toolRegistry,
     toolCatalog: toolRegistry.uiCatalog({

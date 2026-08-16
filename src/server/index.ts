@@ -61,6 +61,10 @@ const bunServer = {
   hostname: serverConfig.mastraHost,
   port,
   fetch: app.fetch,
+  // AgentController keeps one SSE subscription open per browser session and
+  // emits a heartbeat every 25 seconds. Bun's 10-second default would close
+  // an otherwise healthy idle stream before Mastra can send that heartbeat.
+  idleTimeout: 60,
 };
 
 export default bunServer;

@@ -1,0 +1,12 @@
+{
+  "name": "@regbo/lfp-chat-server",
+  "version": "0.3.28",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@regbo/lfp-chat-shared": "workspace:*"
+  }
+}

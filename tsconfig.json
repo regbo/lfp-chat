@@ -19,7 +19,13 @@
       }
     ],
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@regbo/lfp-chat-client": ["./packages/client/src/index.ts"],
+      "@regbo/lfp-chat-server": ["./packages/server/src/index.ts"],
+      "@regbo/lfp-chat-shared": ["./packages/shared/src/index.ts"],
+      "@regbo/lfp-chat-shared/agent-controller": ["./packages/shared/src/agent-controller.ts"],
+      "@regbo/lfp-chat-shared/app-branding": ["./packages/shared/src/app-branding.ts"],
+      "@regbo/lfp-chat-shared/*": ["./packages/shared/src/*"]
     }
   },
   "include": [

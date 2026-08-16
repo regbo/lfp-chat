@@ -1,6 +1,16 @@
 # LFP Chat
 
-A ChatGPT-inspired Mastra chat application with rich tool events and PostgreSQL-backed conversation and working memory.
+A Mastra AgentController application for persistent, tool-capable work with PostgreSQL-backed conversation and working memory.
+
+## Workspace architecture
+
+The repository is a Bun monorepo with three explicit package boundaries:
+
+- `@regbo/lfp-chat-client` owns the React application, composer, controller status, approvals, plans, and goals.
+- `@regbo/lfp-chat-shared` owns branding and the controller's shared mode and permission contracts.
+- `@regbo/lfp-chat-server` owns the Mastra factory, AgentController, agent modes, subagents, workspace, and tool registry.
+
+The workspace packages are private development boundaries. Releases still produce the backwards-compatible public `@regbo/lfp-chat` package with its default client entrypoint and `@regbo/lfp-chat/mastra` server entrypoint, so hosts can migrate without an all-at-once import rewrite.
 
 ## Package
 
@@ -117,6 +127,18 @@ export const { mastra, memory, toolCatalog } = createLfpChatMastra({
     ...config,
     instructions: `${config.instructions}\nUse the host application's domain rules.`,
   }),
+  configureAgentController: (config) => ({
+    ...config,
+    modes: [
+      ...config.modes,
+      {
+        id: "home-ops",
+        name: "Home ops",
+        description: "Investigate and repair LFP Home ingestion.",
+        instructions: "Inspect Home health before changing external state.",
+      },
+    ],
+  }),
   configureMastra: (config) => ({
     ...config,
     workflows: { ...config.workflows, hostWorkflow },
@@ -172,7 +194,8 @@ Tags must use semantic versions such as `v0.2.0`. The GitHub Actions workflow va
 
 - Next.js 16, React 19, TypeScript, and Tailwind CSS 4
 - A standalone Bun/Hono Mastra server on loopback port 4111 that owns the agent, tools, and PostgreSQL memory
-- `@mastra/client-js` for run, thread, memory, and streaming operations
+- Mastra AgentController for durable sessions, modes, tasks, steering, follow-ups, approvals, plan suspension, subagents, goals, token usage, and observational-memory progress
+- `@mastra/client-js` for the native AgentController session protocol plus thread and memory operations
 - AI Elements for the conversation, messages, reasoning, tools, and prompt input
 - Mastra Model Router with provider-specific API keys
 - Codex CLI as a separately selectable Mastra ACP coding agent
@@ -181,7 +204,7 @@ Tags must use semantic versions such as `v0.2.0`. The GitHub Actions workflow va
 
 ### User-scoped memory
 
-Chat memory, schedules, active-run steering, and push subscriptions use a
+Chat memory, controller sessions, schedules, active-run steering, and push subscriptions use a
 server-resolved user scope. `USER_SCOPE_MODE=local` retains a browser-local ID
 for development. Behind a trusted identity-aware reverse proxy, use
 `USER_SCOPE_MODE=header` and select its immutable user identifier with
@@ -272,13 +295,13 @@ bun dev
 
 `bun dev` starts three independent processes:
 
-- Caddy entrypoint: [http://127.0.0.1:8080](http://127.0.0.1:8080)
+- Caddy entrypoint: [http://127.0.0.1:7777](http://127.0.0.1:7777)
 - Next.js web client (loopback only): [http://127.0.0.1:3000](http://127.0.0.1:3000)
 - Mastra Server (loopback only): [http://127.0.0.1:4111](http://127.0.0.1:4111)
 
-Caddy detects ZeroTier IPv4 interfaces at startup and binds those addresses in addition to loopback without exposing a wildcard listener. With the current interface, the remote URL is `http://100.100.100.126:8080`. Override the port or upstream with `CADDY_PORT` and `CADDY_UPSTREAM`; use `CADDY_EXTRA_BIND_ADDRESSES` for additional comma-separated IPv4 addresses.
+Caddy detects ZeroTier IPv4 interfaces at startup and binds those addresses in addition to loopback without exposing a wildcard listener. Its site address is host-agnostic, so reverse proxies can preserve the public `Host` header. With the current interface, the remote URL is `http://100.100.100.126:7777`. Override the port or upstream with `CADDY_PORT` and `CADDY_UPSTREAM`; use `CADDY_EXTRA_BIND_ADDRESSES` for additional comma-separated IPv4 addresses.
 
-The browser uses `MastraClient` with explicit run and thread IDs. Next.js provides a same-origin bridge to the loopback-only Mastra server, so Caddy only needs to proxy the web application.
+The browser uses `MastraClient` with a stable controller resource and a session scope per conversation. The native session stream keeps work alive across navigation and exposes queued follow-ups, steering, approvals, tasks, subagents, goals, and memory progress. A lightweight state/message poll automatically takes over if an intermediary cannot sustain SSE. Next.js provides the user-scoped same-origin bridge to the loopback-only Mastra server, so Caddy only needs to proxy the web application.
 
 The default selection is `openai/gpt-5.6-luna`. Swap the server default without changing code by setting `MODEL_PROVIDER`, `MODEL_NAME`, and optionally `REASONING_EFFORT` in `.env.local`. Mastra routes directly to supported providers and reads that provider's standard API-key environment variable. `OPENAI_MODEL` remains a backwards-compatible fallback when the provider is OpenAI and `MODEL_NAME` is unset.
 
@@ -326,7 +349,7 @@ PHOENIX_SERVICE_NAME=LFP Chat
 
 The composer also lists **Codex CLI** as an agent rather than a model. Mastra runs it through `@mastra/acp` and `@agentclientprotocol/codex-acp`, while PostgreSQL remains the durable conversation store. Codex runs in an isolated ACP session for each request and defaults to workspace-write access without network access. Configure its boundary explicitly when the server should operate on another repository:
 
-The application intentionally uses Mastra's standard agent stream instead of maintaining its own Cursor `stream-json` or Codex App Server event adapter.
+The application intentionally uses Mastra AgentController instead of maintaining its own run reducer, queue, timeout, or replay adapter. Codex remains a controller mode backed by Mastra ACP when enabled.
 
 ```env
 CODEX_AGENT_ENABLED=true
@@ -370,6 +393,7 @@ bun run dev:web     # Start only Next.js
 bun run dev:mastra  # Start only the Bun/Hono Mastra Server
 bun run dev:caddy   # Start only the Caddy loopback/ZeroTier proxy
 bun run caddy:check # Generate and validate the Caddy configuration
+bun run test        # Run Bun unit and integration tests (excluding Playwright specs)
 bun run smoke       # Run desktop Chromium and mobile WebKit UI smoke tests
 bun run smoke:install # Install the Playwright browser engines once
 bun run db:up       # Start PostgreSQL

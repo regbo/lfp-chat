@@ -18,6 +18,7 @@ type ThreadFixture = {
 };
 
 type AppApiFixture = {
+  controllerEvents?: readonly Record<string, unknown>[];
   messagesByThread?: Readonly<Record<string, readonly UIMessage[]>>;
   threads?: readonly ThreadFixture[];
 };
@@ -80,11 +81,96 @@ export async function installAppApiFixture(
 ) {
   const threads = fixture.threads ?? sidebarThreads;
   const messagesByThread = fixture.messagesByThread ?? {};
+  const controllerEvents = fixture.controllerEvents ?? [];
+
+  const controllerMessages = (threadId: string) =>
+    (messagesByThread[threadId] ?? []).map((message) => ({
+      id: message.id,
+      role: message.role,
+      createdAt: timestamp,
+      threadId,
+      content: { format: 2, parts: message.parts },
+    }));
 
   await page.route("**/api/**", async (route) => {
     const request = route.request();
     const url = new URL(request.url());
     const threadMatch = url.pathname.match(/^\/api\/threads\/([^/]+)$/);
+    const controllerBase = "/api/mastra/agent-controller/lfpChat";
+
+    if (url.pathname === `${controllerBase}/sessions` && request.method() === "POST") {
+      const body = request.postDataJSON() as {
+        resourceId: string;
+        threadId?: string;
+      };
+      await route.fulfill({
+        json: {
+          controllerId: "lfpChat",
+          resourceId: body.resourceId,
+          threadId: body.threadId,
+        },
+      });
+      return;
+    }
+    if (url.pathname === `${controllerBase}/modes`) {
+      await route.fulfill({
+        json: {
+          modes: [
+            { id: "chat", name: "Chat" },
+            { id: "research", name: "Research" },
+            { id: "plan", name: "Plan" },
+            { id: "act", name: "Act" },
+          ],
+        },
+      });
+      return;
+    }
+    const controllerSessionMatch = url.pathname.match(
+      /^\/api\/mastra\/agent-controller\/lfpChat\/sessions\/([^/]+)(.*)$/,
+    );
+    if (controllerSessionMatch) {
+      const suffix = controllerSessionMatch[2];
+      const scope = url.searchParams.get("sessionScope") ?? "";
+      const scopedThreadId = scope.startsWith("web:") ? scope.slice(4) : "";
+      const messageMatch = suffix.match(/^\/threads\/([^/]+)\/messages$/);
+      if (suffix === "/stream") {
+        await route.fulfill({
+          body: [
+            ": connected",
+            ...controllerEvents.map((event) => `data: ${JSON.stringify(event)}`),
+            "",
+          ].join("\n\n"),
+          contentType: "text/event-stream",
+        });
+        return;
+      }
+      if (suffix === "/goal") {
+        await route.fulfill({ json: {} });
+        return;
+      }
+      if (messageMatch) {
+        const threadId = decodeURIComponent(messageMatch[1]);
+        await route.fulfill({ json: { messages: controllerMessages(threadId) } });
+        return;
+      }
+      if (suffix === "" && request.method() === "GET") {
+        await route.fulfill({
+          json: {
+            controllerId: "lfpChat",
+            resourceId: decodeURIComponent(controllerSessionMatch[1]),
+            threadId: scopedThreadId,
+            modeId: "chat",
+            modelId: "openai/gpt-5.6-luna",
+            running: false,
+            tokenUsage: {},
+            settings: { yolo: false, notifications: "off", smartEditing: true },
+          },
+        });
+        return;
+      }
+      await route.fulfill({ json: {} });
+      return;
+    }
 
     if (url.pathname === "/api/threads" && request.method() === "GET") {
       await route.fulfill({ json: { threads } });
