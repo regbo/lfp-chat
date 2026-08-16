@@ -172,15 +172,30 @@ export function resolveRuntimeOptions(requestContext?: RequestContext) {
     providerOptions:
       (model?.provider === "openai" ||
         model?.provider === subscriptionModelProvider) &&
-      selection.reasoningEffort
+      (selection.reasoningEffort || model.provider === subscriptionModelProvider)
         ? {
             openai: {
-              reasoningEffort: selection.reasoningEffort,
-              reasoningSummary: "auto",
+              ...(selection.reasoningEffort
+                ? {
+                    reasoningEffort: selection.reasoningEffort,
+                    reasoningSummary: "auto" as const,
+                  }
+                : {}),
+              ...(model.provider === subscriptionModelProvider
+                ? { strictJsonSchema: false }
+                : {}),
             },
           }
         : undefined,
   };
+}
+
+/** Hosted provider tools must match the model that receives the request. */
+export function supportsConfiguredProviderTools(requestContext?: RequestContext) {
+  if (requestContext?.get(SCHEDULE_JOB_CONTEXT_KEY) === true) return false;
+  return selectionFromRequestContext(requestContext).modelId.startsWith(
+    `${serverConfig.modelProvider}/`,
+  );
 }
 
 const providersWithNativeWebSearch = new Set([

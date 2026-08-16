@@ -16,6 +16,7 @@ import {
   chatGptSubscriptionGateway,
   modelProvider,
   resolveBackgroundModel,
+  supportsConfiguredProviderTools,
   resolveRuntimeModel,
   resolveRuntimeOptions,
 } from "@/mastra/model-provider";
@@ -154,6 +155,12 @@ export function createLfpChatMastra(
     };
     return Object.fromEntries(
       Object.entries(availableTools).filter(([id]) => {
+        if (
+          Object.hasOwn(modelProvider.tools, id) &&
+          !supportsConfiguredProviderTools(requestContext)
+        ) {
+          return false;
+        }
         const policyDecision = exactToolPolicy(id, enabled);
         return policyDecision ?? true;
       }),
@@ -196,7 +203,9 @@ export function createLfpChatMastra(
       const providerInstructions =
         requestContext.get(SCHEDULE_JOB_CONTEXT_KEY) === true
           ? "This scheduled run uses local Ollama only."
-          : modelProvider.capabilityInstructions;
+          : supportsConfiguredProviderTools(requestContext)
+            ? modelProvider.capabilityInstructions
+            : "";
       const chartInstructions =
         "For render_chart, pass ordered tabular data as columns plus aligned rows. Put the label or time axis first and numeric series after it.";
       return `You are ${serverConfig.appBranding.fullName}, a capable and concise assistant.

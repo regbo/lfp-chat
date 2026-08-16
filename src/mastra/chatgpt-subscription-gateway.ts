@@ -16,6 +16,35 @@ type ChatGptSubscriptionGatewayOptions = {
   proxyKey?: string;
 };
 
+async function fetchChatGptSubscription(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+) {
+  if (typeof init?.body !== "string") return globalThis.fetch(input, init);
+  try {
+    const payload = JSON.parse(init.body) as Record<string, unknown>;
+    if (!Array.isArray(payload.tools)) return globalThis.fetch(input, init);
+    const tools = payload.tools.map((tool) => {
+      if (
+        !tool ||
+        typeof tool !== "object" ||
+        (tool as Record<string, unknown>).type !== "function"
+      ) {
+        return tool;
+      }
+      // Mastra tools may have optional inputs. The ChatGPT Codex endpoint only
+      // accepts those schemas when OpenAI strict function validation is off.
+      return { ...(tool as Record<string, unknown>), strict: false };
+    });
+    return globalThis.fetch(input, {
+      ...init,
+      body: JSON.stringify({ ...payload, tools }),
+    });
+  } catch {
+    return globalThis.fetch(input, init);
+  }
+}
+
 /** Routes Mastra model calls through LiteLLM while LiteLLM owns ChatGPT OAuth. */
 export class ChatGptSubscriptionGateway extends MastraModelGateway {
   readonly id = CHATGPT_SUBSCRIPTION_GATEWAY_ID;
@@ -35,6 +64,7 @@ export class ChatGptSubscriptionGateway extends MastraModelGateway {
       name: "chatgpt-subscription",
       baseURL: this.#baseUrl,
       apiKey: this.#proxyKey,
+      fetch: fetchChatGptSubscription as typeof globalThis.fetch,
     });
   }
 
