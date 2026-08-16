@@ -226,7 +226,10 @@ export function AgentRunPanel({
   queueOpen?: boolean;
   session: ChatSessionState;
 }) {
-  const hasDetails = session.tasks.length > 0 || session.subagents.length > 0;
+  const visibleTasks = ["plan", "act", "code"].includes(session.modeId)
+    ? session.tasks
+    : [];
+  const hasDetails = visibleTasks.length > 0 || session.subagents.length > 0;
   const totalTokens = session.tokenUsage.totalTokens;
   const hasProgress =
     session.status === "streaming" ||
@@ -266,7 +269,7 @@ export function AgentRunPanel({
             <ListChecks className="size-3.5" /> Live work <ChevronDown className="size-3.5" />
           </CollapsibleTrigger>
           <CollapsibleContent className="space-y-3 rounded-xl border border-border/60 bg-background/90 p-3 shadow-sm">
-            {session.tasks.length > 0 ? <TaskProgress tasks={session.tasks} /> : null}
+            {visibleTasks.length > 0 ? <TaskProgress tasks={visibleTasks} /> : null}
             {session.subagents.length > 0 ? <SubagentProgress subagents={session.subagents} /> : null}
           </CollapsibleContent>
         </Collapsible>

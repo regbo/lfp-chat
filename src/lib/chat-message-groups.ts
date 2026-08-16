@@ -1,9 +1,30 @@
 import type { UIMessage } from "ai";
 
+const controllerTaskToolIds = new Set([
+  "task_write",
+  "task_update",
+  "task_complete",
+  "task_check",
+]);
+
+export function isControllerTaskToolPart(
+  part: UIMessage["parts"][number],
+) {
+  if (part.type === "dynamic-tool") {
+    return controllerTaskToolIds.has(part.toolName);
+  }
+  if (!part.type.startsWith("tool-")) return false;
+  return controllerTaskToolIds.has(part.type.slice("tool-".length));
+}
+
 function hasRenderablePart(part: UIMessage["parts"][number]) {
   if (part.type === "text" || part.type === "reasoning") {
     return part.text.trim().length > 0;
   }
+  // AgentController projects these calls into the dedicated Live work panel.
+  // Rendering the raw JSON again in the transcript is noisy, and a task-only
+  // model step otherwise becomes an empty chat bubble after suppression.
+  if (isControllerTaskToolPart(part)) return false;
   return (
     part.type === "file" ||
     part.type === "dynamic-tool" ||

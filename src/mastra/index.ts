@@ -261,7 +261,13 @@ or financial account credentials.`;
           mcp: "allow",
           other: "allow",
         },
-        tools: {},
+        tools: {
+          // Dashboard definitions are user-scoped and safely upserted. Avoid
+          // parking an otherwise reversible creation behind a transient
+          // approval event; archive and permanent delete remain edit-gated.
+          dashboard_upsert_tool: "allow",
+          dashboard_upsert_widget: "allow",
+        },
       },
     },
     modes: [
@@ -272,7 +278,7 @@ or financial account credentials.`;
         defaultModelId: serverConfig.modelId,
         metadata: { default: true, icon: "message-circle" },
         instructions:
-          "Work collaboratively and directly. For multi-step work, keep the built-in task list current so the user can follow progress.",
+          "Work collaboratively and directly. Do not call the built-in task tools in Chat mode; reserve visible task tracking for Plan, Act, and Code modes.",
       },
       {
         id: "research",

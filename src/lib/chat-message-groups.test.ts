@@ -65,6 +65,35 @@ describe("groupConsecutiveAssistantMessages", () => {
     ]).map(({ id }) => id)).toEqual(["assistant-visible", "user-file"]);
   });
 
+  test("suppresses task-only controller steps from the chat transcript", () => {
+    const taskOnly = {
+      id: "assistant-task",
+      role: "assistant",
+      parts: [{
+        type: "dynamic-tool",
+        toolName: "task_write",
+        toolCallId: "task-call",
+        state: "output-available",
+        input: { tasks: [] },
+        output: { tasks: [], isError: false },
+      }],
+    } as UIMessage;
+    const dashboardTool = {
+      id: "assistant-dashboard",
+      role: "assistant",
+      parts: [{
+        type: "dynamic-tool",
+        toolName: "dashboard_upsert_tool",
+        toolCallId: "dashboard-call",
+        state: "input-available",
+        input: { name: "earthquake_pulse" },
+      }],
+    } as UIMessage;
+
+    expect(filterRenderableMessages([taskOnly, dashboardTool]).map(({ id }) => id))
+      .toEqual(["assistant-dashboard"]);
+  });
+
   test("keeps optimistic messages until polling observes their persisted copy", () => {
     const optimistic = message("local-user", "user", "Queued follow-up");
     expect(mergeHydratedMessages([optimistic], [])).toEqual([optimistic]);

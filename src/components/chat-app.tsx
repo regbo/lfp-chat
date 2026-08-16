@@ -92,6 +92,7 @@ import { isChatChartSpec } from "@/lib/chart-spec";
 import {
   filterRenderableMessages,
   groupConsecutiveAssistantMessages,
+  isControllerTaskToolPart,
 } from "@/lib/chat-message-groups";
 import { formatCitationMarkers } from "@/lib/citations";
 import {
@@ -841,7 +842,7 @@ function ChatComposer({ draft, followUpQueue, modeId, modes, modelCatalog, model
             className="flex-1"
             data-chat-composer-input
             onChange={(event) => onDraftChange(event.currentTarget.value)}
-            placeholder={running ? "Add a follow-up or steer the active run" : "Ask anything"}
+            placeholder={running ? "Follow up" : "Ask anything"}
             rows={1}
             value={draft}
           />
@@ -890,16 +891,17 @@ function ChatComposer({ draft, followUpQueue, modeId, modes, modelCatalog, model
 function ChatMessage({ message, streaming }: { message: UIMessage; streaming: boolean }) {
   const text = getText(message);
   const tools = message.parts.filter(isToolPart);
+  const visibleTools = tools.filter((part) => !isControllerTaskToolPart(part));
   const reasoningText = message.parts
     .filter((part) => part.type === "reasoning")
     .map((part) => part.text)
     .join("\n\n");
   const isUser = message.role === "user";
   const files = message.parts.filter((part): part is FileUIPart => part.type === "file");
-  const hasReasoningDetails = Boolean(reasoningText) || tools.length > 0;
-  const showReasoning = !isUser && (streaming || Boolean(reasoningText) || tools.length > 0);
-  const runningToolLabel = streaming ? getRunningToolLabel(tools) : undefined;
-  const charts = tools.flatMap((part) => {
+  const hasReasoningDetails = Boolean(reasoningText) || visibleTools.length > 0;
+  const showReasoning = !isUser && (Boolean(reasoningText) || visibleTools.length > 0);
+  const runningToolLabel = streaming ? getRunningToolLabel(visibleTools) : undefined;
+  const charts = visibleTools.flatMap((part) => {
     const name =
       part.type === "dynamic-tool"
         ? part.toolName
@@ -922,7 +924,7 @@ function ChatMessage({ message, streaming }: { message: UIMessage; streaming: bo
               {hasReasoningDetails ? (
                 <ReasoningContent className="space-y-2">
                   {reasoningText && <MessageResponse>{formatAttachmentLinks(formatCitationMarkers(reasoningText, tools), tools)}</MessageResponse>}
-                  {tools.length > 0 && <ToolEventSummary parts={tools} />}
+                  {visibleTools.length > 0 && <ToolEventSummary parts={visibleTools} />}
                 </ReasoningContent>
               ) : null}
             </Reasoning>

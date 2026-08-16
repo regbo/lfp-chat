@@ -264,6 +264,7 @@ test("mobile follow-ups remain queryable without wrapping the composer", async (
   await page.goto("/c/smoke-queue-thread");
 
   const composer = page.getByRole("textbox", { name: "Message" });
+  await expect(composer).toHaveAttribute("placeholder", "Follow up");
   await composer.fill("Look up the next appointment after this run.");
   await page.getByRole("button", { name: "Send message" }).click();
 
@@ -306,6 +307,15 @@ test("a terminal AgentController event clears the streaming state", async ({ pag
     controllerEvents: [
       { type: "agent_start" },
       {
+        type: "task_updated",
+        tasks: [{
+          id: "internal-task",
+          content: "Track an internal controller step",
+          activeForm: "Tracking an internal controller step",
+          status: "in_progress",
+        }],
+      },
+      {
         type: "message_end",
         message: {
           id: "smoke-assistant-terminal",
@@ -333,6 +343,7 @@ test("a terminal AgentController event clears the streaming state", async ({ pag
   await expect(page.getByText("The response is complete.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Stop response" })).toHaveCount(0);
   await expect(page.getByText("Thinking…")).toHaveCount(0);
+  await expect(page.getByText("Live work", { exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /^Thought for/ })).toBeVisible();
 });
 
