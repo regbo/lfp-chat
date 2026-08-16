@@ -32,7 +32,11 @@ RUN bun run build
 # node_modules/.bun. Materialize the package so the lean runtime stage does not
 # inherit a link whose target was intentionally left behind.
 RUN mkdir -p dist/runtime-deps/@pydantic \
-    && cp -LR node_modules/@pydantic/monty dist/runtime-deps/@pydantic/monty
+    && cp -LR node_modules/@pydantic/monty dist/runtime-deps/@pydantic/monty \
+    && header_generator_dir="$(dirname "$(find node_modules/.bun -path '*/node_modules/header-generator/package.json' -print -quit)")" \
+    && test -n "$header_generator_dir" \
+    && mkdir -p "dist/runtime-deps/$header_generator_dir" \
+    && cp -LR "$header_generator_dir/data_files" "dist/runtime-deps/$header_generator_dir/data_files"
 
 # Monty's prebuilt Linux addon requires glibc 2.38 or newer. Debian Trixie
 # satisfies that constraint; Bun runs both the verified Next adapter output and Mastra.
@@ -49,8 +53,8 @@ COPY --chown=65532:65532 --from=build /app/.next/static ./.next/static
 COPY --chown=65532:65532 --from=build /app/public ./public
 COPY --chown=65532:65532 --from=build /app/dist/server ./dist/server
 COPY --chown=65532:65532 --from=build /app/dist/runtime-deps/@pydantic ./node_modules/@pydantic
-# got-scraping bundles header-generator code, but it loads browser header data at runtime.
-COPY --chown=65532:65532 --from=build /app/node_modules/header-generator/data_files ./node_modules/header-generator/data_files
+# got-scraping bundles header-generator with its Bun install path in __dirname.
+COPY --chown=65532:65532 --from=build /app/dist/runtime-deps/node_modules/.bun ./node_modules/.bun
 COPY --chown=65532:65532 --from=build /app/scripts/start-container.ts ./scripts/start-container.ts
 USER 65532:65532
 EXPOSE 3000 4111
