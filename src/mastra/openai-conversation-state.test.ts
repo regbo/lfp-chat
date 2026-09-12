@@ -13,6 +13,7 @@ import {
   OpenAiConversationStateProcessor,
   readStoredOpenAiResponseId,
   trimPromptForOpenAiContinuation,
+  withoutLiteLlmResponseState,
 } from "@/mastra/openai-conversation-state";
 
 function message(
@@ -38,6 +39,41 @@ describe("OpenAI conversation state", () => {
     expect(isOpenAiResponsesModel({ provider: "openai.responses" })).toBe(true);
     expect(isOpenAiResponsesModel({ provider: "openai.chat" })).toBe(false);
     expect(isOpenAiResponsesModel({ provider: "ollama.chat" })).toBe(false);
+  });
+
+  test("disables LiteLLM response state on every streamed step", () => {
+    const processor = new OpenAiConversationStateProcessor();
+    const state: Record<string, unknown> = {};
+    const result = processor.processInputStep({
+      messages: [message("user", "Search digestions")],
+      model: {
+        provider: "lfp-litellm.responses",
+        modelId: "chatgpt/gpt-5.6-luna",
+      },
+      providerOptions: {
+        openai: {
+          conversation: "conv_old",
+          previousResponseId: "resp_old",
+          reasoningEffort: "medium",
+        },
+      },
+      state,
+      stepNumber: 1,
+      steps: [{ response: { id: "resp_step" } }],
+    } as unknown as ProcessInputStepArgs);
+
+    expect(result).toEqual({
+      providerOptions: {
+        openai: {
+          reasoningEffort: "medium",
+          store: false,
+          strictJsonSchema: false,
+        },
+      },
+    });
+    expect(withoutLiteLlmResponseState(result?.providerOptions)).toEqual(
+      result?.providerOptions,
+    );
   });
 
   test("keeps current instructions and only input after the chained response", () => {

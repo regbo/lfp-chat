@@ -107,6 +107,22 @@ function openAiOptions(
   return asRecord(asRecord(providerOptions)?.openai) ?? {};
 }
 
+export function withoutLiteLlmResponseState(
+  providerOptions: ProcessInputStepArgs["providerOptions"],
+): ProcessInputStepResult["providerOptions"] {
+  const configuredOpenAi = { ...openAiOptions(providerOptions) };
+  delete configuredOpenAi.previousResponseId;
+  delete configuredOpenAi.conversation;
+  return {
+    ...providerOptions,
+    openai: {
+      ...configuredOpenAi,
+      store: false,
+      strictJsonSchema: false,
+    },
+  };
+}
+
 function withOpenAiState(
   providerOptions: ProcessInputStepArgs["providerOptions"],
   previousResponseId: string | null,
@@ -141,6 +157,20 @@ export class OpenAiConversationStateProcessor implements Processor {
     stepNumber,
     steps,
   }: ProcessInputStepArgs): ProcessInputStepResult | void {
+    if (
+      typeof model === "object" &&
+      nonEmptyString(asRecord(model)?.provider)?.startsWith(
+        "lfp-litellm.responses",
+      )
+    ) {
+      state[STATE_ACTIVE_KEY] = false;
+      state[STATE_CONTINUATION_KEY] = false;
+      state[STATE_LAST_MODEL_KEY] = false;
+      return {
+        providerOptions: withoutLiteLlmResponseState(providerOptions),
+      };
+    }
+
     if (!isOpenAiResponsesModel(model)) {
       state[STATE_ACTIVE_KEY] = false;
       state[STATE_CONTINUATION_KEY] = false;

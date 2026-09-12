@@ -6,6 +6,7 @@ import { webSearchTool } from "@mastra/core/tools";
 
 import { serverConfig } from "@/lib/config";
 import { SCHEDULE_JOB_CONTEXT_KEY } from "@/lib/schedules";
+import { withoutLiteLlmResponseState } from "@/mastra/openai-conversation-state";
 import {
   createAgentCatalog,
   createModelCatalog,
@@ -147,15 +148,9 @@ export function resolveRuntimeOptions(requestContext?: RequestContext) {
   if (liteLlm) {
     return {
       maxSteps: serverConfig.agentMaxSteps,
-      providerOptions: {
-        openai: {
-          // LiteLLM receives the complete Mastra transcript on every streamed
-          // step, so it must not create or continue provider-side response state.
-          store: false,
-          // Several Home tools intentionally have optional search/filter fields.
-          strictJsonSchema: false,
-        },
-      },
+      // The per-step processor applies this again so both Mastra's current and
+      // legacy streaming routes receive the same proxy-safe options.
+      providerOptions: withoutLiteLlmResponseState(undefined),
     };
   }
   const model = cachedModelCatalog.models.find(
