@@ -1,7 +1,13 @@
 import { defineConfig, devices } from "@playwright/test";
+import { readFileSync } from "node:fs";
 
 const port = Number(process.env.PLAYWRIGHT_PORT ?? 3000);
-const baseURL = `http://127.0.0.1:${port}`;
+const externalBaseURL = process.env.PLAYWRIGHT_BASE_URL?.replace(/\/$/, "");
+const baseURL = externalBaseURL ?? `http://127.0.0.1:${port}`;
+const authTokenFile = process.env.PLAYWRIGHT_AUTH_TOKEN_FILE;
+const extraHTTPHeaders = authTokenFile
+  ? { Authorization: `Bearer ${readFileSync(authTokenFile, "utf8").trim()}` }
+  : undefined;
 
 export default defineConfig({
   testDir: "./e2e",
@@ -11,6 +17,7 @@ export default defineConfig({
   reporter: process.env.CI ? "github" : "list",
   use: {
     baseURL,
+    extraHTTPHeaders,
     screenshot: "only-on-failure",
     serviceWorkers: "block",
     trace: "retain-on-failure",
@@ -25,10 +32,12 @@ export default defineConfig({
       use: { ...devices["iPhone 13"] },
     },
   ],
-  webServer: {
-    command: `bun run dev:web --port ${port}`,
-    url: baseURL,
-    reuseExistingServer: !process.env.CI,
-    timeout: 120_000,
-  },
+  webServer: externalBaseURL
+    ? undefined
+    : {
+        command: `bun run dev:web --port ${port}`,
+        url: baseURL,
+        reuseExistingServer: !process.env.CI,
+        timeout: 120_000,
+      },
 });

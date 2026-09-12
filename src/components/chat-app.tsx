@@ -74,7 +74,10 @@ import {
   ToolsPanel,
   type DedicatedToolModelSetting,
 } from "@/components/app-panels";
-import { ToolEventSummary } from "@/components/tool-event-summary";
+import {
+  getToolSummaryLabel,
+  ToolEventSummary,
+} from "@/components/tool-event-summary";
 import { type PendingSteer, SteerQueue } from "@/components/steer-queue";
 import { formatAttachmentLinks } from "@/lib/attachment-links";
 import { DEFAULT_APP_BRANDING, type AppBranding } from "@/lib/app-branding";
@@ -550,6 +553,11 @@ function ChatSubmitButton({
   const emphasizeSubmit = hasPendingSubmission || status === "submitted" || status === "streaming";
   const isGenerating = status === "submitted" || status === "streaming";
   const shouldStop = isGenerating && !hasPendingSubmission;
+  const submitStatus = shouldStop
+    ? status
+    : hasPendingSubmission || status === "error"
+      ? "ready"
+      : status;
 
   return (
     <PromptInputSubmit
@@ -557,7 +565,7 @@ function ChatSubmitButton({
       className="chat-composer-submit bg-foreground text-background hover:bg-foreground/85"
       data-emphasized={emphasizeSubmit}
       onStop={shouldStop ? onStop : undefined}
-      status={shouldStop ? status : hasPendingSubmission ? "ready" : status}
+      status={submitStatus}
     />
   );
 }
@@ -583,7 +591,9 @@ function MessageAttachments({ files }: { files: FileUIPart[] }) {
 
 const INITIAL_RESPONSE_TIMEOUT_MS = 180_000;
 const STREAM_INACTIVITY_TIMEOUT_MS = 180_000;
+const POST_TOOL_RESPONSE_TIMEOUT_MS = 90_000;
 const TOOL_INACTIVITY_TIMEOUT_MS = 10 * 60_000;
+const ABORT_REQUEST_TIMEOUT_MS = 10_000;
 
 type ChatComposerProps = {
   onSubmit: (message: PromptInputMessage) => Promise<void>;
@@ -808,7 +818,8 @@ function ChatMessage({ message, streaming }: { message: UIMessage; streaming: bo
   const isUser = message.role === "user";
   const files = message.parts.filter((part): part is FileUIPart => part.type === "file");
   const hasReasoningPart = message.parts.some((part) => part.type === "reasoning");
-  const showReasoning = !isUser && hasReasoningPart;
+  const showReasoning = !isUser && (hasReasoningPart || tools.length > 0);
+  const reasoningLabel = tools.length > 0 ? getToolSummaryLabel(tools) : undefined;
   const charts = tools.flatMap((part) => {
     const name =
       part.type === "dynamic-tool"
@@ -828,15 +839,21 @@ function ChatMessage({ message, streaming }: { message: UIMessage; streaming: bo
         >
           {showReasoning && (
             <Reasoning isStreaming={streaming && tools.length === 0}>
-              <ReasoningTrigger expandable={Boolean(reasoningText)} />
-              {reasoningText ? (
-                <ReasoningContent>
-                  <MessageResponse>{formatAttachmentLinks(formatCitationMarkers(reasoningText, tools), tools)}</MessageResponse>
+              <ReasoningTrigger
+                className={tools.length > 0 ? "chat-tool-summary-trigger" : undefined}
+                expandable={Boolean(reasoningText) || tools.length > 0}
+                status={reasoningLabel}
+              />
+              {reasoningText || tools.length > 0 ? (
+                <ReasoningContent className="space-y-3">
+                  {reasoningText ? (
+                    <MessageResponse>{formatAttachmentLinks(formatCitationMarkers(reasoningText, tools), tools)}</MessageResponse>
+                  ) : null}
+                  {tools.length > 0 ? <ToolEventSummary detailsOnly parts={tools} /> : null}
                 </ReasoningContent>
               ) : null}
             </Reasoning>
           )}
-          {tools.length > 0 && <ToolEventSummary parts={tools} />}
           {message.parts.map((part, index) => {
             if (part.type === "text") {
               return <MessageResponse key={`${message.id}-text-${index}`}>{formatAttachmentLinks(formatCitationMarkers(part.text, tools), tools)}</MessageResponse>;
@@ -892,6 +909,7 @@ type ActiveChatRun = {
   textOrder: string[];
   toolParts: Map<string, UIMessage["parts"][number]>;
   activeToolCallIds: Set<string>;
+  hasCompletedToolCall: boolean;
   inactivityTimer: number;
   timedOut: boolean;
   terminalSettled: boolean;
@@ -1063,6 +1081,7 @@ function ChatSession({
       case "tool-result": {
         const toolCallId = String(payload.toolCallId ?? "");
         run.activeToolCallIds.delete(toolCallId);
+        run.hasCompletedToolCall = true;
         const previous = run.toolParts.get(toolCallId);
         if (!previous || previous.type !== "dynamic-tool") break;
         run.toolParts.set(toolCallId, {
@@ -1076,6 +1095,7 @@ function ChatSession({
       case "tool-error": {
         const toolCallId = String(payload.toolCallId ?? "");
         run.activeToolCallIds.delete(toolCallId);
+        run.hasCompletedToolCall = true;
         const previous = run.toolParts.get(toolCallId);
         if (!previous || previous.type !== "dynamic-tool") break;
         run.toolParts.set(toolCallId, {
@@ -1118,7 +1138,9 @@ function ChatSession({
       });
     }, run.activeToolCallIds.size > 0
       ? TOOL_INACTIVITY_TIMEOUT_MS
-      : STREAM_INACTIVITY_TIMEOUT_MS);
+      : run.hasCompletedToolCall
+        ? POST_TOOL_RESPONSE_TIMEOUT_MS
+        : STREAM_INACTIVITY_TIMEOUT_MS);
   }, [settleRun, upsertAssistant]);
 
   const runMessage = useCallback(async (
@@ -1141,6 +1163,7 @@ function ChatSession({
       textOrder: [],
       toolParts: new Map(),
       activeToolCallIds: new Set(),
+      hasCompletedToolCall: false,
       inactivityTimer: 0,
       timedOut: false,
       terminalSettled: false,
@@ -1153,9 +1176,6 @@ function ChatSession({
     run.abortRun = () => {
       if (abortPromise) return abortPromise;
       abortPromise = (async () => {
-        await run.accepted;
-        if (run.terminalSettled || !run.runId) return;
-        await agent.abortThread({ resourceId, threadId });
         if (run.timedOut) {
           settleRun(run, {
             status: "error",
@@ -1164,6 +1184,15 @@ function ChatSession({
         } else {
           settleRun(run, { status: "ready" });
         }
+        await Promise.race([
+          run.accepted,
+          new Promise<void>((resolve) => window.setTimeout(resolve, ABORT_REQUEST_TIMEOUT_MS)),
+        ]);
+        if (!run.runId) return;
+        await Promise.race([
+          agent.abortThread({ resourceId, threadId }),
+          new Promise<void>((resolve) => window.setTimeout(resolve, ABORT_REQUEST_TIMEOUT_MS)),
+        ]);
       })();
       return abortPromise;
     };

@@ -61,9 +61,9 @@ test("tool-call details stay within the chat column", async ({ page }) => {
   await page.goto(`/c/${TOOL_LAYOUT_THREAD_ID}`);
   await expect(page.getByText("Tool layout smoke fixture complete.")).toBeVisible();
 
-  await expect(page.getByRole("button", { name: /^Thought for/ })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /Finished 2 tools/ })).toHaveCount(1);
   await page.getByRole("button", { name: /Finished 2 tools/ }).click();
+  await expect(page.getByRole("button", { name: /Finished 2 tools/ })).toHaveCount(1);
   await expect(page.getByText(LONG_TOOL_VALUE, { exact: false }).first()).toBeVisible();
 
   const layout = await page.evaluate(() => {

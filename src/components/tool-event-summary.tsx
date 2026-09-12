@@ -14,6 +14,7 @@ import { Check, ChevronDown, LoaderCircle, Wrench } from "lucide-react";
 
 type ToolEventSummaryProps = {
   parts: ToolPart[];
+  detailsOnly?: boolean;
 };
 
 function getToolName(part: ToolPart) {
@@ -51,11 +52,41 @@ function getCompletedToolLabel(parts: ToolPart[]) {
         .join(" · ")}`;
 }
 
-export function ToolEventSummary({ parts }: ToolEventSummaryProps) {
+export function getToolSummaryLabel(parts: ToolPart[]) {
+  return getRunningToolLabel(parts) ?? getCompletedToolLabel(parts);
+}
+
+function ToolEventDetails({ parts }: { parts: ToolPart[] }) {
+  return (
+    <div className="space-y-3 rounded-xl border border-border/65 bg-muted/15 p-3 text-foreground">
+      {parts.map((part, index) => {
+        const output = "output" in part ? part.output : undefined;
+        const errorText = "errorText" in part ? part.errorText : undefined;
+
+        return (
+          <section
+            className={index > 0 ? "border-t border-border/65 pt-3" : undefined}
+            key={`${part.toolCallId}-${index}`}
+          >
+            <div className="chat-tool-section-title mb-2 flex items-center gap-2 font-medium text-muted-foreground">
+              <Wrench className="size-3.5" />
+              <span>{index + 1}. {getToolName(part)}</span>
+            </div>
+            <div className="space-y-3">
+              <ToolInput input={part.input} />
+              <ToolOutput errorText={errorText} output={output} />
+            </div>
+          </section>
+        );
+      })}
+    </div>
+  );
+}
+
+export function ToolEventSummary({ detailsOnly = false, parts }: ToolEventSummaryProps) {
+  if (detailsOnly) return <ToolEventDetails parts={parts} />;
   const running = parts.some(isToolRunning);
-  const label = running
-    ? getRunningToolLabel(parts)
-    : getCompletedToolLabel(parts);
+  const label = getToolSummaryLabel(parts);
 
   return (
     <Collapsible className="group/tool-summary not-prose w-full text-muted-foreground">
@@ -68,27 +99,8 @@ export function ToolEventSummary({ parts }: ToolEventSummaryProps) {
         <span className="min-w-0 flex-1 truncate text-left">{label}</span>
         <ChevronDown className="size-3.5 shrink-0 transition-transform group-data-[state=open]/tool-summary:rotate-180" />
       </CollapsibleTrigger>
-      <CollapsibleContent className="mt-1 space-y-3 rounded-xl border border-border/65 bg-muted/15 p-3 text-foreground">
-        {parts.map((part, index) => {
-          const output = "output" in part ? part.output : undefined;
-          const errorText = "errorText" in part ? part.errorText : undefined;
-
-          return (
-            <section
-              className={index > 0 ? "border-t border-border/65 pt-3" : undefined}
-              key={`${part.toolCallId}-${index}`}
-            >
-              <div className="chat-tool-section-title mb-2 flex items-center gap-2 font-medium text-muted-foreground">
-                <Wrench className="size-3.5" />
-                <span>{index + 1}. {getToolName(part)}</span>
-              </div>
-              <div className="space-y-3">
-                <ToolInput input={part.input} />
-                <ToolOutput errorText={errorText} output={output} />
-              </div>
-            </section>
-          );
-        })}
+      <CollapsibleContent className="mt-1">
+        <ToolEventDetails parts={parts} />
       </CollapsibleContent>
     </Collapsible>
   );

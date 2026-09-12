@@ -82,7 +82,7 @@ export const windmillStatusTool = createTool({
 export const windmillDigestionSearchTool = createTool({
   id: "windmill_digestion_search",
   description:
-    "Search successfully processed email digestions using indexed full text over subject, sender, and body. Continue with the returned cursor when more results are needed.",
+    "Search historical processed email digestions and summaries. Prefer search_gmail for current mailbox questions; use this when a generated digestion or processed-only view is specifically needed. Continue with the returned cursor when more results are needed.",
   strict: true,
   inputSchema: windmillDigestionSearchInputSchema,
   outputSchema: digestionPageSchema,
