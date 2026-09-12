@@ -129,6 +129,18 @@ function selectionFromRequestContext(requestContext?: RequestContext) {
   });
 }
 
+export function openAiReasoningProviderOptions(
+  reasoningEffort: ModelSelection["reasoningEffort"],
+) {
+  if (!reasoningEffort) return undefined;
+  return {
+    openai: {
+      reasoningEffort,
+      ...(reasoningEffort === "none" ? {} : { reasoningSummary: "auto" }),
+    },
+  };
+}
+
 export function resolveRuntimeModel(requestContext?: RequestContext) {
   if (requestContext?.get(SCHEDULE_JOB_CONTEXT_KEY) === true) {
     return localOllama.chat(serverConfig.scheduledModelName);
@@ -150,7 +162,9 @@ export function resolveRuntimeOptions(requestContext?: RequestContext) {
       maxSteps: serverConfig.agentMaxSteps,
       // The per-step processor applies this again so both Mastra's current and
       // legacy streaming routes receive the same proxy-safe options.
-      providerOptions: withoutLiteLlmResponseState(undefined),
+      providerOptions: withoutLiteLlmResponseState(
+        openAiReasoningProviderOptions(selection.reasoningEffort),
+      ),
     };
   }
   const model = cachedModelCatalog.models.find(
@@ -160,13 +174,8 @@ export function resolveRuntimeOptions(requestContext?: RequestContext) {
   return {
     maxSteps: serverConfig.agentMaxSteps,
     providerOptions:
-      model?.provider === "openai" && selection.reasoningEffort
-        ? {
-            openai: {
-              reasoningEffort: selection.reasoningEffort,
-              reasoningSummary: "auto",
-            },
-          }
+      model?.provider === "openai"
+        ? openAiReasoningProviderOptions(selection.reasoningEffort)
         : undefined,
   };
 }

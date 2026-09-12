@@ -3,11 +3,25 @@ import { RequestContext } from "@mastra/core/request-context";
 
 import { SCHEDULE_JOB_CONTEXT_KEY } from "@/lib/schedules";
 import {
+  openAiReasoningProviderOptions,
   resolveBackgroundModel,
   resolveRuntimeModel,
 } from "@/mastra/model-provider";
 
 describe("model provider isolation", () => {
+  test("requests visible reasoning summaries only when reasoning is enabled", () => {
+    expect(openAiReasoningProviderOptions("medium")).toEqual({
+      openai: {
+        reasoningEffort: "medium",
+        reasoningSummary: "auto",
+      },
+    });
+    expect(openAiReasoningProviderOptions("none")).toEqual({
+      openai: { reasoningEffort: "none" },
+    });
+    expect(openAiReasoningProviderOptions(null)).toBeUndefined();
+  });
+
   test("routes scheduled work to local Ollama and chat to the configured provider", () => {
     const scheduled = new RequestContext();
     scheduled.set(SCHEDULE_JOB_CONTEXT_KEY, true);
