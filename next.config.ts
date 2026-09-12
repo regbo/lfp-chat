@@ -1,6 +1,10 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  allowedDevOrigins: [
+    "chat.regbodesktop.pipe.lfpconnect.io",
+    "home.pipe.lfpconnect.io",
+  ],
   devIndicators: false,
   output: "standalone",
   async headers() {
