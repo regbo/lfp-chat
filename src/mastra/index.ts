@@ -30,6 +30,7 @@ import {
 import { registerDashboardMastraTools } from "@/lib/dashboard-runtime";
 import { OpenAiConversationStateProcessor } from "@/mastra/openai-conversation-state";
 import { LazyExtensionPgVector } from "@/mastra/lazy-pg-vector";
+import { SignalSemanticRecallProcessor } from "@/mastra/signal-semantic-recall";
 
 export type LfpChatMastraCustomization = {
   /** Keyed native Mastra tool overrides; existing keys update and new keys register. */
@@ -135,6 +136,7 @@ export function createLfpChatMastra(
       observationalMemory: false,
     },
   });
+  const signalSemanticRecall = new SignalSemanticRecallProcessor(memory);
   const openAiConversationState = new OpenAiConversationStateProcessor();
 
   const baseChatAgentConfig: AgentConfig = {
@@ -143,7 +145,7 @@ export function createLfpChatMastra(
     description: "A concise, tool-capable assistant with persistent memory.",
     model: ({ requestContext }) => resolveRuntimeModel(requestContext),
     memory,
-    inputProcessors: [openAiConversationState],
+    inputProcessors: [signalSemanticRecall, openAiConversationState],
     outputProcessors: [openAiConversationState],
     errorProcessors: [openAiConversationState],
     tools: async ({ requestContext }) => {
