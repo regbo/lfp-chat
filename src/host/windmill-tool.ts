@@ -9,6 +9,8 @@ const digestItemSchema = z.object({
   subject: z.string().nullable(),
   sender_name: z.string().nullable(),
   sender_address: z.string().nullable(),
+  to: z.array(z.string()),
+  cc: z.array(z.string()),
   sent_at: z.string().nullable(),
   first_seen_at: z.string(),
   gmail_account: z.string().nullable(),
@@ -24,6 +26,7 @@ const digestItemSchema = z.object({
   actions: z.array(z.string()),
   dates: z.array(z.string()),
   people: z.array(z.string()),
+  facts: z.array(z.string()),
 });
 
 const digestionPageSchema = z.object({

@@ -13,11 +13,11 @@ This repository is a reusable chat package plus an LFP Home host. Preserve that 
   content or result URL when available; reserve `/scheduled` for schedule-management alerts.
 - Resource-scoped working memory may retain household access details only after an explicit user
   request. Passwords, API keys, authentication and recovery tokens, private keys, card details, and
-  financial credentials remain excluded. Graphiti is reserved for knowledge derived from ingested
-  Home sources such as emails, documents, and attachments.
+  financial credentials remain excluded. Graphiti is reserved for dated, curated knowledge such as
+  facts emitted by the Windmill email-digest flow. Raw mailbox bodies do not belong in Graphiti.
 - Sidebar chat links suppress Safari's long-press preview because the row owns its touch actions.
   Running rows use the expanded action-width title fade so loading controls do not cover text.
-- Home-managed read tools for PostgreSQL schema, email, attachments, Graphiti, and Kestra remain MCP
+- Home-managed read tools for PostgreSQL schema, email, attachments, and Graphiti remain MCP
   sources. Do not port their clients into this package. Home-only HTTP adapters are appropriate when
   they remain thin clients and preserve native Mastra streaming events.
 - The Home chat agent uses the OpenAI-compatible LFP LiteLLM proxy and its cached ChatGPT
