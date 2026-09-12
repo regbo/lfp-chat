@@ -39,3 +39,14 @@ outside CI. Otherwise it starts `bun run dev:web` itself. Set `PLAYWRIGHT_PORT`
 when that port is unavailable and no other Next.js process is running from this
 checkout. Failure screenshots and traces are written under the ignored
 `test-results` directory.
+
+To exercise a deployed Authentik-protected app, provide the remote origin and a file containing a
+fresh provider JWT. Playwright reads the token at startup and adds it only as a bearer header:
+
+```powershell
+$env:PLAYWRIGHT_BASE_URL='https://home.lfpconnect.io'
+$env:PLAYWRIGHT_AUTH_TOKEN_FILE='C:\path\to\authentik\access-token'
+bun run smoke --project=mobile-webkit
+```
+
+Remote mode does not start or reuse the local web server.
