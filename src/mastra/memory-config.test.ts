@@ -15,6 +15,7 @@ describe("Mastra memory", () => {
     });
     expect(config.observationalMemory).toMatchObject({
       enabled: true,
+      model: "openai/gpt-5.6-luna",
       scope: "thread",
       observation: { manageWorkingMemory: true },
     });

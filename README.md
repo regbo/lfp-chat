@@ -289,17 +289,20 @@ REASONING_EFFORT=medium
 OPENAI_API_KEY=...
 ```
 
-For OpenAI Responses models, Mastra still owns the PostgreSQL transcript, while
-an agent processor chains OpenAI's stored response ID. Provider requests keep
-the current instructions and new turn or tool output instead of replaying the
-last 24 messages. If a stored response has expired, the agent retries once from
-the local transcript and starts a fresh chain. This reduces request payload and
-history bookkeeping; prior context still counts toward the model context and
-input-token billing.
+For OpenAI Responses models, Mastra owns the PostgreSQL transcript. When the
+OpenAI-compatible endpoint is a LiteLLM proxy, an agent processor explicitly
+removes `previous_response_id` and `conversation`, disables provider-side
+storage, and sends the transcript needed for every step. This keeps tool loops
+stateless at the proxy and avoids stale stored-response failures.
+
+Observational Memory also uses the interactive provider. Although most
+observation buffering is asynchronous, Mastra can run compression as an input
+processor when a thread reaches its safety threshold; using the slow local
+background model there can block the entire chat turn.
 
 Scheduled automation remains on the private local Ollama route. A host can send
-lightweight background UI work to a separate CPU runtime without changing
-scheduled or user-selected chat routing:
+nonblocking starter-suggestion work to a separate CPU runtime without changing
+scheduled, user-selected chat, or observational-memory routing:
 
 ```env
 OLLAMA_MODEL_BASE_URL=http://127.0.0.1:11434/v1

@@ -8,7 +8,6 @@ import { PostgresStore } from "@mastra/pg";
 import { serverConfig } from "@/lib/config";
 import {
   modelProvider,
-  resolveBackgroundModel,
   resolveRuntimeModel,
   resolveRuntimeOptions,
 } from "@/mastra/model-provider";
@@ -113,7 +112,10 @@ export function createLfpChatMastra(
       },
       observationalMemory: {
         enabled: true,
-        model: resolveBackgroundModel(),
+        // Observational Memory is an input processor when a thread crosses its
+        // compression threshold. Route it through the same reliable provider
+        // as interactive chat so a slow local model cannot tripwire the turn.
+        model: resolveRuntimeModel(),
         // Keep observations isolated to a conversation. Working memory remains
         // resource-scoped so the compact user profile is still shared.
         scope: "thread",
