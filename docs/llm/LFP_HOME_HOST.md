@@ -22,6 +22,8 @@ This repository is a reusable chat package plus an LFP Home host. Preserve that 
   they remain thin clients and preserve native Mastra streaming events.
 - The Home chat agent uses the OpenAI-compatible LFP LiteLLM proxy and its cached ChatGPT
   subscription route. Configure `OPENAI_BASE_URL` for the proxy and use a `chatgpt/*` model name.
+  The proxy route streams through the Responses API without sending `previous_response_id`;
+  Mastra's PostgreSQL transcript remains the source of conversation history.
   Local Ollama remains available only for background and scheduled UI assistance.
 - The host-only Windmill adapter is read-only. It calls scoped scripts for processing status,
   processed-digestion search, and processed financial-transaction search. It does not submit LLM

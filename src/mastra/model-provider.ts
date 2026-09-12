@@ -44,7 +44,9 @@ const webOllama = createOpenAI({
 });
 const liteLlm = serverConfig.openaiBaseUrl
   ? createOpenAI({
-      name: "openai",
+      // Keep the Responses transport, but use a proxy-specific provider name so
+      // the SDK cannot carry OpenAI previous_response_id state across tool steps.
+      name: "lfp-litellm",
       baseURL: serverConfig.openaiBaseUrl,
       apiKey: serverConfig.openaiApiKey || "local-subscription-bridge",
     })
@@ -132,7 +134,7 @@ export function resolveRuntimeModel(requestContext?: RequestContext) {
   }
   const selection = selectionFromRequestContext(requestContext);
   if (liteLlm) {
-    return liteLlm.chat(selection.modelId.split("/").slice(1).join("/"));
+    return liteLlm.responses(selection.modelId.split("/").slice(1).join("/"));
   }
   return selection.modelId as ModelRouterModelId;
 }
@@ -149,7 +151,7 @@ export function resolveRuntimeOptions(requestContext?: RequestContext) {
   return {
     maxSteps: serverConfig.agentMaxSteps,
     providerOptions:
-      model?.provider === "openai" && selection.reasoningEffort
+      model?.provider === "openai" && selection.reasoningEffort && !liteLlm
         ? {
             openai: {
               reasoningEffort: selection.reasoningEffort,
@@ -204,7 +206,7 @@ export const modelProvider = {
   id: serverConfig.modelProvider,
   modelName: serverConfig.modelName,
   // Mastra's model router resolves this provider/model identifier directly.
-  model: liteLlm?.chat(serverConfig.modelName) ??
+  model: liteLlm?.responses(serverConfig.modelName) ??
     serverConfig.modelId as ModelRouterModelId,
   tools: providerTools,
   capabilityInstructions,
