@@ -320,6 +320,12 @@ export const serverConfig = {
     ),
   },
   agentMaxSteps: boundedInteger("MASTRA_AGENT_MAX_STEPS", 16, 1, 40),
+  agentMaxOutputTokens: boundedInteger(
+    "MASTRA_AGENT_MAX_OUTPUT_TOKENS",
+    16_384,
+    1,
+    128_000,
+  ),
   openaiApiKey: secretValue("OPENAI_API_KEY", "OPENAI_API_KEY_FILE"),
   openaiBaseUrl: optionalHttpUrl("OPENAI_BASE_URL"),
   togetherApiKey: secretValue("TOGETHER_API_KEY", "TOGETHER_API_KEY_FILE"),

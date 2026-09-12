@@ -153,10 +153,14 @@ export function resolveRuntimeModel(requestContext?: RequestContext) {
 
 export function resolveRuntimeOptions(requestContext?: RequestContext) {
   const selection = selectionFromRequestContext(requestContext);
+  const modelSettings = {
+    ...openAiReasoningModelSettings(selection.reasoningEffort),
+    maxOutputTokens: serverConfig.agentMaxOutputTokens,
+  };
   if (liteLlm) {
     return {
       maxSteps: serverConfig.agentMaxSteps,
-      modelSettings: openAiReasoningModelSettings(selection.reasoningEffort),
+      modelSettings,
       // The per-step processor applies this again so both Mastra's current and
       // legacy streaming routes receive the same proxy-safe options.
       providerOptions: withoutLiteLlmResponseState(
@@ -172,7 +176,7 @@ export function resolveRuntimeOptions(requestContext?: RequestContext) {
     maxSteps: serverConfig.agentMaxSteps,
     modelSettings:
       model?.provider === "openai"
-        ? openAiReasoningModelSettings(selection.reasoningEffort)
+        ? modelSettings
         : undefined,
     providerOptions:
       model?.provider === "openai"

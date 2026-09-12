@@ -7,6 +7,7 @@ import {
   openAiReasoningProviderOptions,
   resolveBackgroundModel,
   resolveRuntimeModel,
+  resolveRuntimeOptions,
 } from "@/mastra/model-provider";
 
 describe("model provider isolation", () => {
@@ -34,5 +35,12 @@ describe("model provider isolation", () => {
     expect(resolveRuntimeModel(scheduled)).toBe("openai/gpt-5.6-luna");
     expect(resolveBackgroundModel()).toBe("openai/gpt-5.6-luna");
     expect(resolveRuntimeModel(new RequestContext())).toBe("openai/gpt-5.6-luna");
+  });
+
+  test("allows chat responses to use the configured 16K output ceiling", () => {
+    expect(resolveRuntimeOptions(new RequestContext()).modelSettings).toEqual({
+      reasoning: "medium",
+      maxOutputTokens: 16_384,
+    });
   });
 });
