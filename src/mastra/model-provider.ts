@@ -144,6 +144,20 @@ export function resolveRuntimeOptions(requestContext?: RequestContext) {
     return { maxSteps: serverConfig.agentMaxSteps, providerOptions: undefined };
   }
   const selection = selectionFromRequestContext(requestContext);
+  if (liteLlm) {
+    return {
+      maxSteps: serverConfig.agentMaxSteps,
+      providerOptions: {
+        openai: {
+          // LiteLLM receives the complete Mastra transcript on every streamed
+          // step, so it must not create or continue provider-side response state.
+          store: false,
+          // Several Home tools intentionally have optional search/filter fields.
+          strictJsonSchema: false,
+        },
+      },
+    };
+  }
   const model = cachedModelCatalog.models.find(
     (candidate) => candidate.id === selection.modelId,
   );
@@ -151,7 +165,7 @@ export function resolveRuntimeOptions(requestContext?: RequestContext) {
   return {
     maxSteps: serverConfig.agentMaxSteps,
     providerOptions:
-      model?.provider === "openai" && selection.reasoningEffort && !liteLlm
+      model?.provider === "openai" && selection.reasoningEffort
         ? {
             openai: {
               reasoningEffort: selection.reasoningEffort,
