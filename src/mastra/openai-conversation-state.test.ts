@@ -57,6 +57,12 @@ describe("OpenAI conversation state", () => {
           reasoningEffort: "medium",
         },
       },
+      tools: {
+        windmill_digestion_search: {
+          description: "Search processed digestions",
+          strict: true,
+        },
+      },
       state,
       stepNumber: 1,
       steps: [{ response: { id: "resp_step" } }],
@@ -68,6 +74,12 @@ describe("OpenAI conversation state", () => {
           reasoningEffort: "medium",
           store: false,
           strictJsonSchema: false,
+        },
+      },
+      tools: {
+        windmill_digestion_search: {
+          description: "Search processed digestions",
+          strict: false,
         },
       },
     });

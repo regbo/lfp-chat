@@ -123,6 +123,16 @@ export function withoutLiteLlmResponseState(
   };
 }
 
+function withoutStrictToolSchemas(tools: ProcessInputStepArgs["tools"]) {
+  if (!tools) return undefined;
+  return Object.fromEntries(
+    Object.entries(tools).map(([id, tool]) => {
+      const configured = asRecord(tool);
+      return [id, configured ? { ...configured, strict: false } : tool];
+    }),
+  );
+}
+
 function withOpenAiState(
   providerOptions: ProcessInputStepArgs["providerOptions"],
   previousResponseId: string | null,
@@ -156,6 +166,7 @@ export class OpenAiConversationStateProcessor implements Processor {
     state,
     stepNumber,
     steps,
+    tools,
   }: ProcessInputStepArgs): ProcessInputStepResult | void {
     if (
       typeof model === "object" &&
@@ -168,6 +179,10 @@ export class OpenAiConversationStateProcessor implements Processor {
       state[STATE_LAST_MODEL_KEY] = false;
       return {
         providerOptions: withoutLiteLlmResponseState(providerOptions),
+        // AI SDK 7 promotes Mastra tools to strict schemas individually. Home
+        // tools intentionally use optional search/filter fields, so the proxy
+        // route must opt each function tool out of strict mode.
+        tools: withoutStrictToolSchemas(tools),
       };
     }
 
