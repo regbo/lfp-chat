@@ -112,7 +112,6 @@ import {
 } from "@/lib/model-catalog";
 import { cn } from "@/lib/utils";
 import { readableError } from "@/lib/readable-error";
-import { truncateToolValue } from "@/lib/tool-output";
 import { SCHEDULE_TIMEZONE_CONTEXT_KEY } from "@/lib/schedules";
 import {
   fallbackStarterSuggestions,
@@ -1087,7 +1086,7 @@ function ChatSession({
         run.toolParts.set(toolCallId, {
           ...previous,
           state: "output-available",
-          output: truncateToolValue(payload.result ?? payload.output),
+          output: payload.result ?? payload.output,
         } as UIMessage["parts"][number]);
         upsertAssistant(run);
         break;

@@ -14,7 +14,18 @@ async function proxy(
     serverConfig.mastraApiUrl,
   );
   const headers = new Headers(request.headers);
-  headers.delete("host");
+  for (const name of [
+    "connection",
+    "content-length",
+    "host",
+    "keep-alive",
+    "proxy-authenticate",
+    "proxy-authorization",
+    "te",
+    "trailer",
+    "transfer-encoding",
+    "upgrade",
+  ]) headers.delete(name);
   let body: BodyInit | null | undefined;
   let claimedResourceId = sourceUrl.searchParams.get("resourceId");
   if (request.method !== "GET" && request.method !== "HEAD") {

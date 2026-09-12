@@ -8,8 +8,14 @@ import { serverConfig } from "@/lib/config";
 import { mastra } from "@/mastra/runtime";
 import { getModelCatalog } from "@/mastra/model-provider";
 import { runDashboardWidget } from "@/mastra/dashboard-refresh";
+import { withSseHeartbeat } from "@/server/sse-heartbeat";
 
 const app = new Hono();
+
+app.use("/api/agents/*/threads/subscribe", async (context, next) => {
+  await next();
+  context.res = withSseHeartbeat(context.res);
+});
 
 app.use(
   "*",
