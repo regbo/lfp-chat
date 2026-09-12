@@ -29,6 +29,11 @@ import {
 import { registerDashboardMastraTools } from "@/lib/dashboard-runtime";
 import { OpenAiConversationStateProcessor } from "@/mastra/openai-conversation-state";
 
+// Mastra defaults blockAfter to 1.2x the compression threshold, which lets an
+// Observer or Reflector LLM call run synchronously in the foreground. Keep the
+// processors on their server-side buffering paths for every realizable context.
+const ASYNC_MEMORY_BLOCK_AFTER_TOKENS = Number.MAX_SAFE_INTEGER;
+
 export type LfpChatMastraCustomization = {
   /** Keyed native Mastra tool overrides; existing keys update and new keys register. */
   configureTools?: LfpChatToolRegistryOverrides;
@@ -120,7 +125,13 @@ export function createLfpChatMastra(
         // resource-scoped so the compact user profile is still shared.
         scope: "thread",
         observation: {
+          bufferTokens: 0.2,
+          blockAfter: ASYNC_MEMORY_BLOCK_AFTER_TOKENS,
           manageWorkingMemory: true,
+        },
+        reflection: {
+          bufferActivation: 0.5,
+          blockAfter: ASYNC_MEMORY_BLOCK_AFTER_TOKENS,
         },
       },
     },

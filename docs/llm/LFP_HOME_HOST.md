@@ -7,9 +7,10 @@ This repository is a reusable chat package plus an LFP Home host. Preserve that 
   embeddings. Keep `src/host/transaction-tool.ts` out of public package entrypoints.
 - Mastra owns chat history and long-term conversational memory through its PostgreSQL-backed memory
   system. Observational Memory summarizes each thread through the interactive chat provider and
-  manages the small resource-scoped working-memory profile. It can run synchronously as an input
-  processor when a thread crosses its compression threshold, so do not route it to the slower local
-  background model. Ordinary tool results and ingested Home content do not belong in that profile.
+  manages the small resource-scoped working-memory profile. Keep Observer and Reflector buffering
+  explicitly enabled and their `blockAfter` thresholds beyond any realizable context so Mastra never
+  falls back to a foreground LLM call. Ordinary tool results and ingested Home content do not belong
+  in that profile.
 - Notifications accept an optional app path or absolute HTTP(S) URL and default to `/`. Use the
   content or result URL when available; reserve `/scheduled` for schedule-management alerts.
 - Resource-scoped working memory may retain household access details only after an explicit user
@@ -25,7 +26,7 @@ This repository is a reusable chat package plus an LFP Home host. Preserve that 
   subscription route. Configure `OPENAI_BASE_URL` for the proxy and use a `chatgpt/*` model name.
   The proxy route streams through the Responses API without sending `previous_response_id`;
   Mastra's PostgreSQL transcript remains the source of conversation history.
-  Observational Memory uses this same provider because compression can block a foreground turn.
+  Observational Memory uses this same provider from server-side asynchronous buffering jobs.
   Local Ollama remains available for nonblocking starter suggestions and scheduled UI assistance.
 - The host-only Windmill adapter is read-only. It calls scoped scripts for processing status,
   processed-digestion search, and processed financial-transaction search. It does not submit LLM

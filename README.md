@@ -295,10 +295,10 @@ removes `previous_response_id` and `conversation`, disables provider-side
 storage, and sends the transcript needed for every step. This keeps tool loops
 stateless at the proxy and avoids stale stored-response failures.
 
-Observational Memory also uses the interactive provider. Although most
-observation buffering is asynchronous, Mastra can run compression as an input
-processor when a thread reaches its safety threshold; using the slow local
-background model there can block the entire chat turn.
+Observational Memory also uses the interactive provider. Observer and Reflector
+buffering run server-side, and their synchronous `blockAfter` fallbacks are set
+beyond any realizable model context. The browser only queues the message and
+subscribes to the resulting Mastra stream.
 
 Scheduled automation remains on the private local Ollama route. A host can send
 nonblocking starter-suggestion work to a separate CPU runtime without changing

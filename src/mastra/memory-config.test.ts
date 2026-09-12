@@ -17,7 +17,15 @@ describe("Mastra memory", () => {
       enabled: true,
       model: "openai/gpt-5.6-luna",
       scope: "thread",
-      observation: { manageWorkingMemory: true },
+      observation: {
+        bufferTokens: 0.2,
+        blockAfter: Number.MAX_SAFE_INTEGER,
+        manageWorkingMemory: true,
+      },
+      reflection: {
+        bufferActivation: 0.5,
+        blockAfter: Number.MAX_SAFE_INTEGER,
+      },
     });
     expect(memory.listTools()).not.toHaveProperty("updateWorkingMemory");
     expect(memory.listTools()).not.toHaveProperty("setWorkingMemory");
