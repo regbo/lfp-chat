@@ -3,7 +3,8 @@ import type { AgentConfig } from "@mastra/core/agent";
 import { Mastra } from "@mastra/core/mastra";
 import type { Config as MastraConfig } from "@mastra/core/mastra";
 import { Memory } from "@mastra/memory";
-import { PostgresStore } from "@mastra/pg";
+import { PgVector, PostgresStore } from "@mastra/pg";
+import { ModelRouterEmbeddingModel } from "@mastra/core/llm";
 
 import { serverConfig } from "@/lib/config";
 import {
@@ -90,11 +91,28 @@ export function createLfpChatMastra(
     id: "lfp-chat-postgres",
     connectionString: serverConfig.databaseUrl,
   });
+  const vector = new PgVector({
+    id: "lfp-chat-memory-vectors",
+    connectionString: serverConfig.databaseUrl,
+  });
+  const memoryEmbedder = new ModelRouterEmbeddingModel({
+    providerId: "together",
+    modelId: serverConfig.memoryEmbeddingModel,
+    url: "https://api.together.xyz/v1",
+    apiKey: serverConfig.togetherApiKey || "together-not-configured",
+  });
 
   const memory = new Memory({
     storage,
+    vector,
+    embedder: memoryEmbedder,
     options: {
       lastMessages: 24,
+      semanticRecall: {
+        scope: "resource",
+        topK: 5,
+        messageRange: { before: 2, after: 2 },
+      },
       generateTitle: true,
       workingMemory: {
         enabled: true,
@@ -171,7 +189,9 @@ ${chartInstructions}
 
 ${DEFAULT_WRITING_STYLE_INSTRUCTIONS}
 
-Mastra working memory maintains stable user preferences and household facts in PostgreSQL.
+Mastra keeps recent messages, cross-thread semantic recall, and stable working memory in PostgreSQL.
+Together embeddings power semantic recall. Graphiti is the separate dated household-fact memory and
+is available through search_home_graph; use it automatically for relevant household history.
 Ordinary query results, transaction rows, emails, attachments, and tool output are not user-profile
 memory and must not be copied into working memory. Household access details such as garage, gate,
 lockbox, door, or alarm codes may be retained only when the user explicitly asks. Never retain
