@@ -44,8 +44,10 @@ To exercise a deployed Authentik-protected app, provide the remote origin and a 
 fresh provider JWT. Playwright reads the token at startup and adds it only as a bearer header:
 
 ```powershell
+$env:AUTHENTIK_BROWSER_TEST_SECRET_DIR='C:\path\to\authentik\lfp-chat-browser-test'
+bun run authentik:test-token
 $env:PLAYWRIGHT_BASE_URL='https://home.lfpconnect.io'
-$env:PLAYWRIGHT_AUTH_TOKEN_FILE='C:\path\to\authentik\access-token'
+$env:PLAYWRIGHT_AUTH_TOKEN_FILE="$env:AUTHENTIK_BROWSER_TEST_SECRET_DIR\access-token"
 bun run smoke --project=mobile-webkit
 ```
 

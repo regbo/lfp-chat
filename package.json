@@ -37,6 +37,7 @@
     "start:mastra": "MASTRA_HOST=127.0.0.1 bun dist/server/index.js",
     "start:caddy": "bun scripts/caddy.ts",
     "caddy:check": "bun scripts/caddy.ts --check",
+    "authentik:test-token": "bun scripts/refresh-authentik-browser-token.ts",
     "smoke": "playwright test",
     "smoke:install": "playwright install chromium webkit",
     "lint": "eslint",
