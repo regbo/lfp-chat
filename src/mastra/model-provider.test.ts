@@ -27,18 +27,12 @@ describe("model provider isolation", () => {
     expect(openAiReasoningModelSettings(null)).toBeUndefined();
   });
 
-  test("routes scheduled work to local Ollama and chat to the configured provider", () => {
+  test("routes scheduled, background, and chat work to the hosted provider", () => {
     const scheduled = new RequestContext();
     scheduled.set(SCHEDULE_JOB_CONTEXT_KEY, true);
 
-    const scheduledModel = resolveRuntimeModel(scheduled);
-    expect(typeof scheduledModel).toBe("object");
-    if (typeof scheduledModel === "object") {
-      expect(scheduledModel.provider).toBe("ollama.chat");
-    }
-
-    expect(resolveBackgroundModel().provider).toBe("web-ollama.chat");
-
+    expect(resolveRuntimeModel(scheduled)).toBe("openai/gpt-5.6-luna");
+    expect(resolveBackgroundModel()).toBe("openai/gpt-5.6-luna");
     expect(resolveRuntimeModel(new RequestContext())).toBe("openai/gpt-5.6-luna");
   });
 });

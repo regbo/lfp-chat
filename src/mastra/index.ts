@@ -175,10 +175,7 @@ export function createLfpChatMastra(
         requestContext.get(SCHEDULE_JOB_CONTEXT_KEY) === true
           ? "This run belongs to a scheduled job with its own private history. Use job_memory_recall before answering whenever the task asks for novelty, non-repetition, continuity, or comparison with prior runs. If this job can create tasks or task lists, inspect the current open tasks and lists before writing. Treat matching source links or substantially equivalent titles and purposes as the same work: update the existing task instead of creating another. Never evade task_create's created=false result by rewording a duplicate. Use notification_send when the job prompt asks for a user alert, keeping the alert concise. Set its URL to the exact source or result the alert is about when available; use a relevant app page otherwise, and use /scheduled only for schedule-management alerts. Previous outputs are recorded automatically; never use another job or ordinary chat as this job's memory."
           : "";
-      const providerInstructions =
-        requestContext.get(SCHEDULE_JOB_CONTEXT_KEY) === true
-          ? "This scheduled run uses local Ollama only."
-          : modelProvider.capabilityInstructions;
+      const providerInstructions = modelProvider.capabilityInstructions;
       const chartInstructions =
         "For render_chart, pass ordered tabular data as columns plus aligned rows. Put the label or time axis first and numeric series after it.";
       return `You are ${serverConfig.appBranding.fullName}, a capable and concise assistant.

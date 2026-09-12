@@ -5,7 +5,6 @@ import type { RequestContext } from "@mastra/core/request-context";
 import { webSearchTool } from "@mastra/core/tools";
 
 import { serverConfig } from "@/lib/config";
-import { SCHEDULE_JOB_CONTEXT_KEY } from "@/lib/schedules";
 import { withoutLiteLlmResponseState } from "@/mastra/openai-conversation-state";
 import {
   createAgentCatalog,
@@ -33,16 +32,6 @@ let modelCatalogExpiresAt = 0;
 let pendingModelCatalog: Promise<typeof cachedModelCatalog> | null = null;
 
 const MODEL_CATALOG_TTL_MS = 10 * 60 * 1_000;
-const localOllama = createOpenAI({
-  name: "ollama",
-  baseURL: serverConfig.localModelBaseUrl,
-  apiKey: "local-bridge",
-});
-const webOllama = createOpenAI({
-  name: "web-ollama",
-  baseURL: serverConfig.webModelBaseUrl,
-  apiKey: "local-bridge",
-});
 const liteLlm = serverConfig.openaiBaseUrl
   ? createOpenAI({
       // Keep the Responses transport, but use a proxy-specific provider name so
@@ -53,9 +42,10 @@ const liteLlm = serverConfig.openaiBaseUrl
     })
   : undefined;
 
-/** Use the inexpensive local model for background UI assistance. */
+/** Keep background UI assistance on the same hosted provider as chat. */
 export function resolveBackgroundModel() {
-  return webOllama.chat(serverConfig.webModelName);
+  return liteLlm?.responses(serverConfig.modelName) ??
+    serverConfig.modelId as ModelRouterModelId;
 }
 
 type OpenAiModelsResponse = {
@@ -154,9 +144,6 @@ export function openAiReasoningModelSettings(
 }
 
 export function resolveRuntimeModel(requestContext?: RequestContext) {
-  if (requestContext?.get(SCHEDULE_JOB_CONTEXT_KEY) === true) {
-    return localOllama.chat(serverConfig.scheduledModelName);
-  }
   const selection = selectionFromRequestContext(requestContext);
   if (liteLlm) {
     return liteLlm.responses(selection.modelId.split("/").slice(1).join("/"));
@@ -165,9 +152,6 @@ export function resolveRuntimeModel(requestContext?: RequestContext) {
 }
 
 export function resolveRuntimeOptions(requestContext?: RequestContext) {
-  if (requestContext?.get(SCHEDULE_JOB_CONTEXT_KEY) === true) {
-    return { maxSteps: serverConfig.agentMaxSteps, providerOptions: undefined };
-  }
   const selection = selectionFromRequestContext(requestContext);
   if (liteLlm) {
     return {
