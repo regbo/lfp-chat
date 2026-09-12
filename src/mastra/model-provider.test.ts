@@ -14,11 +14,12 @@ describe("model provider isolation", () => {
     expect(openAiReasoningProviderOptions("medium")).toEqual({
       openai: {
         reasoningEffort: "medium",
+        forceReasoning: true,
         reasoningSummary: "auto",
       },
     });
     expect(openAiReasoningProviderOptions("none")).toEqual({
-      openai: { reasoningEffort: "none" },
+      openai: { reasoningEffort: "none", forceReasoning: true },
     });
     expect(openAiReasoningProviderOptions(null)).toBeUndefined();
     expect(openAiReasoningModelSettings("high")).toEqual({ reasoning: "high" });

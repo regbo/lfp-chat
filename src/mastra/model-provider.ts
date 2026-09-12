@@ -136,6 +136,9 @@ export function openAiReasoningProviderOptions(
   return {
     openai: {
       reasoningEffort,
+      // Proxy-qualified model IDs are absent from AI SDK's built-in OpenAI
+      // capability table, so explicitly retain the supported reasoning body.
+      forceReasoning: true,
       ...(reasoningEffort === "none" ? {} : { reasoningSummary: "auto" }),
     },
   };

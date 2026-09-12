@@ -55,6 +55,7 @@ describe("OpenAI conversation state", () => {
           conversation: "conv_old",
           previousResponseId: "resp_old",
           reasoningEffort: "medium",
+          forceReasoning: true,
           reasoningSummary: "auto",
         },
       },
@@ -73,6 +74,7 @@ describe("OpenAI conversation state", () => {
       providerOptions: {
         openai: {
           reasoningEffort: "medium",
+          forceReasoning: true,
           reasoningSummary: "auto",
           store: false,
           strictJsonSchema: false,
