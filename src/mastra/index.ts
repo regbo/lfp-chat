@@ -3,7 +3,7 @@ import type { AgentConfig } from "@mastra/core/agent";
 import { Mastra } from "@mastra/core/mastra";
 import type { Config as MastraConfig } from "@mastra/core/mastra";
 import { Memory } from "@mastra/memory";
-import { PgVector, PostgresStore } from "@mastra/pg";
+import { PostgresStore } from "@mastra/pg";
 import { ModelRouterEmbeddingModel } from "@mastra/core/llm";
 
 import { serverConfig } from "@/lib/config";
@@ -29,6 +29,7 @@ import {
 } from "@/mastra/tool-registry";
 import { registerDashboardMastraTools } from "@/lib/dashboard-runtime";
 import { OpenAiConversationStateProcessor } from "@/mastra/openai-conversation-state";
+import { LazyExtensionPgVector } from "@/mastra/lazy-pg-vector";
 
 export type LfpChatMastraCustomization = {
   /** Keyed native Mastra tool overrides; existing keys update and new keys register. */
@@ -91,7 +92,7 @@ export function createLfpChatMastra(
     id: "lfp-chat-postgres",
     connectionString: serverConfig.databaseUrl,
   });
-  const vector = new PgVector({
+  const vector = new LazyExtensionPgVector({
     id: "lfp-chat-memory-vectors",
     connectionString: serverConfig.databaseUrl,
   });
