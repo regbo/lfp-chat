@@ -295,14 +295,14 @@ removes `previous_response_id` and `conversation`, disables provider-side
 storage, and sends the transcript needed for every step. This keeps tool loops
 stateless at the proxy and avoids stale stored-response failures.
 
-Observational Memory also uses the interactive provider. Observer and Reflector
-buffering run server-side, and their synchronous `blockAfter` fallbacks are set
-beyond any realizable model context. The browser only queues the message and
-subscribes to the resulting Mastra stream.
+Persistent resource-scoped working memory remains enabled. Observational Memory is disabled because
+its failed compression calls currently tripwire the foreground Mastra input processor; chat must not
+wait on or fail because of memory compaction. The browser only queues the message and subscribes to
+the resulting Mastra stream.
 
 Scheduled automation remains on the private local Ollama route. A host can send
 nonblocking starter-suggestion work to a separate CPU runtime without changing
-scheduled, user-selected chat, or observational-memory routing:
+scheduled or user-selected chat routing:
 
 ```env
 OLLAMA_MODEL_BASE_URL=http://127.0.0.1:11434/v1
