@@ -81,8 +81,11 @@ const excludedOpenAiModelFragments = [
 
 export function isSelectableOpenAiModel(modelId: string) {
   const id = modelId.toLowerCase();
+  const providerModel = id.startsWith("chatgpt/")
+    ? id.slice("chatgpt/".length)
+    : id;
   const isTextModel =
-    id.startsWith("gpt-") || /^o(?:1|3|4)(?:-|$)/.test(id);
+    providerModel.startsWith("gpt-") || /^o(?:1|3|4)(?:-|$)/.test(providerModel);
   return (
     isTextModel &&
     !excludedOpenAiModelFragments.some((fragment) => id.includes(fragment))
@@ -114,9 +117,12 @@ function formatOpenAiModelName(modelName: string) {
 }
 
 function createModelDefinition(provider: string, modelName: string) {
-  const efforts = provider === "openai" ? getReasoningEfforts(modelName) : [];
+  const displayModelName = modelName.split("/").at(-1) ?? modelName;
+  const efforts = provider === "openai" ? getReasoningEfforts(displayModelName) : [];
   const label =
-    provider === "openai" ? formatOpenAiModelName(modelName) : titleCase(modelName);
+    provider === "openai"
+      ? formatOpenAiModelName(displayModelName)
+      : titleCase(displayModelName);
   const shortLabel = label.replace(/^GPT-/, "");
 
   return {

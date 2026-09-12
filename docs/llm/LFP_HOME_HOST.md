@@ -20,6 +20,13 @@ This repository is a reusable chat package plus an LFP Home host. Preserve that 
 - Home-managed read tools for PostgreSQL schema, email, attachments, Graphiti, and Kestra remain MCP
   sources. Do not port their clients into this package. Home-only HTTP adapters are appropriate when
   they remain thin clients and preserve native Mastra streaming events.
+- The Home chat agent uses the OpenAI-compatible LFP LiteLLM proxy and its cached ChatGPT
+  subscription route. Configure `OPENAI_BASE_URL` for the proxy and use a `chatgpt/*` model name.
+  Local Ollama remains available only for background and scheduled UI assistance.
+- The host-only Windmill adapter is read-only. It calls scoped scripts for processing status,
+  processed-digestion search, and processed financial-transaction search. It does not submit LLM
+  work or expose a generic script runner. Keep the Windmill token file-backed and keep this adapter
+  out of public package entrypoints.
 - The host may use OpenAI for user-selected chat or explicitly configured structured parsing, but it
   must not introduce OpenAI embeddings into Home or Kestra transaction/content processing.
 

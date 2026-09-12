@@ -56,10 +56,13 @@ async function discoverOpenAiModels() {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) return cachedModelCatalog;
 
-  const response = await fetch("https://api.openai.com/v1/models", {
+  const response = await fetch(
+    `${serverConfig.openaiBaseUrl ?? "https://api.openai.com/v1"}/models`,
+    {
     headers: { Authorization: `Bearer ${apiKey}` },
     signal: AbortSignal.timeout(10_000),
-  });
+    },
+  );
   if (!response.ok) {
     throw new Error(`OpenAI model discovery failed with ${response.status}.`);
   }

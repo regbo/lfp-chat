@@ -328,6 +328,7 @@ export const serverConfig = {
   },
   agentMaxSteps: boundedInteger("MASTRA_AGENT_MAX_STEPS", 16, 1, 40),
   openaiApiKey: secretValue("OPENAI_API_KEY", "OPENAI_API_KEY_FILE"),
+  openaiBaseUrl: optionalHttpUrl("OPENAI_BASE_URL"),
   localModelBaseUrl,
   scheduledModelName,
   // Hosts may dedicate a separate CPU runtime to lightweight web UI work.
