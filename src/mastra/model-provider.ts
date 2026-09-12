@@ -156,16 +156,21 @@ const providersWithNativeWebSearch = new Set([
   "openai",
   "xai",
 ]);
+const hasNativeWebSearch =
+  providersWithNativeWebSearch.has(serverConfig.modelProvider) &&
+  !(serverConfig.modelProvider === "openai" && serverConfig.openaiBaseUrl);
 
 const providerTools: ToolsInput = {};
+const usesDirectOpenAi =
+  serverConfig.modelProvider === "openai" && !serverConfig.openaiBaseUrl;
 
-if (providersWithNativeWebSearch.has(serverConfig.modelProvider)) {
+if (hasNativeWebSearch) {
   providerTools.web_search = webSearchTool;
 }
 
 // These hosted tools are part of OpenAI's Responses API, so they are only
 // advertised when the selected model is routed to OpenAI.
-if (serverConfig.modelProvider === "openai") {
+if (usesDirectOpenAi) {
   providerTools.code_interpreter = openai.tools.codeInterpreter();
   providerTools.image_generation = openai.tools.imageGeneration({
     model: "gpt-image-2",
@@ -175,10 +180,10 @@ if (serverConfig.modelProvider === "openai") {
 }
 
 const capabilityInstructions = [
-  providersWithNativeWebSearch.has(serverConfig.modelProvider)
+  hasNativeWebSearch
     ? "Use web_search for current internet information and cite its sources."
     : undefined,
-  serverConfig.modelProvider === "openai"
+  usesDirectOpenAi
     ? "Use code_interpreter for richer data analysis or work involving uploaded files, and image_generation when the user asks to create an image."
     : undefined,
 ]
