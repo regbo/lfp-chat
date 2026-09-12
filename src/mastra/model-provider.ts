@@ -42,6 +42,13 @@ const webOllama = createOpenAI({
   baseURL: serverConfig.webModelBaseUrl,
   apiKey: "local-bridge",
 });
+const liteLlm = serverConfig.openaiBaseUrl
+  ? createOpenAI({
+      name: "openai",
+      baseURL: serverConfig.openaiBaseUrl,
+      apiKey: serverConfig.openaiApiKey || "local-subscription-bridge",
+    })
+  : undefined;
 
 /** Use the inexpensive local model for background UI assistance. */
 export function resolveBackgroundModel() {
@@ -124,6 +131,9 @@ export function resolveRuntimeModel(requestContext?: RequestContext) {
     return localOllama.chat(serverConfig.scheduledModelName);
   }
   const selection = selectionFromRequestContext(requestContext);
+  if (liteLlm) {
+    return liteLlm.chat(selection.modelId.split("/").slice(1).join("/"));
+  }
   return selection.modelId as ModelRouterModelId;
 }
 
@@ -194,7 +204,8 @@ export const modelProvider = {
   id: serverConfig.modelProvider,
   modelName: serverConfig.modelName,
   // Mastra's model router resolves this provider/model identifier directly.
-  model: serverConfig.modelId as ModelRouterModelId,
+  model: liteLlm?.chat(serverConfig.modelName) ??
+    serverConfig.modelId as ModelRouterModelId,
   tools: providerTools,
   capabilityInstructions,
 } as const;
