@@ -11,10 +11,14 @@ export function PwaRegister() {
     const controlledAtMount = Boolean(navigator.serviceWorker.controller);
 
     const register = async () => {
-      registration = await navigator.serviceWorker.register("/sw.js", {
+      const nextRegistration = await navigator.serviceWorker.register("/sw.js", {
         scope: "/",
         updateViaCache: "none",
       });
+      // Privacy modes and test browsers can expose the API while blocking the
+      // actual registration. PWA refreshes are optional and must not break chat.
+      if (!nextRegistration) return;
+      registration = nextRegistration;
       await registration.update();
     };
 
@@ -29,7 +33,9 @@ export function PwaRegister() {
       window.location.reload();
     };
 
-    void register();
+    void register().catch(() => {
+      // Keep the online app usable when service workers are unavailable.
+    });
     document.addEventListener("visibilitychange", checkForUpdate);
     navigator.serviceWorker.addEventListener("controllerchange", reloadForUpdate);
     const updateTimer = window.setInterval(checkForUpdate, 5 * 60 * 1000);

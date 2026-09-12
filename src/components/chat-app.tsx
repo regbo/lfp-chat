@@ -74,10 +74,7 @@ import {
   ToolsPanel,
   type DedicatedToolModelSetting,
 } from "@/components/app-panels";
-import {
-  getRunningToolLabel,
-  ToolEventSummary,
-} from "@/components/tool-event-summary";
+import { ToolEventSummary } from "@/components/tool-event-summary";
 import { type PendingSteer, SteerQueue } from "@/components/steer-queue";
 import { formatAttachmentLinks } from "@/lib/attachment-links";
 import { DEFAULT_APP_BRANDING, type AppBranding } from "@/lib/app-branding";
@@ -88,6 +85,7 @@ import {
   isTerminalMastraChunk,
   type MastraStreamChunk,
   threadMessageOptions,
+  visibleReasoningText,
 } from "@/lib/browser-mastra-client";
 import {
   deleteChatSession,
@@ -321,11 +319,9 @@ function useVisualViewportShell(shellRef: RefObject<HTMLElement | null>) {
 
     // iOS may pan the layout viewport when its keyboard opens. Anchor the app
     // shell to the actually visible viewport so its header is never panned away.
-    // Wait for a burst of viewport events to settle: WebKit can expose
-    // intermediate keyboard-animation geometry that briefly collapses the
-    // shell before reporting the final visible viewport.
+    // Coalesce WebKit's keyboard-animation events into one update per frame.
+    // Delaying until the event burst settles produces a visible second jump.
     let animationFrame = 0;
-    let settleTimer = 0;
     const commitShell = () => {
       window.cancelAnimationFrame(animationFrame);
       animationFrame = window.requestAnimationFrame(() => {
@@ -333,21 +329,16 @@ function useVisualViewportShell(shellRef: RefObject<HTMLElement | null>) {
         shell.style.setProperty("--visual-viewport-top", `${viewport.offsetTop}px`);
       });
     };
-    const scheduleShellUpdate = () => {
-      window.clearTimeout(settleTimer);
-      settleTimer = window.setTimeout(commitShell, 100);
-    };
 
     commitShell();
-    viewport.addEventListener("resize", scheduleShellUpdate);
-    viewport.addEventListener("scroll", scheduleShellUpdate);
+    viewport.addEventListener("resize", commitShell);
+    viewport.addEventListener("scroll", commitShell);
     viewport.addEventListener("scrollend", commitShell);
 
     return () => {
       window.cancelAnimationFrame(animationFrame);
-      window.clearTimeout(settleTimer);
-      viewport.removeEventListener("resize", scheduleShellUpdate);
-      viewport.removeEventListener("scroll", scheduleShellUpdate);
+      viewport.removeEventListener("resize", commitShell);
+      viewport.removeEventListener("scroll", commitShell);
       viewport.removeEventListener("scrollend", commitShell);
       shell.style.removeProperty("--visual-viewport-height");
       shell.style.removeProperty("--visual-viewport-top");
@@ -816,9 +807,8 @@ function ChatMessage({ message, streaming }: { message: UIMessage; streaming: bo
     .join("\n\n");
   const isUser = message.role === "user";
   const files = message.parts.filter((part): part is FileUIPart => part.type === "file");
-  const hasReasoningDetails = Boolean(reasoningText) || tools.length > 0;
-  const showReasoning = !isUser && (streaming || Boolean(reasoningText) || tools.length > 0);
-  const runningToolLabel = streaming ? getRunningToolLabel(tools) : undefined;
+  const hasReasoningPart = message.parts.some((part) => part.type === "reasoning");
+  const showReasoning = !isUser && hasReasoningPart;
   const charts = tools.flatMap((part) => {
     const name =
       part.type === "dynamic-tool"
@@ -837,16 +827,16 @@ function ChatMessage({ message, streaming }: { message: UIMessage; streaming: bo
           )}
         >
           {showReasoning && (
-            <Reasoning isStreaming={streaming}>
-              <ReasoningTrigger expandable={hasReasoningDetails} status={runningToolLabel} />
-              {hasReasoningDetails ? (
-                <ReasoningContent className="space-y-2">
-                  {reasoningText && <MessageResponse>{formatAttachmentLinks(formatCitationMarkers(reasoningText, tools), tools)}</MessageResponse>}
-                  {tools.length > 0 && <ToolEventSummary parts={tools} />}
+            <Reasoning isStreaming={streaming && tools.length === 0}>
+              <ReasoningTrigger expandable={Boolean(reasoningText)} />
+              {reasoningText ? (
+                <ReasoningContent>
+                  <MessageResponse>{formatAttachmentLinks(formatCitationMarkers(reasoningText, tools), tools)}</MessageResponse>
                 </ReasoningContent>
               ) : null}
             </Reasoning>
           )}
+          {tools.length > 0 && <ToolEventSummary parts={tools} />}
           {message.parts.map((part, index) => {
             if (part.type === "text") {
               return <MessageResponse key={`${message.id}-text-${index}`}>{formatAttachmentLinks(formatCitationMarkers(part.text, tools), tools)}</MessageResponse>;
@@ -998,7 +988,7 @@ function ChatSession({
     const reasoning = run.reasoningOrder
       .map((id) => run.reasoning.get(id) ?? "")
       .join("");
-    if (reasoning) parts.push({ type: "reasoning", text: reasoning });
+    if (run.reasoningOrder.length > 0) parts.push({ type: "reasoning", text: reasoning });
     parts.push(...run.toolParts.values());
     for (const id of run.textOrder) {
       const text = run.text.get(id) ?? "";
@@ -1029,13 +1019,19 @@ function ChatSession({
       case "reasoning-start":
         if (!run.reasoning.has(partId)) run.reasoningOrder.push(partId);
         run.reasoning.set(partId, "");
+        upsertAssistant(run);
         break;
       case "reasoning-delta":
         if (!run.reasoning.has(partId)) run.reasoningOrder.push(partId);
         run.reasoning.set(
           partId,
-          `${run.reasoning.get(partId) ?? ""}${typeof payload.text === "string" ? payload.text : ""}`,
+          `${run.reasoning.get(partId) ?? ""}${visibleReasoningText(chunk)}`,
         );
+        upsertAssistant(run);
+        break;
+      case "redacted-reasoning":
+        if (!run.reasoning.has(partId)) run.reasoningOrder.push(partId);
+        run.reasoning.set(partId, visibleReasoningText(chunk));
         upsertAssistant(run);
         break;
       case "text-start":

@@ -372,6 +372,7 @@ bun dev             # Start Next.js and Mastra Server together
 bun run dev:web     # Start only Next.js
 bun run dev:mastra  # Start only the Bun/Hono Mastra Server
 bun run dev:caddy   # Start only the Caddy loopback/ZeroTier proxy
+bun run pipe:dev    # Start the full HMR stack on the local/ZeroTier port 7676
 bun run caddy:check # Generate and validate the Caddy configuration
 bun run smoke       # Run desktop Chromium and mobile WebKit UI smoke tests
 bun run smoke:install # Install the Playwright browser engines once

@@ -61,7 +61,8 @@ test("tool-call details stay within the chat column", async ({ page }) => {
   await page.goto(`/c/${TOOL_LAYOUT_THREAD_ID}`);
   await expect(page.getByText("Tool layout smoke fixture complete.")).toBeVisible();
 
-  await page.getByRole("button", { name: /Thought for a few seconds/ }).click();
+  await expect(page.getByRole("button", { name: /^Thought for/ })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /Finished 2 tools/ })).toHaveCount(1);
   await page.getByRole("button", { name: /Finished 2 tools/ }).click();
   await expect(page.getByText(LONG_TOOL_VALUE, { exact: false }).first()).toBeVisible();
 
@@ -70,7 +71,7 @@ test("tool-call details stay within the chat column", async ({ page }) => {
     const column = trigger?.closest<HTMLElement>(".chat-column");
     const shell = document.querySelector<HTMLElement>(".app-shell");
     const codeScrollers = Array.from(
-      document.querySelectorAll<HTMLElement>(".chat-reasoning-content .overflow-auto"),
+      document.querySelectorAll<HTMLElement>(".chat-column .overflow-auto"),
     );
     if (!trigger || !column || !shell) throw new Error("Tool layout did not render.");
     const triggerBox = trigger.getBoundingClientRect();
@@ -153,8 +154,12 @@ test("mobile composer does not reserve an empty control slot", async ({ page }, 
 
   await expect.poll(controlGap).toBeLessThanOrEqual(4);
 
+  const composer = page.locator(".chat-composer:visible");
+  const heightBeforeFocus = await composer.evaluate((element) => element.getBoundingClientRect().height);
   await page.getByRole("textbox", { name: "Message" }).focus();
   await expect.poll(controlGap).toBeLessThanOrEqual(4);
+  await expect.poll(() => composer.evaluate((element) => element.getBoundingClientRect().height))
+    .toBeCloseTo(heightBeforeFocus, 0);
 });
 
 test("mobile composer centers its prompt and controls", async ({ page }, testInfo) => {
@@ -205,6 +210,8 @@ test("a terminal Mastra step clears the streaming state", async ({ page }) => {
   const chatChunks = [
     { type: "reasoning-start", runId: "smoke-chat-run", payload: { id: "reasoning-1" } },
     { type: "reasoning-delta", runId: "smoke-chat-run", payload: { id: "reasoning-1", text: "Checked the fixture." } },
+    { type: "reasoning-end", runId: "smoke-chat-run", payload: { id: "reasoning-1" } },
+    { type: "redacted-reasoning", runId: "smoke-chat-run", payload: { id: "reasoning-2", data: "hidden" } },
     { type: "text-start", runId: "smoke-chat-run", payload: { id: "text-1" } },
     { type: "text-delta", runId: "smoke-chat-run", payload: { id: "text-1", text: "The response is complete." } },
     { type: "step-finish", runId: "smoke-chat-run", payload: { stepResult: { isContinued: false, reason: "stop" } } },
@@ -229,6 +236,9 @@ test("a terminal Mastra step clears the streaming state", async ({ page }) => {
   await page.getByRole("button", { name: "Send message" }).click();
 
   await expect(page.getByText("The response is complete.")).toBeVisible();
+  await page.getByRole("button", { name: /^Thought for/ }).click();
+  await expect(page.getByText("Checked the fixture.", { exact: false })).toBeVisible();
+  await expect(page.getByText("Some reasoning was withheld by the model.", { exact: false })).toBeVisible();
   await expect(page.getByRole("button", { name: "Stop response" })).toHaveCount(0);
   await expect(page.getByText("Thinking…")).toHaveCount(0);
   await expect(page.getByRole("button", { name: /^Thought for/ })).toBeVisible();

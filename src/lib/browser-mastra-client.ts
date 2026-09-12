@@ -10,6 +10,26 @@ export type MastraStreamChunk = {
   runId?: string;
 };
 
+const REDACTED_REASONING_MESSAGE = "Some reasoning was withheld by the model.";
+
+/**
+ * Normalize the visible reasoning emitted by Mastra providers. Signatures are
+ * transport metadata and redacted payloads must never be exposed to the UI.
+ */
+export function visibleReasoningText(chunk: MastraStreamChunk) {
+  const payload = chunk.payload && typeof chunk.payload === "object"
+    ? chunk.payload as Record<string, unknown>
+    : {};
+
+  if (chunk.type === "redacted-reasoning") return REDACTED_REASONING_MESSAGE;
+  if (chunk.type !== "reasoning-delta") return "";
+  return typeof payload.text === "string"
+    ? payload.text
+    : typeof payload.delta === "string"
+      ? payload.delta
+      : "";
+}
+
 export function messageContents(message: PromptInputMessage) {
   return [
     ...(message.text.trim()

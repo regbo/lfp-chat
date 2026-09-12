@@ -26,6 +26,7 @@
     "dev:web": "next dev --hostname 127.0.0.1",
     "dev:mastra": "MASTRA_HOST=127.0.0.1 bun --watch src/server/index.ts",
     "dev:caddy": "bun scripts/caddy.ts",
+    "pipe:dev": "CADDY_PORT=7676 bun run dev",
     "build": "bun run build:mastra && bun run build:web",
     "build:web": "next build",
     "build:mastra": "bun build src/server/index.ts --target bun --outdir dist/server --external @pydantic/monty",

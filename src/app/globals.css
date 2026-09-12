@@ -1133,8 +1133,7 @@
 
   .chat-composer:where(
     [data-expanded="true"],
-    :has([data-attachments]),
-    :has([data-slot="input-group-control"]:focus)
+    :has([data-attachments])
   ) [data-slot="input-group"] {
     grid-template-columns:
       var(--control-height-md)
@@ -1152,8 +1151,7 @@
 
   .chat-composer:where(
     [data-expanded="true"],
-    :has([data-attachments]),
-    :has([data-slot="input-group-control"]:focus)
+    :has([data-attachments])
   ) [data-slot="input-group-control"] {
     grid-row: 2;
     grid-column: 1 / -1;
@@ -1180,18 +1178,18 @@
     max-width: 100%;
   }
 
-  .chat-composer:not([data-expanded="true"]):not(:has([data-attachments])):not(:has([data-slot="input-group-control"]:focus)) .chat-model-trigger {
+  .chat-composer:not([data-expanded="true"]):not(:has([data-attachments])) .chat-model-trigger {
     width: var(--control-height-md);
     padding-inline: 0;
     justify-content: center;
   }
 
-  .chat-composer:not([data-expanded="true"]):not(:has([data-attachments])):not(:has([data-slot="input-group-control"]:focus)) .chat-model-trigger .chat-model-label,
-  .chat-composer:not([data-expanded="true"]):not(:has([data-attachments])):not(:has([data-slot="input-group-control"]:focus)) .chat-model-trigger .chat-model-chevron {
+  .chat-composer:not([data-expanded="true"]):not(:has([data-attachments])) .chat-model-trigger .chat-model-label,
+  .chat-composer:not([data-expanded="true"]):not(:has([data-attachments])) .chat-model-trigger .chat-model-chevron {
     display: none;
   }
 
-  .chat-composer:not([data-expanded="true"]):not(:has([data-attachments])):not(:has([data-slot="input-group-control"]:focus)) .chat-model-trigger .chat-model-compact-icon {
+  .chat-composer:not([data-expanded="true"]):not(:has([data-attachments])) .chat-model-trigger .chat-model-compact-icon {
     display: block;
   }
 
@@ -1208,8 +1206,7 @@
 
   .chat-composer:where(
     [data-expanded="true"],
-    :has([data-attachments]),
-    :has([data-slot="input-group-control"]:focus)
+    :has([data-attachments])
   ) button[aria-label="Add files"] {
     grid-row: 3;
     grid-column: 1;
@@ -1217,8 +1214,7 @@
 
   .chat-composer:where(
     [data-expanded="true"],
-    :has([data-attachments]),
-    :has([data-slot="input-group-control"]:focus)
+    :has([data-attachments])
   ) button[aria-label="Select model, agent, and reasoning"] {
     grid-row: 3;
     grid-column: 2;
@@ -1226,8 +1222,7 @@
 
   .chat-composer:where(
     [data-expanded="true"],
-    :has([data-attachments]),
-    :has([data-slot="input-group-control"]:focus)
+    :has([data-attachments])
   ) .chat-composer-submit {
     grid-row: 3;
     grid-column: 3;

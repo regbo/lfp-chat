@@ -4,6 +4,7 @@ import {
   isTerminalMastraChunk,
   messageContents,
   threadMessageOptions,
+  visibleReasoningText,
 } from "./browser-mastra-client";
 
 describe("Mastra thread messaging", () => {
@@ -68,5 +69,24 @@ describe("Mastra thread messaging", () => {
     expect(isTerminalMastraChunk({ type: "abort" })).toBe(true);
     expect(isTerminalMastraChunk({ type: "tripwire" })).toBe(true);
     expect(isTerminalMastraChunk({ type: "text-delta" })).toBe(false);
+  });
+
+  test("normalizes visible reasoning without exposing provider metadata", () => {
+    expect(visibleReasoningText({
+      type: "reasoning-delta",
+      payload: { id: "reasoning-1", text: "Checking the available tools." },
+    })).toBe("Checking the available tools.");
+    expect(visibleReasoningText({
+      type: "reasoning-delta",
+      payload: { id: "reasoning-2", delta: "Reviewing the results." },
+    })).toBe("Reviewing the results.");
+    expect(visibleReasoningText({
+      type: "redacted-reasoning",
+      payload: { id: "reasoning-3", data: "provider-secret" },
+    })).toBe("Some reasoning was withheld by the model.");
+    expect(visibleReasoningText({
+      type: "reasoning-signature",
+      payload: { id: "reasoning-4", signature: "provider-signature" },
+    })).toBe("");
   });
 });
