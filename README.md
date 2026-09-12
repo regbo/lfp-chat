@@ -300,16 +300,9 @@ its failed compression calls currently tripwire the foreground Mastra input proc
 wait on or fail because of memory compaction. The browser only queues the message and subscribes to
 the resulting Mastra stream.
 
-Scheduled automation remains on the private local Ollama route. A host can send
-nonblocking starter-suggestion work to a separate CPU runtime without changing
-scheduled or user-selected chat routing:
-
-```env
-OLLAMA_MODEL_BASE_URL=http://127.0.0.1:11434/v1
-SCHEDULED_MODEL_NAME=qwen3:8b
-WEB_MODEL_BASE_URL=http://web-ollama:11434/v1
-WEB_MODEL_NAME=qwen3:8b
-```
+Scheduled automation and nonblocking starter suggestions use the same hosted
+LiteLLM/OpenAI subscription route as user-selected chat. The production chat
+service has no local-model fallback or Ollama network dependency.
 
 Chart requests can use the structured `render_chart` Mastra tool. It maps the first table column to labels
 and each remaining numeric column to a series directly, so it adds no second
