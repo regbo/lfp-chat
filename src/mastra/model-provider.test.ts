@@ -3,6 +3,7 @@ import { RequestContext } from "@mastra/core/request-context";
 
 import { SCHEDULE_JOB_CONTEXT_KEY } from "@/lib/schedules";
 import {
+  openAiReasoningModelSettings,
   openAiReasoningProviderOptions,
   resolveBackgroundModel,
   resolveRuntimeModel,
@@ -20,6 +21,9 @@ describe("model provider isolation", () => {
       openai: { reasoningEffort: "none" },
     });
     expect(openAiReasoningProviderOptions(null)).toBeUndefined();
+    expect(openAiReasoningModelSettings("high")).toEqual({ reasoning: "high" });
+    expect(openAiReasoningModelSettings("max")).toEqual({ reasoning: "xhigh" });
+    expect(openAiReasoningModelSettings(null)).toBeUndefined();
   });
 
   test("routes scheduled work to local Ollama and chat to the configured provider", () => {

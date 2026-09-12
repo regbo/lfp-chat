@@ -141,6 +141,15 @@ export function openAiReasoningProviderOptions(
   };
 }
 
+export function openAiReasoningModelSettings(
+  reasoningEffort: ModelSelection["reasoningEffort"],
+) {
+  if (!reasoningEffort) return undefined;
+  // AI SDK's generic reasoning enum currently stops at xhigh. The OpenAI
+  // provider option still carries max and takes precedence when supported.
+  return { reasoning: reasoningEffort === "max" ? "xhigh" : reasoningEffort };
+}
+
 export function resolveRuntimeModel(requestContext?: RequestContext) {
   if (requestContext?.get(SCHEDULE_JOB_CONTEXT_KEY) === true) {
     return localOllama.chat(serverConfig.scheduledModelName);
@@ -160,6 +169,7 @@ export function resolveRuntimeOptions(requestContext?: RequestContext) {
   if (liteLlm) {
     return {
       maxSteps: serverConfig.agentMaxSteps,
+      modelSettings: openAiReasoningModelSettings(selection.reasoningEffort),
       // The per-step processor applies this again so both Mastra's current and
       // legacy streaming routes receive the same proxy-safe options.
       providerOptions: withoutLiteLlmResponseState(
@@ -173,6 +183,10 @@ export function resolveRuntimeOptions(requestContext?: RequestContext) {
 
   return {
     maxSteps: serverConfig.agentMaxSteps,
+    modelSettings:
+      model?.provider === "openai"
+        ? openAiReasoningModelSettings(selection.reasoningEffort)
+        : undefined,
     providerOptions:
       model?.provider === "openai"
         ? openAiReasoningProviderOptions(selection.reasoningEffort)
