@@ -36,7 +36,7 @@ test("the sidebar remains independently scrollable", async ({ page }) => {
   expect(metrics.scrollHeight).toBeGreaterThan(metrics.clientHeight);
 
   await sidebar.evaluate((element) => element.scrollTo(0, element.scrollHeight));
-  await expect(sidebar.getByText("Local user")).toBeInViewport();
+  await expect(sidebar.locator(":scope > div.mt-auto")).toBeInViewport();
 });
 
 test("the configured Windmill dashboard loads through a scoped guest grant", async ({ page }) => {
