@@ -1802,6 +1802,8 @@ function SidebarThreadGroup({
 export type ChatAppProps = {
   /** Product identity displayed beside the fixed LFP monogram. */
   branding?: AppBranding;
+  /** Optional host view that replaces the built-in deterministic dashboard. */
+  dashboardView?: Omit<ChatAppPlugin, "href">;
   /** Views to add to the primary sidebar without changing ChatApp internals. */
   plugins?: readonly ChatAppPlugin[];
   /** App-wide contributions for routes, settings, and host-implemented tools. */
@@ -1818,7 +1820,7 @@ export type ChatAppProps = {
   };
 };
 
-export function ChatApp({ branding = DEFAULT_APP_BRANDING, mods = [], plugins = [], toolPolicies = {}, tools = [], user }: ChatAppProps) {
+export function ChatApp({ branding = DEFAULT_APP_BRANDING, dashboardView, mods = [], plugins = [], toolPolicies = {}, tools = [], user }: ChatAppProps) {
   const appShellRef = useRef<HTMLElement>(null);
   useVisualViewportShell(appShellRef);
   const pathname = usePathname();
@@ -1897,6 +1899,7 @@ export function ChatApp({ branding = DEFAULT_APP_BRANDING, mods = [], plugins = 
   );
   const [resourceId, setResourceId] = useState(user?.resourceId ?? "");
   const [hasDashboard, setHasDashboard] = useState(false);
+  const dashboardAvailable = Boolean(dashboardView) || hasDashboard;
   const [threadId, setThreadId] = useState(() => initialThreadId || makeId());
   const [composerFocusThreadId, setComposerFocusThreadId] = useState<string | null>(null);
   const [sessionSeeds, setSessionSeeds] = useState<Map<string, UIMessage[]>>(
@@ -1987,6 +1990,7 @@ export function ChatApp({ branding = DEFAULT_APP_BRANDING, mods = [], plugins = 
   }, [mobileSidebarOpen]);
 
   useEffect(() => {
+    if (dashboardView) return;
     if (!resourceId) return;
     let cancelled = false;
     const refresh = async () => {
@@ -2000,7 +2004,7 @@ export function ChatApp({ branding = DEFAULT_APP_BRANDING, mods = [], plugins = 
     void refresh();
     const timer = window.setInterval(() => void refresh(), 10_000);
     return () => { cancelled = true; window.clearInterval(timer); };
-  }, [resourceId]);
+  }, [dashboardView, resourceId]);
 
   const rememberSession = useCallback((
     id: string,
@@ -2541,8 +2545,11 @@ export function ChatApp({ branding = DEFAULT_APP_BRANDING, mods = [], plugins = 
         <Link className={cn("sidebar-item", activeView === "search" && "bg-sidebar-accent")} href={coreViewRoutes.search} onClick={() => setMobileSidebarOpen(false)}>
           <Search className="size-[18px]" /> Search
         </Link>
-        {hasDashboard && <Link className={cn("sidebar-item", activeView === "dashboard" && "bg-sidebar-accent")} href={coreViewRoutes.dashboard} onClick={() => setMobileSidebarOpen(false)}>
-          <LayoutDashboard className="size-[18px]" /> Dashboard
+        {dashboardAvailable && <Link className={cn("sidebar-item", activeView === "dashboard" && "bg-sidebar-accent")} href={coreViewRoutes.dashboard} onClick={() => setMobileSidebarOpen(false)}>
+          <span className="grid size-[18px] shrink-0 place-items-center [&>svg]:size-[18px]">
+            {dashboardView?.icon ?? <LayoutDashboard />}
+          </span>
+          {dashboardView?.label ?? "Dashboard"}
         </Link>}
         <Link className={cn("sidebar-item", activeView === "scheduled" && "bg-sidebar-accent")} href={coreViewRoutes.scheduled} onClick={() => setMobileSidebarOpen(false)}>
           <Clock3 className="size-[18px]" /> Scheduled
@@ -2693,7 +2700,7 @@ export function ChatApp({ branding = DEFAULT_APP_BRANDING, mods = [], plugins = 
             </DropdownMenu>
           ) : (
             <span className="chat-ui-emphasis font-medium">
-              {activePlugin?.label ?? activeView[0].toUpperCase() + activeView.slice(1)}
+              {activePlugin?.label ?? (activeView === "dashboard" && dashboardView?.label) ?? activeView[0].toUpperCase() + activeView.slice(1)}
             </span>
           )}
           {activeView === "chat" && activeThread && (
@@ -2747,7 +2754,7 @@ export function ChatApp({ branding = DEFAULT_APP_BRANDING, mods = [], plugins = 
           </div>
         )}
         {resourceId && activeView === "search" && <SearchPanel onOpen={(id) => void openThread(id)} threads={activeThreads} />}
-        {resourceId && activeView === "dashboard" && <DashboardPanel onAvailabilityChange={setHasDashboard} resourceId={resourceId} />}
+        {resourceId && activeView === "dashboard" && (dashboardView?.content ?? <DashboardPanel onAvailabilityChange={setHasDashboard} resourceId={resourceId} />)}
         {resourceId && activeView === "scheduled" && (
           <SchedulesPanel
             enabledToolIds={enabledToolIds}

@@ -19,6 +19,7 @@ Read `LFP_HOME_HOST.md` before modifying Home-specific host composition.
 - `src/lib/dashboard-runtime.ts` — generic adapter from real Mastra tools to Monty's allowlisted `tool_call` bridge.
 - `src/mastra/dashboard-capabilities.ts` — process-local registration of the default read-oriented Mastra capabilities.
 - `src/mastra/dashboard-refresh.ts` — Monty-aware refresh entrypoint kept on the Mastra server side.
+- `src/host/windmill-embed.ts` — resolves allowlisted Windmill apps and mints app-scoped OSS guest JWT URLs.
 - `src/mastra/url-fetch-tool.ts` — SSRF-protected `got-scraping` fetch for one specific public URL; separate from provider web search.
 - `src/mastra/tools.ts` — host-neutral built-in project search, calculator, and Monty tools.
 - `src/mastra/schedule-tools.ts` — agent-facing list/create scheduling tools with per-resource duplicate prevention and dedicated output threads.

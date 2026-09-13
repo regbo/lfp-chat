@@ -29,6 +29,10 @@ This repository is a reusable chat package plus an LFP Home host. Preserve that 
   processed-digestion search, and processed financial-transaction search. It does not submit LLM
   work or expose a generic script runner. Keep the Windmill token file-backed and keep this adapter
   out of public package entrypoints.
+- Windmill app views use OSS guest JWTs minted by the authenticated chat server. Each short-lived
+  grant is scoped to one configured app; the long-lived workspace token and signing key remain
+  server-side. A configured dashboard placement replaces the built-in deterministic dashboard,
+  while navigation placements add independent app views.
 - The host uses Together embeddings for Mastra semantic recall and Home retrieval.
 
 The corresponding authoritative service state and deployment baseline live in the sibling

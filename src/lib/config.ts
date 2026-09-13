@@ -126,6 +126,14 @@ export type ExternalViewConfig = {
   source: `/${string}`;
 };
 
+export type WindmillEmbedViewConfig = {
+  id: string;
+  label: string;
+  appPath: `f/${string}`;
+  placement: "dashboard" | "navigation";
+  href: `/${string}`;
+};
+
 function externalViews(): ExternalViewConfig[] {
   const raw = process.env.APP_EXTERNAL_VIEWS?.trim();
   if (!raw) return [];
@@ -149,6 +157,46 @@ function externalViews(): ExternalViewConfig[] {
     }
     ids.add(id);
     return { id, label, href: href as `/${string}`, source: source as `/${string}` };
+  });
+}
+
+export function parseWindmillEmbedViews(raw = process.env.APP_WINDMILL_VIEWS?.trim()) {
+  if (!raw) return [];
+  const parsed: unknown = JSON.parse(raw);
+  if (!Array.isArray(parsed)) throw new Error("APP_WINDMILL_VIEWS must be a JSON array.");
+  const ids = new Set<string>();
+  let dashboardCount = 0;
+  return parsed.map((value, index): WindmillEmbedViewConfig => {
+    if (!value || typeof value !== "object") {
+      throw new Error(`APP_WINDMILL_VIEWS[${index}] must be an object.`);
+    }
+    const item = value as Record<string, unknown>;
+    const id = typeof item.id === "string" ? item.id.trim() : "";
+    const label = typeof item.label === "string" ? item.label.trim() : "";
+    const appPath = typeof item.appPath === "string" ? item.appPath.trim() : "";
+    const placement = item.placement === "dashboard" ? "dashboard" : "navigation";
+    const configuredHref = typeof item.href === "string" ? item.href.trim() : "";
+    const href = placement === "dashboard" ? "/dashboard" : configuredHref || `/${id}`;
+    if (!/^[a-z][a-z0-9_-]{0,62}$/.test(id) || ids.has(id)) {
+      throw new Error(`APP_WINDMILL_VIEWS[${index}].id must be a unique lowercase slug.`);
+    }
+    if (!label || !/^f\/[a-z0-9_/-]+$/i.test(appPath)) {
+      throw new Error(`APP_WINDMILL_VIEWS[${index}] requires a label and folder appPath.`);
+    }
+    if (!/^\/(?!\/)[^?#]*$/.test(href)) {
+      throw new Error(`APP_WINDMILL_VIEWS[${index}].href must be root-relative.`);
+    }
+    if (placement === "dashboard" && ++dashboardCount > 1) {
+      throw new Error("APP_WINDMILL_VIEWS can replace the dashboard only once.");
+    }
+    ids.add(id);
+    return {
+      id,
+      label,
+      appPath: appPath as `f/${string}`,
+      placement,
+      href: href as `/${string}`,
+    };
   });
 }
 
@@ -290,6 +338,11 @@ export const serverConfig = {
   vikunjaProjectId: boundedInteger("VIKUNJA_PROJECT_ID", 1, 1, 2_147_483_647),
   taskServiceConfigured: Boolean(vikunjaApiUrl && vikunjaApiToken),
   externalViews: externalViews(),
+  windmillEmbedViews: parseWindmillEmbedViews(),
+  windmillGuestPrivateKey: secretValue(
+    "LFP_WINDMILL_GUEST_PRIVATE_KEY",
+    "LFP_WINDMILL_GUEST_PRIVATE_KEY_FILE",
+  ),
   mcpToolSources: mcpToolSources(),
   toolPolicyOverrides: toolPolicyOverrides(),
   scheduleRunImmediately: booleanValue("SCHEDULE_RUN_IMMEDIATELY", true),
