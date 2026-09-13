@@ -8,11 +8,13 @@ describe("Windmill embed view configuration", () => {
       id: "home-console",
       label: "Home",
       appPath: "f/llm_queue/digestions",
+      publicSecretFile: "/run/secrets/lfp_chat_windmill_home_console_public_secret",
       placement: "dashboard",
     }]))).toEqual([{
       id: "home-console",
       label: "Home",
       appPath: "f/llm_queue/digestions",
+      publicSecretFile: "/run/secrets/lfp_chat_windmill_home_console_public_secret",
       placement: "dashboard",
       href: "/dashboard",
     }]);
@@ -34,5 +36,8 @@ describe("Windmill embed view configuration", () => {
     expect(() => parseWindmillEmbedViews(JSON.stringify([
       { id: "bad", label: "Bad", appPath: "u/admin/private" },
     ]))).toThrow("folder appPath");
+    expect(() => parseWindmillEmbedViews(JSON.stringify([
+      { id: "bad", label: "Bad", appPath: "f/apps/private", publicSecretFile: "C:\\secret" },
+    ]))).toThrow("Swarm secret");
   });
 });

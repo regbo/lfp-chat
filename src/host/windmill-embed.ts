@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
 
 import { importPKCS8, SignJWT } from "jose";
 
@@ -37,28 +38,34 @@ async function guestSigningKey(privateKey: string) {
 }
 
 async function publicSecret(
-  appPath: string,
+  view: WindmillEmbedViewConfig,
   fetchImpl: typeof fetch,
+  readSecretFile: (path: string) => Promise<string>,
   now: number,
   api: typeof windmillApi,
 ) {
-  const cacheKey = `${api.apiUrl}\0${api.workspace}\0${appPath}`;
+  const cacheKey = view.publicSecretFile ?? `${api.apiUrl}\0${api.workspace}\0${view.appPath}`;
   const cached = publicSecrets.get(cacheKey);
   if (cached && cached.expiresAt > now) return cached.value;
-  if (!api.token) throw new Error("The Windmill API is not configured.");
-  const target = new URL(
-    `/api/w/${encodeURIComponent(api.workspace)}/apps/secret_of/${encodedPath(appPath)}`,
-    api.apiUrl,
-  );
-  const response = await fetchImpl(target, {
-    headers: { Authorization: `Bearer ${api.token}` },
-    cache: "no-store",
-    signal: AbortSignal.timeout(15_000),
-  });
-  if (!response.ok) {
-    throw new Error(`Windmill app lookup returned ${response.status}.`);
+  let value: string;
+  if (view.publicSecretFile) {
+    value = (await readSecretFile(view.publicSecretFile)).trim();
+  } else {
+    if (!api.token) throw new Error("The Windmill API is not configured.");
+    const target = new URL(
+      `/api/w/${encodeURIComponent(api.workspace)}/apps/secret_of/${encodedPath(view.appPath)}`,
+      api.apiUrl,
+    );
+    const response = await fetchImpl(target, {
+      headers: { Authorization: `Bearer ${api.token}` },
+      cache: "no-store",
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!response.ok) {
+      throw new Error(`Windmill app lookup returned ${response.status}.`);
+    }
+    value = (await response.text()).trim().replace(/^"|"$/g, "");
   }
-  const value = (await response.text()).trim().replace(/^"|"$/g, "");
   if (!/^[a-zA-Z0-9_-]{8,}$/.test(value)) {
     throw new Error("Windmill returned an invalid app secret.");
   }
@@ -79,6 +86,7 @@ export async function windmillGuestAppUrl(
     fetchImpl?: typeof fetch;
     now?: number;
     privateKey?: string;
+    readSecretFile?: (path: string) => Promise<string>;
   } = {},
 ) {
   const api = options.api ?? windmillApi;
@@ -86,7 +94,13 @@ export async function windmillGuestAppUrl(
   if (!privateKey) throw new Error("Windmill guest app signing is not configured.");
   const now = options.now ?? Date.now();
   const [secret, key] = await Promise.all([
-    publicSecret(view.appPath, options.fetchImpl ?? fetch, now, api),
+    publicSecret(
+      view,
+      options.fetchImpl ?? fetch,
+      options.readSecretFile ?? ((path) => readFile(path, "utf8")),
+      now,
+      api,
+    ),
     guestSigningKey(privateKey),
   ]);
   const issuedAt = Math.floor(now / 1_000);

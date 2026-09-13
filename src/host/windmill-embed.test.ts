@@ -46,4 +46,25 @@ describe("Windmill guest embeds", () => {
     expect(payload.app_path).toBe(view.appPath);
     expect(payload.exp! - payload.iat!).toBe(300);
   });
+
+  test("uses a dedicated secret file without elevating the workspace token", async () => {
+    const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
+    const privatePem = privateKey.export({ type: "pkcs8", format: "pem" }).toString();
+    const url = await windmillGuestAppUrl(
+      {
+        ...view,
+        publicSecretFile: "/run/secrets/lfp_chat_windmill_home_console_public_secret",
+      },
+      { resourceId: "user-123", displayName: "Reggie" },
+      {
+        api: { apiUrl: "https://windmill.example", workspace: "lfpconnect", token: "run-only" },
+        privateKey: privatePem,
+        readSecretFile: async () => "public-secret-from-file",
+        fetchImpl: (async () => {
+          throw new Error("The Windmill API must not be called.");
+        }) as unknown as typeof fetch,
+      },
+    );
+    expect(url.pathname).toStartWith("/public/lfpconnect/public-secret-from-file/guest.");
+  });
 });

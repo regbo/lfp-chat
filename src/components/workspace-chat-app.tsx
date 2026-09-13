@@ -9,7 +9,7 @@ import { TasksPanel } from "@/components/tasks-panel";
 import type { AppBranding } from "@/lib/app-branding";
 import type { UserScope } from "@/lib/user-scope";
 import type { ToolPolicyOverride } from "@/lib/config";
-import type { ExternalViewConfig, WindmillEmbedViewConfig } from "@/lib/config";
+import type { ExternalViewConfig, WindmillEmbedClientViewConfig } from "@/lib/config";
 import type { ChatAppToolContribution } from "@/lib/chat-app-plugins";
 
 const taskMods = [{
@@ -32,7 +32,7 @@ function ExternalView({ label, source }: Pick<ExternalViewConfig, "label" | "sou
   </div>;
 }
 
-export function WorkspaceChatApp({ branding, externalViews, taskServiceConfigured, toolPolicies, tools, user, windmillViews }: { branding: AppBranding; externalViews: readonly ExternalViewConfig[]; taskServiceConfigured: boolean; toolPolicies: Record<string, ToolPolicyOverride>; tools: readonly ChatAppToolContribution[]; user?: UserScope; windmillViews: readonly WindmillEmbedViewConfig[] }) {
+export function WorkspaceChatApp({ branding, externalViews, taskServiceConfigured, toolPolicies, tools, user, windmillViews }: { branding: AppBranding; externalViews: readonly ExternalViewConfig[]; taskServiceConfigured: boolean; toolPolicies: Record<string, ToolPolicyOverride>; tools: readonly ChatAppToolContribution[]; user?: UserScope; windmillViews: readonly WindmillEmbedClientViewConfig[] }) {
   const externalMods = externalViews.map((view) => ({
     id: `external-${view.id}`,
     views: [{

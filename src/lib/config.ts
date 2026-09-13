@@ -130,9 +130,15 @@ export type WindmillEmbedViewConfig = {
   id: string;
   label: string;
   appPath: `f/${string}`;
+  publicSecretFile?: `/run/secrets/${string}`;
   placement: "dashboard" | "navigation";
   href: `/${string}`;
 };
+
+export type WindmillEmbedClientViewConfig = Omit<
+  WindmillEmbedViewConfig,
+  "appPath" | "publicSecretFile"
+>;
 
 function externalViews(): ExternalViewConfig[] {
   const raw = process.env.APP_EXTERNAL_VIEWS?.trim();
@@ -174,6 +180,9 @@ export function parseWindmillEmbedViews(raw = process.env.APP_WINDMILL_VIEWS?.tr
     const id = typeof item.id === "string" ? item.id.trim() : "";
     const label = typeof item.label === "string" ? item.label.trim() : "";
     const appPath = typeof item.appPath === "string" ? item.appPath.trim() : "";
+    const publicSecretFile = typeof item.publicSecretFile === "string"
+      ? item.publicSecretFile.trim()
+      : "";
     const placement = item.placement === "dashboard" ? "dashboard" : "navigation";
     const configuredHref = typeof item.href === "string" ? item.href.trim() : "";
     const href = placement === "dashboard" ? "/dashboard" : configuredHref || `/${id}`;
@@ -182,6 +191,9 @@ export function parseWindmillEmbedViews(raw = process.env.APP_WINDMILL_VIEWS?.tr
     }
     if (!label || !/^f\/[a-z0-9_/-]+$/i.test(appPath)) {
       throw new Error(`APP_WINDMILL_VIEWS[${index}] requires a label and folder appPath.`);
+    }
+    if (publicSecretFile && !/^\/run\/secrets\/[a-zA-Z0-9_.-]+$/.test(publicSecretFile)) {
+      throw new Error(`APP_WINDMILL_VIEWS[${index}].publicSecretFile must name a Swarm secret.`);
     }
     if (!/^\/(?!\/)[^?#]*$/.test(href)) {
       throw new Error(`APP_WINDMILL_VIEWS[${index}].href must be root-relative.`);
@@ -194,6 +206,9 @@ export function parseWindmillEmbedViews(raw = process.env.APP_WINDMILL_VIEWS?.tr
       id,
       label,
       appPath: appPath as `f/${string}`,
+      publicSecretFile: publicSecretFile
+        ? publicSecretFile as `/run/secrets/${string}`
+        : undefined,
       placement,
       href: href as `/${string}`,
     };
