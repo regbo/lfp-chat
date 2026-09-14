@@ -62,6 +62,29 @@ test("the configured Windmill dashboard loads through a scoped guest grant", asy
   }).toMatch(/^https:\/\/windmill\.lfpconnect\.io\/public\/lfpconnect\/[^/]+\/guest\./);
 });
 
+test("the configured Marketplace view loads through a scoped guest grant", async ({ page }) => {
+  test.skip(
+    process.env.PLAYWRIGHT_WINDMILL_EMBED !== "1",
+    "This check requires the deployed Windmill guest configuration.",
+  );
+  await page.unroute("**/api/**");
+  await page.route("https://windmill.lfpconnect.io/**", async (route) => {
+    const headers = { ...route.request().headers() };
+    delete headers.authorization;
+    await route.continue({ headers });
+  });
+
+  await page.goto("/marketplace");
+  const embeddedApp = page.locator('iframe[title="Marketplace"]');
+  await expect(embeddedApp).toBeVisible();
+  await expect.poll(() => {
+    const frame = page.frames().find((candidate) => candidate.parentFrame());
+    if (!frame) return "";
+    const target = new URL(frame.url());
+    return `${target.origin}${target.pathname}`;
+  }).toMatch(/^https:\/\/windmill\.lfpconnect\.io\/public\/lfpconnect\/[^/]+\/guest\./);
+});
+
 test("theme selection applies immediately and persists", async ({ page }) => {
   await page.goto("/settings");
 
