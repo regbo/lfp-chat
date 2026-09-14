@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 import {
   installAppApiFixture,
@@ -18,6 +18,24 @@ test.beforeEach(async ({ page }) => {
     },
   });
 });
+
+async function isolateWindmillGuestAuth(page: Page) {
+  let guestAuthorization = "";
+  await page.route("https://windmill.lfpconnect.io/**", async (route) => {
+    const requestUrl = new URL(route.request().url());
+    const headers = { ...route.request().headers() };
+    const referrerPath = headers.referer ? new URL(headers.referer).pathname : "";
+    const guestToken = `${requestUrl.pathname}\n${referrerPath}`.match(/\/guest\.([^/\n]+)/)?.[1];
+    if (guestToken) guestAuthorization = `Bearer jwt_guest_${guestToken}`;
+
+    if (requestUrl.pathname.startsWith("/api/") && guestAuthorization) {
+      headers.authorization = guestAuthorization;
+    } else {
+      delete headers.authorization;
+    }
+    await route.continue({ headers });
+  });
+}
 
 test("the sidebar remains independently scrollable", async ({ page }) => {
   await page.goto("/");
@@ -45,11 +63,7 @@ test("the configured Windmill dashboard loads through a scoped guest grant", asy
     "This check requires the deployed Windmill guest configuration.",
   );
   await page.unroute("**/api/**");
-  await page.route("https://windmill.lfpconnect.io/**", async (route) => {
-    const headers = { ...route.request().headers() };
-    delete headers.authorization;
-    await route.continue({ headers });
-  });
+  await isolateWindmillGuestAuth(page);
 
   await page.goto("/dashboard");
   const embeddedApp = page.locator('iframe[title="Home"]');
@@ -68,11 +82,7 @@ test("the configured Marketplace view loads through a scoped guest grant", async
     "This check requires the deployed Windmill guest configuration.",
   );
   await page.unroute("**/api/**");
-  await page.route("https://windmill.lfpconnect.io/**", async (route) => {
-    const headers = { ...route.request().headers() };
-    delete headers.authorization;
-    await route.continue({ headers });
-  });
+  await isolateWindmillGuestAuth(page);
 
   await page.goto("/marketplace");
   const embeddedApp = page.locator('iframe[title="Marketplace"]');
@@ -83,6 +93,26 @@ test("the configured Marketplace view loads through a scoped guest grant", async
     const target = new URL(frame.url());
     return `${target.origin}${target.pathname}`;
   }).toMatch(/^https:\/\/windmill\.lfpconnect\.io\/public\/lfpconnect\/[^/]+\/guest\./);
+
+  await expect.poll(
+    () => page.frames().filter((frame) => frame.parentFrame()?.url().includes("/public/lfpconnect/")).length,
+    { timeout: 15_000 },
+  ).toBe(1);
+  const marketplace = page.frames().find(
+    (frame) => frame.parentFrame()?.url().includes("/public/lfpconnect/"),
+  );
+  if (!marketplace) throw new Error("The Marketplace app frame did not load.");
+  await expect(marketplace.getByRole("heading", { name: "Marketplace" })).toBeVisible();
+  await marketplace.getByRole("button", { name: "Searches" }).click();
+  await expect(marketplace.getByRole("heading", { name: "Searches" })).toBeVisible();
+  await marketplace.locator(".meta-search-trigger").first().click();
+  await expect(marketplace.locator(".term").first()).toBeVisible();
+  await marketplace.getByRole("button", { name: "Edit" }).first().click();
+  await expect(marketplace.getByRole("heading", { name: /^Edit / })).toBeVisible();
+  await marketplace.getByRole("button", { name: "Close" }).click();
+  await marketplace.getByRole("button", { name: "Activity" }).click();
+  await expect(marketplace.getByRole("heading", { name: "Scrape activity" })).toBeVisible();
+  await expect(marketplace.getByRole("button", { name: "Close" })).toBeVisible();
 });
 
 test("theme selection applies immediately and persists", async ({ page }) => {
