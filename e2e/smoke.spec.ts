@@ -108,7 +108,12 @@ test("the configured Marketplace view loads through a scoped guest grant", async
   } else {
     await expect(appHeading).toBeVisible();
   }
-  await expect(marketplace.getByRole("button", { name: /^Status:/ })).toBeVisible();
+  const statusFilter = marketplace.getByRole("button", { name: /^Status:/ });
+  await expect(statusFilter).toBeVisible();
+  await statusFilter.click();
+  await marketplace.getByRole("menuitemcheckbox", { name: "Stale" }).click();
+  await marketplace.locator("body").press("Escape");
+  await expect(marketplace.getByRole("button", { name: "Status: 2 selected" })).toBeVisible();
   await marketplace.getByRole("button", { name: "Searches" }).click();
   await expect(marketplace.getByRole("heading", { name: "Searches" })).toBeVisible();
   await marketplace.locator(".meta-search-trigger").first().click();
