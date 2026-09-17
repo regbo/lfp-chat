@@ -23,15 +23,13 @@ function ExternalView({ label, source, trimChrome = false }: Pick<ExternalViewCo
     {loading && <div className="absolute inset-0 grid place-items-center text-sm text-muted-foreground">
       <span className="flex items-center gap-2"><LoaderCircle className="size-4 animate-spin" /> Loading {label}</span>
     </div>}
-    <div className={trimChrome ? "absolute inset-x-0 bottom-0 top-5 overflow-hidden md:top-0" : "absolute inset-0"}>
-      <iframe
-        className={trimChrome ? "absolute -top-7 left-0 w-full border-0" : "absolute inset-0 size-full border-0"}
-        style={trimChrome ? { height: "calc(100% + 4.5rem)" } : undefined}
-        onLoad={() => setLoading(false)}
-        src={source}
-        title={label}
-      />
-    </div>
+    <iframe
+      className={trimChrome ? "absolute -top-7 left-0 w-full border-0" : "absolute inset-0 size-full border-0"}
+      style={trimChrome ? { height: "calc(100% + 4.5rem)" } : undefined}
+      onLoad={() => setLoading(false)}
+      src={source}
+      title={label}
+    />
   </div>;
 }
 
