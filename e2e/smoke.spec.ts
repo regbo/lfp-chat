@@ -110,6 +110,10 @@ test("the configured Marketplace view loads through a scoped guest grant", async
   }
   const statusFilter = marketplace.getByRole("button", { name: /^Status:/ });
   await expect(statusFilter).toBeVisible();
+  await expect(marketplace.locator(".primary-filters .filter-trigger")).toHaveCount(6);
+  await expect(marketplace.locator(".primary-filters select")).toHaveCount(0);
+  await expect(marketplace.getByRole("button", { name: "Visibility: Visible" })).toBeVisible();
+  await expect(marketplace.getByRole("button", { name: "Distance: Any" })).toBeVisible();
   await statusFilter.click();
   await marketplace.getByRole("menuitemcheckbox", { name: "Stale" }).click();
   await marketplace.locator("body").press("Escape");
@@ -123,7 +127,19 @@ test("the configured Marketplace view loads through a scoped guest grant", async
   await marketplace.getByRole("button", { name: "Close" }).click();
   await marketplace.getByRole("button", { name: "Activity" }).click();
   await expect(marketplace.getByRole("heading", { name: "Scrape activity" })).toBeVisible();
-  await expect(marketplace.getByRole("button", { name: "Close" })).toBeVisible();
+  await marketplace.getByRole("button", { name: "Close" }).click();
+  if ((page.viewportSize()?.width ?? 1024) <= 700) {
+    const swipeSurface = marketplace.locator(".swipe-surface").first();
+    await expect(swipeSurface).toBeVisible();
+    const box = await swipeSurface.boundingBox();
+    if (!box) throw new Error("The first Marketplace listing could not be swiped.");
+    await page.mouse.move(box.x + box.width - 18, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width - 130, box.y + box.height / 2, { steps: 5 });
+    await page.mouse.up();
+    await expect.poll(() => swipeSurface.evaluate((element) => getComputedStyle(element).transform)).not.toBe("none");
+    await expect(marketplace.getByRole("button", { name: "Archive" }).first()).toBeVisible();
+  }
 });
 
 test("theme selection applies immediately and persists", async ({ page }) => {
