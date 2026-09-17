@@ -9,11 +9,12 @@ export default async function WorkspaceLayout() {
   return <WorkspaceChatApp
     branding={serverConfig.appBranding}
     externalViews={serverConfig.externalViews}
-    windmillViews={serverConfig.windmillEmbedViews.map(({ href, id, label, placement }) => ({
+    windmillViews={serverConfig.windmillEmbedViews.map(({ href, id, label, placement, trimChrome }) => ({
       href,
       id,
       label,
       placement,
+      trimChrome,
     }))}
     taskServiceConfigured={serverConfig.taskServiceConfigured}
     toolPolicies={serverConfig.toolPolicyOverrides}

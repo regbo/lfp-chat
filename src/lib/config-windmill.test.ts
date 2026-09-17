@@ -17,6 +17,7 @@ describe("Windmill embed view configuration", () => {
       publicSecretFile: "/run/secrets/lfp_chat_windmill_home_console_public_secret",
       placement: "dashboard",
       href: "/dashboard",
+      trimChrome: true,
     }]);
   });
 

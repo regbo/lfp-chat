@@ -17,14 +17,15 @@ const taskMods = [{
   views: [{ id: "tasks", label: "Tasks", href: "/tasks", icon: <ListTodo />, content: <TasksPanel /> }],
 }] as const;
 
-function ExternalView({ label, source }: Pick<ExternalViewConfig, "label" | "source">) {
+function ExternalView({ label, source, trimChrome = false }: Pick<ExternalViewConfig, "label" | "source"> & { trimChrome?: boolean }) {
   const [loading, setLoading] = useState(true);
-  return <div className="relative min-h-0 w-full flex-1">
+  return <div className="relative min-h-0 w-full flex-1 overflow-hidden">
     {loading && <div className="absolute inset-0 grid place-items-center text-sm text-muted-foreground">
       <span className="flex items-center gap-2"><LoaderCircle className="size-4 animate-spin" /> Loading {label}</span>
     </div>}
     <iframe
-      className="absolute inset-0 size-full border-0"
+      className={trimChrome ? "absolute -top-7 left-0 w-full border-0" : "absolute inset-0 size-full border-0"}
+      style={trimChrome ? { height: "calc(100% + 4.5rem)" } : undefined}
       onLoad={() => setLoading(false)}
       src={source}
       title={label}
@@ -52,7 +53,7 @@ export function WorkspaceChatApp({ branding, externalViews, taskServiceConfigure
         label: view.label,
         href: view.href,
         icon: <Landmark />,
-        content: <ExternalView label={view.label} source={`/api/windmill/apps/${view.id}`} />,
+        content: <ExternalView label={view.label} source={`/api/windmill/apps/${view.id}`} trimChrome={view.trimChrome} />,
       }],
     }));
   const dashboard = windmillViews.find((view) => view.placement === "dashboard");
@@ -63,7 +64,7 @@ export function WorkspaceChatApp({ branding, externalViews, taskServiceConfigure
       id: dashboard.id,
       label: dashboard.label,
       icon: <LayoutDashboard />,
-      content: <ExternalView label={dashboard.label} source={`/api/windmill/apps/${dashboard.id}`} />,
+      content: <ExternalView label={dashboard.label} source={`/api/windmill/apps/${dashboard.id}`} trimChrome={dashboard.trimChrome} />,
     } : undefined}
     mods={mods}
     toolPolicies={toolPolicies}

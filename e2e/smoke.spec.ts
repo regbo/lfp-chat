@@ -102,7 +102,13 @@ test("the configured Marketplace view loads through a scoped guest grant", async
     (frame) => frame.parentFrame()?.url().includes("/public/lfpconnect/"),
   );
   if (!marketplace) throw new Error("The Marketplace app frame did not load.");
-  await expect(marketplace.getByRole("heading", { name: "Marketplace" })).toBeVisible();
+  const appHeading = marketplace.getByRole("heading", { name: "Marketplace" });
+  if ((page.viewportSize()?.width ?? 1024) <= 700) {
+    await expect(appHeading).toBeHidden();
+  } else {
+    await expect(appHeading).toBeVisible();
+  }
+  await expect(marketplace.getByRole("button", { name: /^Status:/ })).toBeVisible();
   await marketplace.getByRole("button", { name: "Searches" }).click();
   await expect(marketplace.getByRole("heading", { name: "Searches" })).toBeVisible();
   await marketplace.locator(".meta-search-trigger").first().click();

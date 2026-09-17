@@ -133,6 +133,7 @@ export type WindmillEmbedViewConfig = {
   publicSecretFile?: `/run/secrets/${string}`;
   placement: "dashboard" | "navigation";
   href: `/${string}`;
+  trimChrome?: boolean;
 };
 
 export type WindmillEmbedClientViewConfig = Omit<
@@ -185,6 +186,7 @@ export function parseWindmillEmbedViews(raw = process.env.APP_WINDMILL_VIEWS?.tr
       : "";
     const placement = item.placement === "dashboard" ? "dashboard" : "navigation";
     const configuredHref = typeof item.href === "string" ? item.href.trim() : "";
+    const trimChrome = item.trimChrome !== false;
     const href = placement === "dashboard" ? "/dashboard" : configuredHref || `/${id}`;
     if (!/^[a-z][a-z0-9_-]{0,62}$/.test(id) || ids.has(id)) {
       throw new Error(`APP_WINDMILL_VIEWS[${index}].id must be a unique lowercase slug.`);
@@ -211,6 +213,7 @@ export function parseWindmillEmbedViews(raw = process.env.APP_WINDMILL_VIEWS?.tr
         : undefined,
       placement,
       href: href as `/${string}`,
+      trimChrome,
     };
   });
 }
