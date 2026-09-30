@@ -34,6 +34,16 @@ function booleanValue(name: string, fallback: boolean) {
   throw new Error(`${name} must be true or false.`);
 }
 
+export function openAiHostedToolsDefault(rawBaseUrl: string | undefined) {
+  if (!rawBaseUrl?.trim()) return true;
+  try {
+    const baseUrl = new URL(rawBaseUrl);
+    return baseUrl.protocol === "https:" && baseUrl.hostname === "api.openai.com";
+  } catch {
+    return false;
+  }
+}
+
 export function secretValue(valueName: string, fileName: string) {
   const file = process.env[fileName]?.trim();
   if (file) {
@@ -267,6 +277,10 @@ export const serverConfig = {
   ),
   agentMaxSteps: boundedInteger("MASTRA_AGENT_MAX_STEPS", 16, 1, 40),
   openaiApiKey: secretValue("OPENAI_API_KEY", "OPENAI_API_KEY_FILE"),
+  openaiHostedToolsEnabled: booleanValue(
+    "OPENAI_HOSTED_TOOLS_ENABLED",
+    openAiHostedToolsDefault(process.env.OPENAI_BASE_URL),
+  ),
   localModelBaseUrl,
   scheduledModelName,
   // Hosts may dedicate a separate CPU runtime to lightweight web UI work.
