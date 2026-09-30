@@ -17,6 +17,8 @@ Read `LFP_HOME_HOST.md` before modifying Home-specific host composition.
 - `src/mastra/index.ts` — stock agent plus AgentController composition, including chat/research/plan/act/code modes, permission defaults, task planning, and forked researcher/reviewer subagents.
 - `src/mastra/chatgpt-subscription-gateway.ts` — optional LiteLLM-backed Mastra model gateway that keeps ChatGPT OAuth in the proxy while AgentController owns the agent loop.
 - `src/host/transaction-tool.ts` — Home-host composition that calls the authoritative typed transaction API; it is intentionally excluded from the reusable package entrypoints.
+- `src/host/email-tool.tsx` — Home-host, approval-gated Markdown email sender backed by file-based SMTP settings; it is intentionally excluded from reusable package entrypoints.
+- `src/host/tools.ts` — single Home-host registry composition point for native Mastra tools.
 - `src/lib/schedules.ts` — shared schedule deduplication, timezone context, and safe scheduled-run request-context construction.
 - `src/lib/vikunja.ts` — centralized server-only task client used by chat tools and the Tasks menu.
 - `src/lib/dashboard-spec.ts` — persisted widget and validated render-output contracts.
