@@ -400,6 +400,10 @@ export const serverConfig = {
   openaiApiKey: secretValue("OPENAI_API_KEY", "OPENAI_API_KEY_FILE"),
   openaiBaseUrl: optionalHttpUrl("OPENAI_BASE_URL"),
   togetherApiKey: secretValue("TOGETHER_API_KEY", "TOGETHER_API_KEY_FILE"),
+  memorySemanticRecallEnabled: booleanValue(
+    "MEMORY_SEMANTIC_RECALL_ENABLED",
+    false,
+  ),
   memoryEmbeddingModel:
     process.env.MEMORY_EMBEDDING_MODEL?.trim() ||
     "intfloat/multilingual-e5-large-instruct",

@@ -1,4 +1,4 @@
-import { describe, expect, mock, test } from "bun:test";
+import { describe, expect, mock, spyOn, test } from "bun:test";
 import type { MastraDBMessage } from "@mastra/core/agent/message-list";
 import type { ProcessInputStepArgs } from "@mastra/core/processors";
 
@@ -78,5 +78,28 @@ describe("SignalSemanticRecallProcessor", () => {
 
     expect(result).toBeUndefined();
     expect(recall).not.toHaveBeenCalled();
+  });
+
+  test("fails open when the embedding provider is unavailable", async () => {
+    const recall = mock(async () => {
+      throw new Error("embedding endpoint unavailable");
+    });
+    const warning = spyOn(console, "warn").mockImplementation(() => {});
+    const processor = new SignalSemanticRecallProcessor({ recall } as never);
+
+    try {
+      const result = await processor.processInputStep({
+        messages: [message("signal", "What is the canary?", "thread-b")],
+        state: {},
+        stepNumber: 0,
+        systemMessages: [],
+      } as unknown as ProcessInputStepArgs);
+
+      expect(result).toBeUndefined();
+      expect(recall).toHaveBeenCalledTimes(1);
+      expect(warning).toHaveBeenCalledTimes(1);
+    } finally {
+      warning.mockRestore();
+    }
   });
 });

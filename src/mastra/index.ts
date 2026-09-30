@@ -93,28 +93,35 @@ export function createLfpChatMastra(
     id: "lfp-chat-postgres",
     connectionString: serverConfig.databaseUrl,
   });
-  const vector = new LazyExtensionPgVector({
-    id: "lfp-chat-memory-vectors",
-    connectionString: serverConfig.databaseUrl,
-  });
-  const memoryEmbedder = new ModelRouterEmbeddingModel({
-    providerId: "together",
-    modelId: serverConfig.memoryEmbeddingModel,
-    url: "https://api.together.xyz/v1",
-    apiKey: serverConfig.togetherApiKey || "together-not-configured",
-  });
+  const vector = serverConfig.memorySemanticRecallEnabled
+    ? new LazyExtensionPgVector({
+        id: "lfp-chat-memory-vectors",
+        connectionString: serverConfig.databaseUrl,
+      })
+    : undefined;
+  const memoryEmbedder = serverConfig.memorySemanticRecallEnabled
+    ? new ModelRouterEmbeddingModel({
+        providerId: "together",
+        modelId: serverConfig.memoryEmbeddingModel,
+        url: "https://api.together.xyz/v1",
+        apiKey: serverConfig.togetherApiKey || "together-not-configured",
+      })
+    : undefined;
 
   const memory = new Memory({
     storage,
-    vector,
-    embedder: memoryEmbedder,
+    ...(vector && memoryEmbedder ? { vector, embedder: memoryEmbedder } : {}),
     options: {
       lastMessages: 24,
-      semanticRecall: {
-        scope: "resource",
-        topK: 5,
-        messageRange: { before: 2, after: 2 },
-      },
+      ...(serverConfig.memorySemanticRecallEnabled
+        ? {
+            semanticRecall: {
+              scope: "resource" as const,
+              topK: 5,
+              messageRange: { before: 2, after: 2 },
+            },
+          }
+        : {}),
       generateTitle: true,
       workingMemory: {
         enabled: true,
@@ -136,7 +143,9 @@ export function createLfpChatMastra(
       observationalMemory: false,
     },
   });
-  const signalSemanticRecall = new SignalSemanticRecallProcessor(memory);
+  const signalSemanticRecall = serverConfig.memorySemanticRecallEnabled
+    ? new SignalSemanticRecallProcessor(memory)
+    : undefined;
   const openAiConversationState = new OpenAiConversationStateProcessor();
 
   const baseChatAgentConfig: AgentConfig = {
@@ -145,7 +154,10 @@ export function createLfpChatMastra(
     description: "A concise, tool-capable assistant with persistent memory.",
     model: ({ requestContext }) => resolveRuntimeModel(requestContext),
     memory,
-    inputProcessors: [signalSemanticRecall, openAiConversationState],
+    inputProcessors: [
+      ...(signalSemanticRecall ? [signalSemanticRecall] : []),
+      openAiConversationState,
+    ],
     outputProcessors: [openAiConversationState],
     errorProcessors: [openAiConversationState],
     tools: async ({ requestContext }) => {
@@ -189,8 +201,7 @@ ${chartInstructions}
 
 ${DEFAULT_WRITING_STYLE_INSTRUCTIONS}
 
-Mastra keeps recent messages, cross-thread semantic recall, and stable working memory in PostgreSQL.
-Together embeddings power semantic recall. Graphiti is the separate dated household-fact memory and
+Mastra keeps recent messages and stable working memory in PostgreSQL. Graphiti is the separate dated household-fact memory and
 is available through search_home_graph; use it automatically for relevant household history.
 Ordinary query results, transaction rows, emails, attachments, and tool output are not user-profile
 memory and must not be copied into working memory. Household access details such as garage, gate,

@@ -83,21 +83,29 @@ export class SignalSemanticRecallProcessor implements Processor {
     if (!resourceId || !threadId || !searchText) return;
 
     state[RECALL_COMPLETE_KEY] = true;
-    const recalled = await this.memory.recall({
-      resourceId,
-      threadId,
-      perPage: false,
-      threadConfig: { lastMessages: false },
-      vectorSearchString: searchText,
-    });
-    const context = recalledContext(recalled.messages, threadId);
-    if (!context) return;
+    try {
+      const recalled = await this.memory.recall({
+        resourceId,
+        threadId,
+        perPage: false,
+        threadConfig: { lastMessages: false },
+        vectorSearchString: searchText,
+      });
+      const context = recalledContext(recalled.messages, threadId);
+      if (!context) return;
 
-    return {
-      systemMessages: [
-        ...systemMessages,
-        { role: "system", content: context },
-      ],
-    };
+      return {
+        systemMessages: [
+          ...systemMessages,
+          { role: "system", content: context },
+        ],
+      };
+    } catch (error) {
+      console.warn(
+        "Semantic recall unavailable; continuing without recalled context",
+        error,
+      );
+      return;
+    }
   }
 }

@@ -34,7 +34,9 @@ This repository is a reusable chat package plus an LFP Home host. Preserve that 
   identifier when the run-only workspace token cannot resolve it. All credentials remain
   server-side. A dashboard placement replaces the built-in deterministic dashboard, while
   navigation placements add independent app views.
-- The host uses Together embeddings for Mastra semantic recall and Home retrieval.
+- Semantic recall is optional and must fail open. The Home deployment keeps it disabled while
+  Together has no serverless embedding models; PostgreSQL history and resource-scoped working
+  memory remain enabled.
 
 The corresponding authoritative service state and deployment baseline live in the sibling
 `lfp-home/docs/llm/PROJECT_STATE.md` when both repositories are checked out together.
