@@ -362,6 +362,12 @@ export const serverConfig = {
     "LFP_WINDMILL_GUEST_PRIVATE_KEY_FILE",
   ),
   mcpToolSources: mcpToolSources(),
+  mcpToolDiscoveryTimeoutMs: boundedInteger(
+    "MCP_TOOL_DISCOVERY_TIMEOUT_MS",
+    10_000,
+    1_000,
+    60_000,
+  ),
   toolPolicyOverrides: toolPolicyOverrides(),
   scheduleRunImmediately: booleanValue("SCHEDULE_RUN_IMMEDIATELY", true),
   webPushSubject: process.env.WEB_PUSH_SUBJECT?.trim() || "mailto:admin@localhost",

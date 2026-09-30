@@ -27,6 +27,49 @@ const client = sources.length
     })
   : undefined;
 
+type ToolDiscoveryResult = Awaited<ReturnType<MCPClient["listToolsWithErrors"]>>;
+
+let cachedDiscovery: ToolDiscoveryResult | undefined;
+let cachedDiscoveryExpiresAt = 0;
+let pendingDiscovery: Promise<ToolDiscoveryResult> | undefined;
+
+async function discoverTools() {
+  if (!client) return { tools: {}, errors: {} } satisfies ToolDiscoveryResult;
+  if (cachedDiscovery && Date.now() < cachedDiscoveryExpiresAt) {
+    return cachedDiscovery;
+  }
+  if (pendingDiscovery) return pendingDiscovery;
+
+  pendingDiscovery = (async () => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<ToolDiscoveryResult>((resolve) => {
+      timer = setTimeout(() => resolve({
+        tools: {},
+        errors: Object.fromEntries(
+          sources.map((source) => [
+            source.id,
+            `Tool discovery exceeded ${serverConfig.mcpToolDiscoveryTimeoutMs}ms`,
+          ]),
+        ),
+      }), serverConfig.mcpToolDiscoveryTimeoutMs);
+    });
+    const result = await Promise.race([client.listToolsWithErrors(), timeout]);
+    if (timer) clearTimeout(timer);
+
+    cachedDiscovery = result;
+    // A successful catalog is stable for the life of this process. Briefly cache
+    // failures so an unavailable optional source cannot stall every agent turn.
+    cachedDiscoveryExpiresAt = Object.keys(result.tools).length > 0
+      ? Number.POSITIVE_INFINITY
+      : Date.now() + 30_000;
+    return result;
+  })().finally(() => {
+    pendingDiscovery = undefined;
+  });
+
+  return pendingDiscovery;
+}
+
 /** Resolve configured MCP tools lazily so a failed optional source cannot stop Chat startup. */
 export async function configuredMcpTools(
   enabledCapabilities: Set<string>,
@@ -39,7 +82,7 @@ export async function configuredMcpTools(
       : source.enabled,
   );
   if (!enabledSources.length) return {};
-  const { tools, errors } = await client.listToolsWithErrors();
+  const { tools, errors } = await discoverTools();
   for (const source of enabledSources) {
     const error = errors[source.id];
     if (error) console.warn(`MCP tool source ${source.id} is unavailable:`, error);
