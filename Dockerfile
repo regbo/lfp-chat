@@ -33,6 +33,9 @@ RUN bun run build
 # inherit a link whose target was intentionally left behind.
 RUN mkdir -p dist/runtime-deps/@pydantic \
     && cp -LR node_modules/@pydantic/monty dist/runtime-deps/@pydantic/monty \
+    && monty_linux_dir="$(dirname "$(find node_modules/.bun -path '*/node_modules/@pydantic/monty-linux-x64-gnu/package.json' -print -quit)")" \
+    && test -n "$monty_linux_dir" \
+    && cp -LR "$monty_linux_dir" dist/runtime-deps/@pydantic/monty-linux-x64-gnu \
     && header_generator_dir="$(dirname "$(find node_modules/.bun -path '*/node_modules/header-generator/package.json' -print -quit)")" \
     && test -n "$header_generator_dir" \
     && mkdir -p "dist/runtime-deps/$header_generator_dir" \
