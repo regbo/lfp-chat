@@ -24,6 +24,7 @@
 /dist/
 /.mastra/
 /.caddy/
+/.dev/
 
 # misc
 .DS_Store

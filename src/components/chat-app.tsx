@@ -34,7 +34,6 @@ import {
 import type { ToolPart } from "@/components/ai-elements/tool";
 import { Button } from "@/components/ui/button";
 import { BrandLockup } from "@/components/brand-lockup";
-import { DashboardPanel } from "@/components/dashboard-panel";
 import { BrowserNotificationListener } from "@/components/browser-notification-listener";
 import {
   Dialog,
@@ -76,6 +75,7 @@ import {
 } from "@/components/app-panels";
 import {
   getRunningToolLabel,
+  getToolActivityLabel,
   ToolEventSummary,
 } from "@/components/tool-event-summary";
 import { type PendingSteer, SteerQueue } from "@/components/steer-queue";
@@ -159,7 +159,6 @@ import {
   Folder,
   FolderPlus,
   LoaderCircle,
-  LayoutDashboard,
   Menu,
   MoreHorizontal,
   PanelLeftClose,
@@ -195,7 +194,6 @@ const ChatChart = dynamic(
 
 type CoreView =
   | "chat"
-  | "dashboard"
   | "search"
   | "scheduled"
   | "tools"
@@ -205,7 +203,6 @@ type ActiveView = CoreView | `plugin:${string}`;
 
 const pluginView = (id: string): ActiveView => `plugin:${id}`;
 const coreViewRoutes: Record<Exclude<CoreView, "chat">, `/${string}`> = {
-  dashboard: "/dashboard",
   search: "/search",
   scheduled: "/scheduled",
   tools: "/tools",
@@ -818,7 +815,9 @@ function ChatMessage({ message, streaming }: { message: UIMessage; streaming: bo
   const files = message.parts.filter((part): part is FileUIPart => part.type === "file");
   const hasReasoningDetails = Boolean(reasoningText) || tools.length > 0;
   const showReasoning = !isUser && (streaming || Boolean(reasoningText) || tools.length > 0);
-  const runningToolLabel = streaming ? getRunningToolLabel(tools) : undefined;
+  const toolActivityLabel = streaming
+    ? getRunningToolLabel(tools)
+    : getToolActivityLabel(tools);
   const charts = tools.flatMap((part) => {
     const name =
       part.type === "dynamic-tool"
@@ -838,7 +837,7 @@ function ChatMessage({ message, streaming }: { message: UIMessage; streaming: bo
         >
           {showReasoning && (
             <Reasoning isStreaming={streaming}>
-              <ReasoningTrigger expandable={hasReasoningDetails} status={runningToolLabel} />
+              <ReasoningTrigger expandable={hasReasoningDetails} status={toolActivityLabel} />
               {hasReasoningDetails ? (
                 <ReasoningContent className="space-y-2">
                   {reasoningText && <MessageResponse>{formatAttachmentLinks(formatCitationMarkers(reasoningText, tools), tools)}</MessageResponse>}
@@ -1872,7 +1871,6 @@ export function ChatApp({ branding = DEFAULT_APP_BRANDING, mods = [], plugins = 
     [pathname, registeredPlugins],
   );
   const [resourceId, setResourceId] = useState(user?.resourceId ?? "");
-  const [hasDashboard, setHasDashboard] = useState(false);
   const [threadId, setThreadId] = useState(() => initialThreadId || makeId());
   const [composerFocusThreadId, setComposerFocusThreadId] = useState<string | null>(null);
   const [sessionSeeds, setSessionSeeds] = useState<Map<string, UIMessage[]>>(
@@ -1961,22 +1959,6 @@ export function ChatApp({ branding = DEFAULT_APP_BRANDING, mods = [], plugins = 
       shell.removeEventListener("touchcancel", onTouchEnd);
     };
   }, [mobileSidebarOpen]);
-
-  useEffect(() => {
-    if (!resourceId) return;
-    let cancelled = false;
-    const refresh = async () => {
-      const query = new URLSearchParams({ resourceId, summary: "true" });
-      const response = await fetch(`/api/dashboard?${query}`, { cache: "no-store" }).catch(() => undefined);
-      if (!cancelled && response?.ok) {
-        const summary = await response.json() as { hasDashboard?: boolean };
-        setHasDashboard(summary.hasDashboard === true);
-      }
-    };
-    void refresh();
-    const timer = window.setInterval(() => void refresh(), 10_000);
-    return () => { cancelled = true; window.clearInterval(timer); };
-  }, [resourceId]);
 
   const rememberSession = useCallback((
     id: string,
@@ -2517,9 +2499,6 @@ export function ChatApp({ branding = DEFAULT_APP_BRANDING, mods = [], plugins = 
         <Link className={cn("sidebar-item", activeView === "search" && "bg-sidebar-accent")} href={coreViewRoutes.search} onClick={() => setMobileSidebarOpen(false)}>
           <Search className="size-[18px]" /> Search
         </Link>
-        {hasDashboard && <Link className={cn("sidebar-item", activeView === "dashboard" && "bg-sidebar-accent")} href={coreViewRoutes.dashboard} onClick={() => setMobileSidebarOpen(false)}>
-          <LayoutDashboard className="size-[18px]" /> Dashboard
-        </Link>}
         <Link className={cn("sidebar-item", activeView === "scheduled" && "bg-sidebar-accent")} href={coreViewRoutes.scheduled} onClick={() => setMobileSidebarOpen(false)}>
           <Clock3 className="size-[18px]" /> Scheduled
         </Link>
@@ -2723,7 +2702,6 @@ export function ChatApp({ branding = DEFAULT_APP_BRANDING, mods = [], plugins = 
           </div>
         )}
         {resourceId && activeView === "search" && <SearchPanel onOpen={(id) => void openThread(id)} threads={activeThreads} />}
-        {resourceId && activeView === "dashboard" && <DashboardPanel onAvailabilityChange={setHasDashboard} resourceId={resourceId} />}
         {resourceId && activeView === "scheduled" && (
           <SchedulesPanel
             enabledToolIds={enabledToolIds}
@@ -2735,7 +2713,7 @@ export function ChatApp({ branding = DEFAULT_APP_BRANDING, mods = [], plugins = 
           />
         )}
         {resourceId && activeView === "tools" && (
-          <ToolsPanel builtInTools={configuredBuiltInTools} contributedTools={contributedTools} enabledToolIds={enabledToolIds} onToggle={toggleTool} resourceId={resourceId} />
+          <ToolsPanel builtInTools={configuredBuiltInTools} contributedTools={contributedTools} enabledToolIds={enabledToolIds} onToggle={toggleTool} />
         )}
         {resourceId && activeView === "archived" && (
           <ArchivedPanel

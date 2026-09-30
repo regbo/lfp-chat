@@ -1,7 +1,6 @@
 import { MCPClient } from "@mastra/mcp";
 
 import { serverConfig } from "@/lib/config";
-import { registerDashboardMastraTools } from "@/lib/dashboard-runtime";
 import type { LfpChatToolRegistry } from "@/mastra/tool-registry";
 
 const sources = serverConfig.mcpToolSources.filter(
@@ -57,30 +56,11 @@ export async function configuredMcpTools(
           toolId.startsWith(`${source.id}_`),
         ),
       );
-      const configured = toolRegistry.entries().find((entry) => entry.id === source.id);
-      const availableToMonty = new Set(configured?.availableToMonty ?? []);
-      for (const [toolId, tool] of Object.entries(sourceTools)) {
-        if (source.availableToMonty || tool.mcp?.annotations?.readOnlyHint === true) {
-          availableToMonty.add(toolId);
-        }
-      }
       toolRegistry.configureTools({ [source.id]: {
         tools: sourceTools,
-        availableToMonty: [...availableToMonty],
       } });
     }
-    registerDashboardMastraTools(toolRegistry.montyTools());
     return enabledTools;
   }
-  const montyTools = Object.fromEntries(
-    Object.entries(enabledTools).filter(([toolId, tool]) => {
-      const source = enabledSources.find((candidate) =>
-        toolId.startsWith(`${candidate.id}_`),
-      );
-      if (source?.availableToMonty) return true;
-      return tool.mcp?.annotations?.readOnlyHint === true;
-    }),
-  );
-  registerDashboardMastraTools(montyTools);
   return enabledTools;
 }

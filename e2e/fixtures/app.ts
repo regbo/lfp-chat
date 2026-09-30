@@ -100,10 +100,6 @@ export async function installAppApiFixture(
       });
       return;
     }
-    if (url.pathname === "/api/dashboard") {
-      await route.fulfill({ json: { hasDashboard: false } });
-      return;
-    }
     if (url.pathname === "/api/models") {
       await route.fulfill({ status: 503, json: { error: "Smoke fixture" } });
       return;

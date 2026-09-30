@@ -106,7 +106,6 @@ export type McpToolSource = {
   enabled: boolean;
   hidden: boolean;
   userConfigurable: boolean;
-  availableToMonty: boolean;
   authToken?: string;
   timeoutMs: number;
   forwardInstructions: boolean;
@@ -116,40 +115,6 @@ export type ToolPolicyOverride = {
   enabled?: boolean;
   hidden?: boolean;
   userConfigurable?: boolean;
-  availableToMonty?: boolean;
-};
-
-export type ExternalViewConfig = {
-  id: string;
-  label: string;
-  href: `/${string}`;
-  source: `/${string}`;
-};
-
-function externalViews(): ExternalViewConfig[] {
-  const raw = process.env.APP_EXTERNAL_VIEWS?.trim();
-  if (!raw) return [];
-  const parsed: unknown = JSON.parse(raw);
-  if (!Array.isArray(parsed)) throw new Error("APP_EXTERNAL_VIEWS must be a JSON array.");
-  const ids = new Set<string>();
-  return parsed.map((value, index) => {
-    if (!value || typeof value !== "object") {
-      throw new Error(`APP_EXTERNAL_VIEWS[${index}] must be an object.`);
-    }
-    const item = value as Record<string, unknown>;
-    const id = typeof item.id === "string" ? item.id.trim() : "";
-    const label = typeof item.label === "string" ? item.label.trim() : "";
-    const href = typeof item.href === "string" ? item.href.trim() : "";
-    const source = typeof item.source === "string" ? item.source.trim() : "";
-    if (!/^[a-z][a-z0-9_-]{0,62}$/.test(id) || ids.has(id)) {
-      throw new Error(`APP_EXTERNAL_VIEWS[${index}].id must be a unique lowercase slug.`);
-    }
-    if (!label || !href.startsWith("/") || !source.startsWith("/")) {
-      throw new Error(`APP_EXTERNAL_VIEWS[${index}] requires label, href, and source.`);
-    }
-    ids.add(id);
-    return { id, label, href: href as `/${string}`, source: source as `/${string}` };
-  });
 }
 
 function toolPolicyOverrides(): Record<string, ToolPolicyOverride> {
@@ -169,7 +134,7 @@ function toolPolicyOverrides(): Record<string, ToolPolicyOverride> {
       throw new Error(`Invalid TOOL_POLICIES entry: ${id}`);
     }
     const policy = value as Record<string, unknown>;
-    for (const field of ["enabled", "hidden", "userConfigurable", "availableToMonty"] as const) {
+    for (const field of ["enabled", "hidden", "userConfigurable"] as const) {
       if (policy[field] !== undefined && typeof policy[field] !== "boolean") {
         throw new Error(`TOOL_POLICIES.${id}.${field} must be boolean.`);
       }
@@ -179,9 +144,6 @@ function toolPolicyOverrides(): Record<string, ToolPolicyOverride> {
       ...(typeof policy.hidden === "boolean" ? { hidden: policy.hidden } : {}),
       ...(typeof policy.userConfigurable === "boolean"
         ? { userConfigurable: policy.userConfigurable }
-        : {}),
-      ...(typeof policy.availableToMonty === "boolean"
-        ? { availableToMonty: policy.availableToMonty }
         : {}),
     }];
   }));
@@ -245,7 +207,6 @@ function mcpToolSources(): McpToolSource[] {
       : source.defaultEnabled !== false;
     const userConfigurable = source.userConfigurable === true;
     const hidden = source.hidden === true;
-    const availableToMonty = source.availableToMonty === true;
     seen.add(id);
     return {
       id,
@@ -255,7 +216,6 @@ function mcpToolSources(): McpToolSource[] {
       enabled,
       hidden,
       userConfigurable,
-      availableToMonty,
       authToken,
       timeoutMs,
       forwardInstructions: source.forwardInstructions !== false,
@@ -296,7 +256,6 @@ export const serverConfig = {
   vikunjaApiToken,
   vikunjaProjectId: boundedInteger("VIKUNJA_PROJECT_ID", 1, 1, 2_147_483_647),
   taskServiceConfigured: Boolean(vikunjaApiUrl && vikunjaApiToken),
-  externalViews: externalViews(),
   mcpToolSources: mcpToolSources(),
   toolPolicyOverrides: toolPolicyOverrides(),
   scheduleRunImmediately: booleanValue("SCHEDULE_RUN_IMMEDIATELY", true),
@@ -306,26 +265,6 @@ export const serverConfig = {
     "WEB_PUSH_PRIVATE_KEY",
     "WEB_PUSH_PRIVATE_KEY_FILE",
   ),
-  dashboard: {
-    sqlDatabaseUrl: secretValue(
-      "DASHBOARD_SQL_DATABASE_URL",
-      "DASHBOARD_SQL_DATABASE_URL_FILE",
-    ),
-    sqlSchemaDescription:
-      process.env.DASHBOARD_SQL_SCHEMA_DESCRIPTION?.trim(),
-    sqlStatementTimeoutMs: boundedInteger(
-      "DASHBOARD_SQL_STATEMENT_TIMEOUT_MS",
-      30_000,
-      1_000,
-      300_000,
-    ),
-    sqlConnectionTimeoutMs: boundedInteger(
-      "DASHBOARD_SQL_CONNECTION_TIMEOUT_MS",
-      15_000,
-      1_000,
-      60_000,
-    ),
-  },
   agentMaxSteps: boundedInteger("MASTRA_AGENT_MAX_STEPS", 16, 1, 40),
   openaiApiKey: secretValue("OPENAI_API_KEY", "OPENAI_API_KEY_FILE"),
   localModelBaseUrl,

@@ -1,17 +1,8 @@
 import type { ToolsInput } from "@mastra/core/agent";
 import type { Config as MastraConfig } from "@mastra/core/mastra";
+import { webFetchTool } from "@mastra/core/tools";
 
 import { defaultRegisteredTools, type ToolUiSettings } from "@/lib/tool-catalog";
-import { dashboardCacheTool } from "@/mastra/dashboard-cache-tool";
-import { dashboardSqlTool, dashboardWebFetchTool } from "@/mastra/dashboard-source-tools";
-import {
-  dashboardArchiveTool,
-  dashboardDeleteTool,
-  dashboardListTool,
-  dashboardRunUserTool,
-  dashboardUpsertUserTool,
-  dashboardUpsertWidgetTool,
-} from "@/mastra/dashboard-tools";
 import { jobMemoryRecallTool } from "@/mastra/job-memory-tool";
 import { modelProvider } from "@/mastra/model-provider";
 import { notificationSendTool } from "@/mastra/notification-tool";
@@ -30,7 +21,6 @@ import {
 import { montyTool } from "@/mastra/tools";
 import { urlFetchTool } from "@/mastra/url-fetch-tool";
 import { renderChartTool } from "@/mastra/chart-tool";
-import { serverConfig } from "@/lib/config";
 
 export type LfpChatToolRegistryEntry = ToolUiSettings & {
   id: string;
@@ -38,8 +28,6 @@ export type LfpChatToolRegistryEntry = ToolUiSettings & {
   description: string;
   /** Native Mastra tools; their descriptions, schemas, metadata, and types remain intact. */
   tools: ToolsInput;
-  /** Exact tool IDs that deterministic saved Monty programs may call. */
-  availableToMonty?: readonly string[];
   /** Restrict this group to scheduled/background runs. */
   scheduledOnly?: boolean;
   /** Omit this group from scheduled/background runs. */
@@ -66,27 +54,18 @@ function toolDescription(tool: ToolsInput[string] | undefined) {
 
 const internalTools: ToolsInput = {
   monty: montyTool,
-  web_fetch: dashboardWebFetchTool,
-  cache: dashboardCacheTool,
-  ...(serverConfig.dashboard.sqlDatabaseUrl ? { sql_query: dashboardSqlTool } : {}),
-  dashboard_upsert_widget: dashboardUpsertWidgetTool,
-  dashboard_upsert_tool: dashboardUpsertUserTool,
-  dashboard_run_tool: dashboardRunUserTool,
-  dashboard_list: dashboardListTool,
-  dashboard_archive: dashboardArchiveTool,
-  dashboard_delete: dashboardDeleteTool,
+  web_fetch: webFetchTool,
 };
 
 export const defaultToolRegistry = {
   internal: {
     id: "internal",
     title: "Internal tools",
-    description: "Framework and dashboard orchestration tools.",
+    description: "Framework tools used by every agent run.",
     hidden: true,
     enabled: true,
     userConfigurable: false,
     tools: internalTools,
-    availableToMonty: ["monty", "web_fetch", "cache", "sql_query"],
   },
   render_chart: {
     ...defaultRegisteredTools.render_chart,
@@ -109,7 +88,6 @@ export const defaultToolRegistry = {
   url_fetch: {
     ...defaultRegisteredTools.url_fetch,
     tools: { url_fetch: urlFetchTool },
-    availableToMonty: ["url_fetch"],
   },
   scheduling: {
     ...defaultRegisteredTools.scheduling,
@@ -177,7 +155,8 @@ function isToolRegistryEntryOverride(
 ): value is Partial<Omit<LfpChatToolRegistryEntry, "id">> {
   return "tools" in value || "title" in value || "hidden" in value ||
     "enabled" in value || "userConfigurable" in value ||
-    "availableToMonty" in value;
+    "scheduledOnly" in value || "interactiveOnly" in value ||
+    "requiresTaskService" in value;
 }
 
 export class LfpChatToolRegistry {
@@ -214,8 +193,6 @@ export class LfpChatToolRegistry {
         userConfigurable:
           update.userConfigurable ?? current?.userConfigurable ?? true,
         tools,
-        availableToMonty:
-          update.availableToMonty ?? current?.availableToMonty,
         scheduledOnly: update.scheduledOnly ?? current?.scheduledOnly,
         interactiveOnly: update.interactiveOnly ?? current?.interactiveOnly,
         requiresTaskService:
@@ -253,13 +230,6 @@ export class LfpChatToolRegistry {
     return Object.fromEntries(
       Object.entries(this.allTools()).filter(([, tool]) => isNativeMastraTool(tool)),
     ) as Record<string, NativeMastraTool>;
-  }
-
-  montyTools() {
-    const allowed = new Set(this.entries().flatMap((entry) => entry.availableToMonty ?? []));
-    return Object.fromEntries(
-      Object.entries(this.mastraTools()).filter(([id]) => allowed.has(id)),
-    );
   }
 
   resolve(enabled: ReadonlySet<string>, options: { scheduled: boolean; taskServiceConfigured: boolean }) {

@@ -100,13 +100,17 @@ export const toolCatalog = Object.values(defaultTools);
 
 export const hiddenMandatoryToolIds = [
   "monty",
-  "cache",
-  "dashboard",
   "code_interpreter",
 ] as const;
 
+const retiredToolIds = ["calculator", "search", "cache", "dashboard"] as const;
+const nonSelectableToolIds = new Set<string>([
+  ...retiredToolIds,
+  ...hiddenMandatoryToolIds,
+]);
+
 export function isMandatoryAgentToolId(id: string) {
-  return id === "monty" || id === "cache" || id === "code_interpreter" || id.startsWith("dashboard_");
+  return id === "monty" || id === "web_fetch" || id === "code_interpreter";
 }
 
 export const defaultEnabledToolIds: SelectableToolId[] = toolCatalog
@@ -147,6 +151,6 @@ export function migrateEnabledToolIds(
     ...(storedCatalogVersion < 7 ? ["notifications"] : []),
   ];
   return Array.from(new Set([...normalized, ...additions])).filter(
-    (id) => !["calculator", "search", ...hiddenMandatoryToolIds].includes(id),
+    (id) => !nonSelectableToolIds.has(id),
   );
 }

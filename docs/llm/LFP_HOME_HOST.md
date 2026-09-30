@@ -5,6 +5,10 @@ This repository is a reusable chat package plus an LFP Home host. Preserve that 
 - Home's `transaction_add` tool is a host-only native Mastra adapter. It calls the authenticated
   structured Home API and must not reproduce PostgreSQL writes, account matching, deduplication, or
   embeddings. Keep `src/host/transaction-tool.ts` out of public package entrypoints.
+- Home's `email_send` tool is a host-only native Mastra adapter. It stays disabled until complete
+  file-backed SMTP configuration is present, always uses the fixed Home no-reply sender, sanitizes
+  rendered Markdown, and requires Mastra approval before sending. Keep `src/host/email-tool.tsx`
+  out of public package entrypoints.
 - Mastra owns chat history and long-term conversational memory through its PostgreSQL-backed memory
   system. Observational Memory summarizes each thread with the local background model and manages
   the small resource-scoped working-memory profile; ordinary tool results and ingested Home content

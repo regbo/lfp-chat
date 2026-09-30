@@ -10,15 +10,12 @@ Read `LFP_HOME_HOST.md` before modifying Home-specific host composition.
 - `src/lib/tool-output.ts` — centralized head/tail truncation for tool values before they enter the visible transcript or model history.
 - `src/lib/model-catalog.ts` — model selection, reasoning-effort normalization, and request-context keys.
 - `src/lib/tool-catalog.ts` — selectable tool definitions, defaults, and request-context keys.
-- `src/mastra/tool-registry.ts` — typed native Mastra tool registry shared by agent resolution, the serialized UI catalog, global Mastra registration, and explicit Monty capability exposure.
+- `src/mastra/tool-registry.ts` — typed native Mastra tool registry shared by agent resolution, the serialized UI catalog, and global Mastra registration.
 - `src/host/transaction-tool.ts` — Home-host composition that calls the authoritative typed transaction API; it is intentionally excluded from the reusable package entrypoints.
+- `src/host/email-tool.tsx` — Home-host approval-gated SMTP adapter with a fixed sender and sanitized Markdown rendering; it is intentionally excluded from reusable package entrypoints.
+- `src/host/tools.ts` — single Home-host registry composition point for private native tools.
 - `src/lib/schedules.ts` — shared schedule deduplication, timezone context, and safe scheduled-run request-context construction.
 - `src/lib/vikunja.ts` — centralized server-only task client used by chat tools and the Tasks menu.
-- `src/lib/dashboard-spec.ts` — persisted widget and validated render-output contracts.
-- `src/lib/dashboard-store.ts` — dashboard/tab persistence plus PostgreSQL advisory-lock caching and archive state.
-- `src/lib/dashboard-runtime.ts` — generic adapter from real Mastra tools to Monty's allowlisted `tool_call` bridge.
-- `src/mastra/dashboard-capabilities.ts` — process-local registration of the default read-oriented Mastra capabilities.
-- `src/mastra/dashboard-refresh.ts` — Monty-aware refresh entrypoint kept on the Mastra server side.
 - `src/mastra/url-fetch-tool.ts` — SSRF-protected `got-scraping` fetch for one specific public URL; separate from provider web search.
 - `src/mastra/tools.ts` — host-neutral built-in project search, calculator, and Monty tools.
 - `src/mastra/schedule-tools.ts` — agent-facing list/create scheduling tools with per-resource duplicate prevention and dedicated output threads.

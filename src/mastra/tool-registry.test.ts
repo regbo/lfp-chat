@@ -28,19 +28,17 @@ describe("shared tool registry", () => {
       });
   });
 
-  test("updates defaults and exposes requested native tools to Monty", () => {
+  test("updates defaults and adds grouped native tools", () => {
     const registry = createToolRegistry().configureTools({
       url_fetch: { enabled: false, userConfigurable: false },
       home_data: {
         title: "Home data",
         tools: { home_lookup: lookupTool },
-        availableToMonty: ["home_lookup"],
       },
     });
 
     expect(registry.uiCatalog().find((entry) => entry.id === "url_fetch"))
       .toMatchObject({ enabled: false, userConfigurable: false });
-    expect(registry.montyTools().home_lookup).toBe(lookupTool);
     expect(registry.mastraTools().home_lookup?.inputSchema).toBe(lookupTool.inputSchema);
     expect(registry.mastraTools().home_lookup?.outputSchema).toBe(lookupTool.outputSchema);
   });
@@ -59,12 +57,11 @@ describe("shared tool registry", () => {
     registry.configureTools({
       home_data: {
         tools: { home_lookup: lookupTool },
-        availableToMonty: ["home_lookup"],
       },
     });
 
     expect(registry.uiCatalog().find((entry) => entry.id === "home_data"))
       .toMatchObject({ enabled: true, hidden: false, userConfigurable: false });
-    expect(registry.montyTools().home_lookup).toBe(lookupTool);
+    expect(registry.mastraTools().home_lookup).toBe(lookupTool);
   });
 });

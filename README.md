@@ -40,14 +40,14 @@ app shell. Array order controls the order of contributed items.
 
 ```tsx
 import { ChatApp, type ChatAppPlugin } from "@regbo/lfp-chat";
-import { Dashboard } from "./dashboard";
+import { Reports } from "./reports";
 
 const plugins = [
   {
-    id: "dashboard",
-    href: "/dashboard",
-    label: "Dashboard",
-    content: <Dashboard />,
+    id: "reports",
+    href: "/reports",
+    label: "Reports",
+    content: <Reports />,
   },
 ] satisfies readonly ChatAppPlugin[];
 
@@ -98,8 +98,7 @@ The legacy `plugins` prop remains available for a single routed view.
 Server consumers can build on the complete stock configuration through the
 server-only `@regbo/lfp-chat/mastra` entry point. The callbacks receive the
 actual `AgentConfig` and `Mastra` config. Native tools live in one typed registry
-that supplies the agent, the UI catalog, Mastra's global tool collection, and
-the explicitly allowed Monty capabilities:
+that supplies the agent, the UI catalog, and Mastra's global tool collection:
 
 ```ts
 import { createLfpChatMastra } from "@regbo/lfp-chat/mastra";
@@ -109,7 +108,6 @@ export const { mastra, memory, toolCatalog } = createLfpChatMastra({
     home_data: {
       title: "Home data",
       tools: { home_data_query: homeDataQueryTool },
-      availableToMonty: ["home_data_query"],
     },
     url_fetch: { userConfigurable: false },
   },
@@ -127,8 +125,8 @@ export const { mastra, memory, toolCatalog } = createLfpChatMastra({
 Registry values are native Mastra `ToolsInput` values, so tool descriptions,
 Zod input/output schemas, MCP metadata, and execution types are preserved. A
 default key updates that entry; a new key creates one. A native tool passed
-directly gets sensible defaults: visible, enabled, user-configurable, and not
-available to Monty. Pass the returned `toolCatalog` to `<ChatApp tools={toolCatalog}>`
+directly gets sensible defaults: visible, enabled, and user-configurable. Pass
+the returned `toolCatalog` to `<ChatApp tools={toolCatalog}>`
 so a consuming UI uses the same registry.
 
 For deployment-time integrations, `MCP_TOOL_SOURCES` accepts a JSON array of
@@ -136,9 +134,6 @@ sources with `id`, `title`, `description`, and `url`, plus optional
 `authTokenFile`, `timeoutMs`, and `forwardInstructions`. `enabled` defaults to
 `true`, `hidden` defaults to `false`, and `userConfigurable` defaults to `false`.
 A visible non-configurable source appears as managed in the Tools screen.
-`availableToMonty: true` trusts every tool from that source for saved Monty
-programs; otherwise only MCP tools carrying Mastra's native
-`mcp.annotations.readOnlyHint: true` are added to Monty.
 Each source is registered as a normal tool-registry entry, and its discovered
 native Mastra tools are attached to that entry before the agent resolves tools.
 
@@ -149,8 +144,7 @@ published `@regbo/lfp-chat` entrypoints, and contains no database or dedupe logi
 keeps the package application-agnostic while preserving native Mastra tool events and
 avoiding an unnecessary MCP round trip for a Home-only mutation.
 
-`TOOL_POLICIES` applies `{ hidden, enabled, userConfigurable, availableToMonty }`
-overrides to
+`TOOL_POLICIES` applies `{ hidden, enabled, userConfigurable }` overrides to
 built-in logical capabilities or exact Mastra tool IDs. For example,
 `{"code_mode":{"enabled":false,"userConfigurable":false}}` shows Code mode as
 a managed disabled setting; add `"hidden":true` to omit it from the UI.
@@ -232,22 +226,6 @@ Vikunja adapter keeps its project terminology private, and `VIKUNJA_PROJECT_ID`
 is only the backward-compatible default when a list is not specified.
 Assignment and other deployment-specific task fields are intentionally absent;
 a host can register its own `/tasks` `ChatAppPlugin` when it needs those fields.
-
-## Deterministic dashboards
-
-The Dashboard menu appears after the first widget is created. A widget stores a
-Monty Python program, its allowed Mastra tool IDs, refresh interval, and cache TTL.
-The model authors that program once; later refreshes execute it without another
-model call. Programs invoke registered tools with `await tool_call("tool_id", input)`
-and return validated chart, metric, table, or text data.
-
-Dashboard caching lives in PostgreSQL and uses transaction-scoped advisory locks
-with a second cache check after lock acquisition. This prevents multiple web or
-agent replicas from recomputing the same expired widget simultaneously. Hosts can
-adapt any read-safe Mastra tool into the widget runtime. The built-in `url_fetch`
-tool uses browser-like HTTP behavior for a specific public URL and remains distinct
-from provider web search. An optional generic `sql_query` tool is enabled with
-`DASHBOARD_SQL_DATABASE_URL(_FILE)` and a host-owned schema description.
 
 Mastra task creation is idempotent for agents and scheduled jobs. Before a
 write, jobs inspect existing open work and reconcile substantially equivalent

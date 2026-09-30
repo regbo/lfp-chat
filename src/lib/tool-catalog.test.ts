@@ -7,8 +7,8 @@ import {
 } from "./tool-catalog";
 
 describe("mandatory framework tools", () => {
-  test("keeps internal runtimes and dashboard orchestration available", () => {
-    expect(["monty", "cache", "code_interpreter", "dashboard_upsert_widget"].every(isMandatoryAgentToolId)).toBe(true);
+  test("keeps internal runtimes available", () => {
+    expect(["monty", "web_fetch", "code_interpreter"].every(isMandatoryAgentToolId)).toBe(true);
     expect(isMandatoryAgentToolId("web_search")).toBe(false);
   });
 });
@@ -20,7 +20,7 @@ describe("tool catalog migrations", () => {
     ]);
   });
 
-  test("adds dashboard capabilities once for selections saved before v4", () => {
+  test("adds URL fetch once for selections saved before v4", () => {
     expect(migrateEnabledToolIds(["web_search"], 2)).toEqual(["web_search", "url_fetch", "notifications"]);
   });
 
