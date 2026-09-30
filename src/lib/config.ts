@@ -281,6 +281,10 @@ export const serverConfig = {
     "OPENAI_HOSTED_TOOLS_ENABLED",
     openAiHostedToolsDefault(process.env.OPENAI_BASE_URL),
   ),
+  openaiResponsesStateEnabled: booleanValue(
+    "OPENAI_RESPONSES_STATE_ENABLED",
+    openAiHostedToolsDefault(process.env.OPENAI_BASE_URL),
+  ),
   localModelBaseUrl,
   scheduledModelName,
   // Hosts may dedicate a separate CPU runtime to lightweight web UI work.
