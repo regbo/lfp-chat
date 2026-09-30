@@ -221,9 +221,10 @@ export function resolveRuntimeOptions(requestContext?: RequestContext) {
 /** Hosted provider tools must match the model that receives the request. */
 export function supportsConfiguredProviderTools(requestContext?: RequestContext) {
   if (requestContext?.get(SCHEDULE_JOB_CONTEXT_KEY) === true) return false;
-  return selectionFromRequestContext(requestContext).modelId.startsWith(
-    `${serverConfig.modelProvider}/`,
-  );
+  return serverConfig.openaiHostedToolsEnabled &&
+    selectionFromRequestContext(requestContext).modelId.startsWith(
+      `${serverConfig.modelProvider}/`,
+    );
 }
 
 const providersWithNativeWebSearch = new Set([
@@ -241,7 +242,7 @@ if (providersWithNativeWebSearch.has(serverConfig.modelProvider)) {
 
 // These hosted tools are part of OpenAI's Responses API, so they are only
 // advertised when the selected model is routed to OpenAI.
-if (serverConfig.modelProvider === "openai") {
+if (serverConfig.modelProvider === "openai" && serverConfig.openaiHostedToolsEnabled) {
   providerTools.code_interpreter = openai.tools.codeInterpreter();
   providerTools.image_generation = openai.tools.imageGeneration({
     model: "gpt-image-2",
@@ -254,7 +255,7 @@ const capabilityInstructions = [
   providersWithNativeWebSearch.has(serverConfig.modelProvider)
     ? "Use web_search for current internet information and cite its sources."
     : undefined,
-  serverConfig.modelProvider === "openai"
+  serverConfig.modelProvider === "openai" && serverConfig.openaiHostedToolsEnabled
     ? "Use code_interpreter for richer data analysis or work involving uploaded files, and image_generation when the user asks to create an image."
     : undefined,
 ]

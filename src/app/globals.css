@@ -362,7 +362,8 @@
   }
 
   .chat-reasoning-trigger,
-  .chat-tool-summary-trigger,
+  .chat-tool-call-trigger,
+  .chat-tool-payload-trigger,
   .chat-steer-row {
     font-size: var(--text-ui);
     line-height: var(--leading-ui);
@@ -1079,7 +1080,8 @@
   }
 
   .chat-reasoning-trigger,
-  .chat-tool-summary-trigger {
+  .chat-tool-call-trigger,
+  .chat-tool-payload-trigger {
     min-height: var(--control-height-md);
   }
 

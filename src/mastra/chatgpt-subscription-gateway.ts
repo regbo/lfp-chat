@@ -15,7 +15,7 @@ type ChatGptSubscriptionGatewayOptions = {
   proxyKey?: string;
 };
 
-async function fetchChatGptSubscription(
+export async function fetchChatGptSubscription(
   input: RequestInfo | URL,
   init?: RequestInit,
 ) {
@@ -23,17 +23,17 @@ async function fetchChatGptSubscription(
   try {
     const payload = JSON.parse(init.body) as Record<string, unknown>;
     if (!Array.isArray(payload.tools)) return globalThis.fetch(input, init);
-    const tools = payload.tools.map((tool) => {
+    const tools = payload.tools.flatMap((tool) => {
       if (
         !tool ||
         typeof tool !== "object" ||
         (tool as Record<string, unknown>).type !== "function"
       ) {
-        return tool;
+        return [];
       }
       // Mastra tools may have optional inputs. The ChatGPT Codex endpoint only
       // accepts those schemas when OpenAI strict function validation is off.
-      return { ...(tool as Record<string, unknown>), strict: false };
+      return [{ ...(tool as Record<string, unknown>), strict: false }];
     });
     return globalThis.fetch(input, {
       ...init,

@@ -77,6 +77,7 @@ import {
 } from "@/components/app-panels";
 import {
   getRunningToolLabel,
+  getToolActivityLabel,
   ToolEventSummary,
 } from "@/components/tool-event-summary";
 import {
@@ -898,7 +899,9 @@ function ChatMessage({ message, streaming }: { message: UIMessage; streaming: bo
   const files = message.parts.filter((part): part is FileUIPart => part.type === "file");
   const hasReasoningDetails = Boolean(reasoningText) || visibleTools.length > 0;
   const showReasoning = !isUser && (Boolean(reasoningText) || visibleTools.length > 0);
-  const runningToolLabel = streaming ? getRunningToolLabel(visibleTools) : undefined;
+  const toolActivityLabel = streaming
+    ? getRunningToolLabel(visibleTools)
+    : getToolActivityLabel(visibleTools);
   const charts = visibleTools.flatMap((part) => {
     const name =
       part.type === "dynamic-tool"
@@ -918,7 +921,7 @@ function ChatMessage({ message, streaming }: { message: UIMessage; streaming: bo
         >
           {showReasoning && (
             <Reasoning isStreaming={streaming}>
-              <ReasoningTrigger expandable={hasReasoningDetails} status={runningToolLabel} />
+              <ReasoningTrigger expandable={hasReasoningDetails} status={toolActivityLabel} />
               {hasReasoningDetails ? (
                 <ReasoningContent className="space-y-2">
                   {reasoningText && <MessageResponse>{formatAttachmentLinks(formatCitationMarkers(reasoningText, tools), tools)}</MessageResponse>}

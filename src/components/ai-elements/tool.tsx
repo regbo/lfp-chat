@@ -117,13 +117,10 @@ export type ToolInputProps = ComponentProps<"div"> & {
 };
 
 export const ToolInput = ({ className, input, ...props }: ToolInputProps) => (
-  <div className={cn("space-y-2 overflow-hidden", className)} {...props}>
-    <h4 className="chat-tool-section-title font-medium text-muted-foreground uppercase tracking-wide">
-      Parameters
-    </h4>
-    <div className="rounded-md bg-muted/50">
+  <div className={cn("overflow-hidden", className)} {...props}>
+    <ToolPayload label="Request">
       <CodeBlock code={JSON.stringify(input ?? {}, null, 2)} language="json" />
-    </div>
+    </ToolPayload>
   </div>
 );
 
@@ -153,21 +150,37 @@ export const ToolOutput = ({
   }
 
   return (
-    <div className={cn("space-y-2", className)} {...props}>
-      <h4 className="chat-tool-section-title font-medium text-muted-foreground uppercase tracking-wide">
-        {errorText ? "Error" : "Result"}
-      </h4>
-      <div
-        className={cn(
-          "chat-ui-text overflow-x-auto rounded-md [&_table]:w-full",
-          errorText
-            ? "bg-destructive/10 text-destructive"
-            : "bg-muted/50 text-foreground"
+    <div className={cn("overflow-hidden", className)} {...props}>
+      <ToolPayload error={Boolean(errorText)} label={errorText ? "Error" : "Response"}>
+        {errorText ? (
+          <div className="break-words whitespace-pre-wrap p-3">{errorText}</div>
+        ) : (
+          Output
         )}
-      >
-        {errorText && <div className="break-words whitespace-pre-wrap p-3">{errorText}</div>}
-        {Output}
-      </div>
+      </ToolPayload>
     </div>
   );
 };
+
+type ToolPayloadProps = {
+  children: ReactNode;
+  error?: boolean;
+  label: string;
+};
+
+const ToolPayload = ({ children, error = false, label }: ToolPayloadProps) => (
+  <Collapsible className="group/tool-payload overflow-hidden rounded-lg border border-border/65 bg-background/55">
+    <CollapsibleTrigger className="chat-tool-payload-trigger flex min-h-8 w-full items-center gap-2 px-3 py-1.5 text-left font-medium text-muted-foreground transition-colors hover:bg-muted/45 hover:text-foreground">
+      <ChevronDownIcon className="size-3.5 shrink-0 -rotate-90 transition-transform group-data-[state=open]/tool-payload:rotate-0" />
+      <span>{label}</span>
+    </CollapsibleTrigger>
+    <CollapsibleContent
+      className={cn(
+        "chat-ui-text max-h-80 overflow-auto border-t border-border/55 text-foreground outline-none [&_table]:w-full",
+        error && "bg-destructive/10 text-destructive",
+      )}
+    >
+      {children}
+    </CollapsibleContent>
+  </Collapsible>
+);

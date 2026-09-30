@@ -108,12 +108,20 @@ test("tool-call details stay within the chat column", async ({ page }) => {
   await page.goto(`/c/${TOOL_LAYOUT_THREAD_ID}`);
   await expect(page.getByText("Tool layout smoke fixture complete.")).toBeVisible();
 
-  await page.getByRole("button", { name: /Thought for a few seconds/ }).click();
-  await page.getByRole("button", { name: /Finished 2 tools/ }).click();
-  await expect(page.getByText(LONG_TOOL_VALUE, { exact: false }).first()).toBeVisible();
+  await page.getByRole("button", { name: /Finished tools · 2 calls/ }).click();
+  await page.getByRole("button", { name: "Called Project Search" }).click();
+  await expect(page.getByRole("button", { name: "Request" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Response" })).toBeVisible();
+  const responsePanel = page
+    .getByRole("button", { name: "Response" })
+    .locator("xpath=following-sibling::*[1]");
+  await expect(responsePanel).toBeHidden();
+  await page.getByRole("button", { name: "Response" }).click();
+  await expect(responsePanel).toBeVisible();
+  await expect(responsePanel.getByText(LONG_TOOL_VALUE, { exact: false }).first()).toBeVisible();
 
   const layout = await page.evaluate(() => {
-    const trigger = document.querySelector<HTMLElement>(".chat-tool-summary-trigger");
+    const trigger = document.querySelector<HTMLElement>(".chat-tool-call-trigger");
     const column = trigger?.closest<HTMLElement>(".chat-column");
     const shell = document.querySelector<HTMLElement>(".app-shell");
     const codeScrollers = Array.from(
