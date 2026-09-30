@@ -118,9 +118,9 @@ export function createLfpChatMastra(
       },
     },
   });
-  const openAiConversationState = serverConfig.openaiResponsesStateEnabled
-    ? new OpenAiConversationStateProcessor()
-    : undefined;
+  const openAiConversationState = new OpenAiConversationStateProcessor(
+    serverConfig.openaiResponsesStateEnabled,
+  );
 
   const baseChatAgentConfig: AgentConfig = {
     id: "chatAgent",
@@ -128,13 +128,9 @@ export function createLfpChatMastra(
     description: "A concise, tool-capable assistant with persistent memory.",
     model: ({ requestContext }) => resolveRuntimeModel(requestContext),
     memory,
-    ...(openAiConversationState
-      ? {
-          inputProcessors: [openAiConversationState],
-          outputProcessors: [openAiConversationState],
-          errorProcessors: [openAiConversationState],
-        }
-      : {}),
+    inputProcessors: [openAiConversationState],
+    outputProcessors: [openAiConversationState],
+    errorProcessors: [openAiConversationState],
     tools: async ({ requestContext }) => {
       const enabled = resolvedEnabledCapabilities(requestContext.get(TOOLS_CONTEXT_KEY));
       if (!serverConfig.taskServiceConfigured) enabled.delete("tasks");

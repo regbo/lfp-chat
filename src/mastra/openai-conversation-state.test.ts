@@ -54,6 +54,34 @@ describe("OpenAI conversation state", () => {
     ]);
   });
 
+  test("keeps compatible endpoints stateless across every tool step", () => {
+    const processor = new OpenAiConversationStateProcessor(false);
+    const state: Record<string, unknown> = {};
+    const result = processor.processInputStep({
+      messages: [message("user", "Check processing")],
+      model: { provider: "openai.responses", modelId: "chatgpt/gpt-5.6-luna" },
+      providerOptions: {
+        openai: {
+          previousResponseId: "resp_old",
+          reasoningEffort: "medium",
+        },
+      },
+      state,
+      stepNumber: 1,
+      steps: [{ response: { id: "resp_tool_call" } }],
+    } as unknown as ProcessInputStepArgs);
+
+    expect(result).toEqual({
+      providerOptions: {
+        openai: {
+          reasoningEffort: "medium",
+          store: false,
+          strictJsonSchema: false,
+        },
+      },
+    });
+  });
+
   test("continues tool loops with only the new tool output", () => {
     const processor = new OpenAiConversationStateProcessor();
     const state: Record<string, unknown> = {};

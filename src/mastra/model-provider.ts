@@ -6,6 +6,7 @@ import { webSearchTool } from "@mastra/core/tools";
 
 import { serverConfig } from "@/lib/config";
 import { SCHEDULE_JOB_CONTEXT_KEY } from "@/lib/schedules";
+import { withoutOpenAiResponseState } from "@/mastra/openai-conversation-state";
 import {
   createAgentCatalog,
   createModelCatalog,
@@ -133,17 +134,21 @@ export function resolveRuntimeOptions(requestContext?: RequestContext) {
     (candidate) => candidate.id === selection.modelId,
   );
 
+  const providerOptions =
+    model?.provider === "openai" && selection.reasoningEffort
+      ? {
+          openai: {
+            reasoningEffort: selection.reasoningEffort,
+            reasoningSummary: "auto" as const,
+          },
+        }
+      : undefined;
+
   return {
     maxSteps: serverConfig.agentMaxSteps,
-    providerOptions:
-      model?.provider === "openai" && selection.reasoningEffort
-        ? {
-            openai: {
-              reasoningEffort: selection.reasoningEffort,
-              reasoningSummary: "auto",
-            },
-          }
-        : undefined,
+    providerOptions: serverConfig.openaiResponsesStateEnabled
+      ? providerOptions
+      : withoutOpenAiResponseState(providerOptions),
   };
 }
 

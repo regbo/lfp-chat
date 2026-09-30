@@ -107,6 +107,22 @@ function openAiOptions(
   return asRecord(asRecord(providerOptions)?.openai) ?? {};
 }
 
+export function withoutOpenAiResponseState(
+  providerOptions: ProcessInputStepArgs["providerOptions"],
+): ProcessInputStepResult["providerOptions"] {
+  const configuredOpenAi = { ...openAiOptions(providerOptions) };
+  delete configuredOpenAi.previousResponseId;
+  delete configuredOpenAi.conversation;
+  return {
+    ...providerOptions,
+    openai: {
+      ...configuredOpenAi,
+      store: false,
+      strictJsonSchema: false,
+    },
+  };
+}
+
 function withOpenAiState(
   providerOptions: ProcessInputStepArgs["providerOptions"],
   previousResponseId: string | null,
@@ -133,6 +149,8 @@ export class OpenAiConversationStateProcessor implements Processor {
   readonly id = "openai-conversation-state";
   readonly name = "OpenAI Conversation State";
 
+  constructor(private readonly stateEnabled = true) {}
+
   processInputStep({
     messages,
     model,
@@ -141,6 +159,13 @@ export class OpenAiConversationStateProcessor implements Processor {
     stepNumber,
     steps,
   }: ProcessInputStepArgs): ProcessInputStepResult | void {
+    if (!this.stateEnabled) {
+      state[STATE_ACTIVE_KEY] = false;
+      state[STATE_CONTINUATION_KEY] = false;
+      state[STATE_LAST_MODEL_KEY] = false;
+      return { providerOptions: withoutOpenAiResponseState(providerOptions) };
+    }
+
     if (!isOpenAiResponsesModel(model)) {
       state[STATE_ACTIVE_KEY] = false;
       state[STATE_CONTINUATION_KEY] = false;
